@@ -2,3 +2,7 @@
 *.pyc
 /*.egg-info
 /.eggs
+
+# tests
+*.vcd
+*.gtkw
