@@ -85,9 +85,9 @@ class CSRMultiplexer(Elaboratable):
     --------------
 
     Because the CSR bus conserves logic and routing resources, it is common to e.g. access
-    a CSR bus with an *n*-bit data path from a CPU with a *k*-bit datapath in cases where CSR
-    access latency is less important than resource usage. In this case, two strategies are
-    possible for connecting the CSR bus to the CPU:
+    a CSR bus with an *n*-bit data path from a CPU with a *k*-bit datapath (*k>n*) in cases
+    where CSR access latency is less important than resource usage. In this case, two strategies
+    are possible for connecting the CSR bus to the CPU:
         * The CPU could access the CSR bus directly (with no intervening logic other than simple
           translation of control signals). In this case, the register alignment should be set
           to 1, and each *w*-bit register would occupy *ceil(w/n)* addresses from the CPU
@@ -207,11 +207,10 @@ class CSRMultiplexer(Elaboratable):
         m = Module()
 
         # Instead of a straightforward multiplexer for reads, use a per-element address comparator,
-        # clear the shadow register when it does not match, and OR every selected shadow register
-        # part to form the output. This can save a significant amount of logic; the size of
-        # a complete k-OR or k-MUX gate tree for n inputs is `s = ceil((n - 1) / (k - 1))`,
-        # and its logic depth is `ceil(log_k(s))`, but a 4-LUT can implement either a 4-OR or
-        # a 2-MUX gate.
+        # AND the shadow register chunk with the comparator output, and OR all of those together.
+        # If the toolchain doesn't already synthesize multiplexer trees this way, this trick can
+        # save a significant amount of logic, since e.g. one 4-LUT can pack one 2-MUX, but two
+        # 2-AND or 2-OR gates.
         r_data_fanin = 0
 
         for elem_addr, (elem, elem_size) in self._elements.items():
