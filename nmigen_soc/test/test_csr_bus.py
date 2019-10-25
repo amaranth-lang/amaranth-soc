@@ -82,9 +82,9 @@ class InterfaceTestCase(unittest.TestCase):
             Interface(addr_width=16, data_width=-1)
 
 
-class DecoderTestCase(unittest.TestCase):
+class MultiplexerTestCase(unittest.TestCase):
     def setUp(self):
-        self.dut = Decoder(addr_width=16, data_width=8)
+        self.dut = Multiplexer(addr_width=16, data_width=8)
         Fragment.get(self.dut, platform=None) # silence UnusedElaboratable
 
     def test_add_4b(self):
@@ -195,9 +195,9 @@ class DecoderTestCase(unittest.TestCase):
             sim.run()
 
 
-class DecoderAlignedTestCase(unittest.TestCase):
+class MultiplexerAlignedTestCase(unittest.TestCase):
     def setUp(self):
-        self.dut = Decoder(addr_width=16, data_width=8, alignment=2)
+        self.dut = Multiplexer(addr_width=16, data_width=8, alignment=2)
         Fragment.get(self.dut, platform=None) # silence UnusedElaboratable
 
     def test_add_two(self):
@@ -255,9 +255,9 @@ class DecoderAlignedTestCase(unittest.TestCase):
             sim.run()
 
 
-class MultiplexerTestCase(unittest.TestCase):
+class DecoderTestCase(unittest.TestCase):
     def setUp(self):
-        self.dut = Multiplexer(addr_width=16, data_width=8)
+        self.dut = Decoder(addr_width=16, data_width=8)
         Fragment.get(self.dut, platform=None) # silence UnusedElaboratable
 
     def test_add_wrong_sub_bus(self):
@@ -266,24 +266,24 @@ class MultiplexerTestCase(unittest.TestCase):
             self.dut.add(1)
 
     def test_add_wrong_data_width(self):
-        decoder = Decoder(addr_width=10, data_width=16)
-        Fragment.get(decoder, platform=None) # silence UnusedElaboratable
+        mux = Multiplexer(addr_width=10, data_width=16)
+        Fragment.get(mux, platform=None) # silence UnusedElaboratable
 
         with self.assertRaisesRegex(ValueError,
                 r"Subordinate bus has data width 16, which is not the same as "
                 r"multiplexer data width 8"):
-            self.dut.add(decoder.bus)
+            self.dut.add(mux.bus)
 
     def test_sim(self):
-        dec_1  = Decoder(addr_width=10, data_width=8)
-        self.dut.add(dec_1.bus)
+        mux_1  = Multiplexer(addr_width=10, data_width=8)
+        self.dut.add(mux_1.bus)
         elem_1 = Element(8, "rw")
-        dec_1.add(elem_1)
+        mux_1.add(elem_1)
 
-        dec_2  = Decoder(addr_width=10, data_width=8)
-        self.dut.add(dec_2.bus)
+        mux_2  = Multiplexer(addr_width=10, data_width=8)
+        self.dut.add(mux_2.bus)
         elem_2 = Element(8, "rw")
-        dec_2.add(elem_2, addr=2)
+        mux_2.add(elem_2, addr=2)
 
         elem_1_addr, _, _ = self.dut.bus.memory_map.find_resource(elem_1)
         elem_2_addr, _, _ = self.dut.bus.memory_map.find_resource(elem_2)
@@ -322,7 +322,7 @@ class MultiplexerTestCase(unittest.TestCase):
             self.assertEqual((yield bus.r_data), 0xaa)
 
         m = Module()
-        m.submodules += self.dut, dec_1, dec_2
+        m.submodules += self.dut, mux_1, mux_2
         with Simulator(m, vcd_file=open("test.vcd", "w")) as sim:
             sim.add_clock(1e-6)
             sim.add_sync_process(sim_test())

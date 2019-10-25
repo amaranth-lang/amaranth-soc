@@ -153,8 +153,8 @@ class Interface(Record):
         ], name=name, src_loc_at=1)
 
 
-class Decoder(Elaboratable):
-    """CSR bus decoder.
+class Multiplexer(Elaboratable):
+    """CSR register multiplexer.
 
     An address-based multiplexer for CSR registers implementing atomic updates.
 
@@ -275,22 +275,22 @@ class Decoder(Elaboratable):
         return m
 
 
-class Multiplexer(Elaboratable):
-    """CSR bus multiplexer.
+class Decoder(Elaboratable):
+    """CSR bus decoder.
 
-    An address-based multiplexer for subordinate CSR buses.
+    An address decoder for subordinate CSR buses.
 
     Usage
     -----
 
     Although there is no functional difference between adding a set of registers directly to
-    a :class:`Decoder` and adding a set of reigsters to multiple :class:`Decoder`s that are
-    aggregated with a :class:`Multiplexer`, hierarchical CSR buses are useful for organizing
-    a hierarchical design. If many peripherals are directly served by a single :class:`Decoder`,
-    a very large amount of ports will connect the peripheral registers with the decoder, and
-    the cost of decoding logic would not be attributed to specific peripherals. With a multiplexer,
-    only five signals per peripheral will be used, and the logic could be kept together with
-    the peripheral.
+    a :class:`Multiplexer` and adding a set of registers to multiple :class:`Multiplexer`s that are
+    aggregated with a :class:`Decoder`, hierarchical CSR buses are useful for organizing
+    a hierarchical design. If many peripherals are directly served by a single
+    :class:`Multiplexer`, a very large amount of ports will connect the peripheral registers with
+    the decoder, and the cost of decoding logic would not be attributed to specific peripherals.
+    With a decoder, only five signals per peripheral will be used, and the logic could be kept
+    together with the peripheral.
 
     Parameters
     ----------
@@ -342,7 +342,7 @@ class Multiplexer(Elaboratable):
     def elaborate(self, platform):
         m = Module()
 
-        # See Decoder.elaborate above.
+        # See Multiplexer.elaborate above.
         r_data_fanin = 0
 
         with m.Switch(self.bus.addr):
