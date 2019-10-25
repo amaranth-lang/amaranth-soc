@@ -85,6 +85,7 @@ class InterfaceTestCase(unittest.TestCase):
 class DecoderTestCase(unittest.TestCase):
     def setUp(self):
         self.dut = Decoder(addr_width=16, data_width=8)
+        Fragment.get(self.dut, platform=None) # silence UnusedElaboratable
 
     def test_add_4b(self):
         self.assertEqual(self.dut.add(Element(4, "rw")),
@@ -197,6 +198,7 @@ class DecoderTestCase(unittest.TestCase):
 class DecoderAlignedTestCase(unittest.TestCase):
     def setUp(self):
         self.dut = Decoder(addr_width=16, data_width=8, alignment=2)
+        Fragment.get(self.dut, platform=None) # silence UnusedElaboratable
 
     def test_add_two(self):
         self.assertEqual(self.dut.add(Element(8, "rw")),
