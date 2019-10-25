@@ -253,3 +253,77 @@ class DecoderAlignedTestCase(unittest.TestCase):
             sim.add_clock(1e-6)
             sim.add_sync_process(sim_test())
             sim.run()
+
+
+class MultiplexerTestCase(unittest.TestCase):
+    def setUp(self):
+        self.dut = Multiplexer(addr_width=16, data_width=8)
+        Fragment.get(self.dut, platform=None) # silence UnusedElaboratable
+
+    def test_add_wrong_sub_bus(self):
+        with self.assertRaisesRegex(TypeError,
+                r"Subordinate bus must be an instance of csr\.Interface, not 1"):
+            self.dut.add(1)
+
+    def test_add_wrong_data_width(self):
+        decoder = Decoder(addr_width=10, data_width=16)
+        Fragment.get(decoder, platform=None) # silence UnusedElaboratable
+
+        with self.assertRaisesRegex(ValueError,
+                r"Subordinate bus has data width 16, which is not the same as "
+                r"multiplexer data width 8"):
+            self.dut.add(decoder.bus)
+
+    def test_sim(self):
+        dec_1  = Decoder(addr_width=10, data_width=8)
+        self.dut.add(dec_1.bus)
+        elem_1 = Element(8, "rw")
+        dec_1.add(elem_1)
+
+        dec_2  = Decoder(addr_width=10, data_width=8)
+        self.dut.add(dec_2.bus)
+        elem_2 = Element(8, "rw")
+        dec_2.add(elem_2, addr=2)
+
+        elem_1_addr, _, _ = self.dut.bus.memory_map.find_resource(elem_1)
+        elem_2_addr, _, _ = self.dut.bus.memory_map.find_resource(elem_2)
+        self.assertEqual(elem_1_addr, 0x0000)
+        self.assertEqual(elem_2_addr, 0x0402)
+
+        bus = self.dut.bus
+
+        def sim_test():
+            yield bus.addr.eq(elem_1_addr)
+            yield bus.w_stb.eq(1)
+            yield bus.w_data.eq(0x55)
+            yield
+            yield bus.w_stb.eq(0)
+            yield
+            self.assertEqual((yield elem_1.w_data), 0x55)
+
+            yield bus.addr.eq(elem_2_addr)
+            yield bus.w_stb.eq(1)
+            yield bus.w_data.eq(0xaa)
+            yield
+            yield bus.w_stb.eq(0)
+            yield
+            self.assertEqual((yield elem_2.w_data), 0xaa)
+
+            yield elem_1.r_data.eq(0x55)
+            yield elem_2.r_data.eq(0xaa)
+
+            yield bus.addr.eq(elem_1_addr)
+            yield bus.r_stb.eq(1)
+            yield
+            yield bus.addr.eq(elem_2_addr)
+            yield
+            self.assertEqual((yield bus.r_data), 0x55)
+            yield
+            self.assertEqual((yield bus.r_data), 0xaa)
+
+        m = Module()
+        m.submodules += self.dut, dec_1, dec_2
+        with Simulator(m, vcd_file=open("test.vcd", "w")) as sim:
+            sim.add_clock(1e-6)
+            sim.add_sync_process(sim_test())
+            sim.run()

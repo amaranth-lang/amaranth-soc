@@ -166,7 +166,7 @@ class MemoryMap:
 
         Arguments
         ---------
-        resource
+        resource : object
             Arbitrary object representing a resource.
         addr : int or None
             Address of the resource. If ``None``, the implicit next address will be used.
@@ -291,7 +291,12 @@ class MemoryMap:
             ratio = self.data_width // window.data_width
         else:
             ratio = 1
-        size      = (1 << window.addr_width) // ratio
+        size = (1 << window.addr_width) // ratio
+        # For resources, the alignment argument of add_resource() affects both address and size
+        # of the resource; aligning only the address should be done using align_to(). For windows,
+        # changing the size (beyond the edge case of the window size being smaller than alignment
+        # of the bus) is unlikely to be useful, so there is no alignment argument. The address of
+        # a window can still be aligned using align_to().
         alignment = max(self.alignment, window.addr_width // ratio)
 
         addr_range = self._compute_addr_range(addr, size, ratio, alignment=alignment)

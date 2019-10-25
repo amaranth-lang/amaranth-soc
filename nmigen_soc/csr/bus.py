@@ -1,10 +1,11 @@
 import enum
 from nmigen import *
+from nmigen.utils import log2_int
 
 from ..memory import MemoryMap
 
 
-__all__ = ["Element", "Interface", "Decoder"]
+__all__ = ["Element", "Interface", "Decoder", "Multiplexer"]
 
 
 class Element(Record):
@@ -103,15 +104,20 @@ class Interface(Record):
         Address width. At most ``(2 ** addr_width) * data_width`` register bits will be available.
     data_width : int
         Data width. Registers are accessed in ``data_width`` sized chunks.
+    alignment : int
+        Alignment. See :class:`MemoryMap`.
     name : str
         Name of the underlying record.
 
     Attributes
     ----------
+    memory_map : MemoryMap
+        Map of the bus.
     addr : Signal(addr_width)
         Address for reads and writes.
     r_data : Signal(data_width)
-        Read data. Valid on the next cycle after ``r_stb`` is asserted.
+        Read data. Valid on the next cycle after ``r_stb`` is asserted. Otherwise, zero. (Keeping
+        read data of an unused interface at zero simplifies multiplexers.)
     r_stb : Signal()
         Read strobe. If ``addr`` points to the first chunk of a register, captures register value
         and causes read side effects to be performed (if any). If ``addr`` points to any chunk
@@ -126,7 +132,7 @@ class Interface(Record):
         nothing.
     """
 
-    def __init__(self, *, addr_width, data_width, name=None):
+    def __init__(self, *, addr_width, data_width, alignment=0, name=None):
         if not isinstance(addr_width, int) or addr_width <= 0:
             raise ValueError("Address width must be a positive integer, not {!r}"
                              .format(addr_width))
@@ -135,6 +141,8 @@ class Interface(Record):
                              .format(data_width))
         self.addr_width = addr_width
         self.data_width = data_width
+        self.memory_map = MemoryMap(addr_width=addr_width, data_width=data_width,
+                                    alignment=alignment)
 
         super().__init__([
             ("addr",    addr_width),
@@ -185,8 +193,7 @@ class Decoder(Elaboratable):
     data_width : int
         Data width. See :class:`Interface`.
     alignment : int
-        Register alignment. The address assigned to each register will be a multiple of
-        ``2 ** alignment``.
+        Register alignment. See :class:`Interface`.
 
     Attributes
     ----------
@@ -194,8 +201,8 @@ class Decoder(Elaboratable):
         CSR bus providing access to registers.
     """
     def __init__(self, *, addr_width, data_width, alignment=0):
-        self.bus  = Interface(addr_width=addr_width, data_width=data_width)
-        self._map = MemoryMap(addr_width=addr_width, data_width=data_width, alignment=alignment)
+        self.bus  = Interface(addr_width=addr_width, data_width=data_width, alignment=alignment)
+        self._map = self.bus.memory_map
 
     def align_to(self, alignment):
         """Align the implicit address of the next register.
@@ -262,6 +269,94 @@ class Decoder(Elaboratable):
 
                 with m.Default():
                     m.d.sync += shadow.eq(0)
+
+        m.d.comb += self.bus.r_data.eq(r_data_fanin)
+
+        return m
+
+
+class Multiplexer(Elaboratable):
+    """CSR bus multiplexer.
+
+    An address-based multiplexer for subordinate CSR buses.
+
+    Usage
+    -----
+
+    Although there is no functional difference between adding a set of registers directly to
+    a :class:`Decoder` and adding a set of reigsters to multiple :class:`Decoder`s that are
+    aggregated with a :class:`Multiplexer`, hierarchical CSR buses are useful for organizing
+    a hierarchical design. If many peripherals are directly served by a single :class:`Decoder`,
+    a very large amount of ports will connect the peripheral registers with the decoder, and
+    the cost of decoding logic would not be attributed to specific peripherals. With a multiplexer,
+    only five signals per peripheral will be used, and the logic could be kept together with
+    the peripheral.
+
+    Parameters
+    ----------
+    addr_width : int
+        Address width. See :class:`Interface`.
+    data_width : int
+        Data width. See :class:`Interface`.
+    alignment : int
+        Window alignment. See :class:`Interface`.
+
+    Attributes
+    ----------
+    bus : :class:`Interface`
+        CSR bus providing access to subordinate buses.
+    """
+    def __init__(self, *, addr_width, data_width, alignment=0):
+        self.bus   = Interface(addr_width=addr_width, data_width=data_width, alignment=alignment)
+        self._map  = self.bus.memory_map
+        self._subs = dict()
+
+    def align_to(self, alignment):
+        """Align the implicit address of the next window.
+
+        See :meth:`MemoryMap.align_to` for details.
+        """
+        return self._map.align_to(alignment)
+
+    def add(self, sub_bus, *, addr=None):
+        """Add a window to a subordinate bus.
+
+        See :meth:`MemoryMap.add_resource` for details.
+        """
+        if not isinstance(sub_bus, Interface):
+            raise TypeError("Subordinate bus must be an instance of csr.Interface, not {!r}"
+                            .format(sub_bus))
+        if sub_bus.data_width != self.bus.data_width:
+            raise ValueError("Subordinate bus has data width {}, which is not the same as "
+                             "multiplexer data width {}"
+                             .format(sub_bus.data_width, self.bus.data_width))
+
+        start, end, ratio = window_range = self._map.add_window(sub_bus.memory_map, addr=addr)
+        assert ratio == 1
+        pattern = "{:0{}b}{}".format(start >> sub_bus.addr_width,
+                                     self.bus.addr_width - sub_bus.addr_width,
+                                     "-" * sub_bus.addr_width)
+        self._subs[pattern] = sub_bus
+        return window_range
+
+    def elaborate(self, platform):
+        m = Module()
+
+        # See Decoder.elaborate above.
+        r_data_fanin = 0
+
+        with m.Switch(self.bus.addr):
+            for sub_pat, sub_bus in self._subs.items():
+                m.d.comb += sub_bus.addr.eq(self.bus.addr[:sub_bus.addr_width])
+
+                # The CSR bus interface is defined to output zero when idle, allowing us to avoid
+                # adding a multiplexer here.
+                r_data_fanin |= sub_bus.r_data
+                m.d.comb += sub_bus.w_data.eq(self.bus.w_data)
+
+                with m.Case(sub_pat):
+                    m.d.comb += sub_bus.r_stb.eq(self.bus.r_stb)
+                    m.d.comb += sub_bus.w_stb.eq(self.bus.w_stb)
 
         m.d.comb += self.bus.r_data.eq(r_data_fanin)
 
