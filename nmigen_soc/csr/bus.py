@@ -105,7 +105,7 @@ class Interface(Record):
     data_width : int
         Data width. Registers are accessed in ``data_width`` sized chunks.
     alignment : int
-        Alignment. See :class:`MemoryMap`.
+        Register and window alignment. See :class:`MemoryMap`.
     name : str
         Name of the underlying record.
 

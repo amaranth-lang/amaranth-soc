@@ -71,12 +71,12 @@ class InterfaceTestCase(unittest.TestCase):
             ("w_stb",   1),
         ]))
 
-    def test_addr_width_wrong(self):
+    def test_wrong_addr_width(self):
         with self.assertRaisesRegex(ValueError,
                 r"Address width must be a positive integer, not -1"):
             Interface(addr_width=-1, data_width=8)
 
-    def test_data_width_wrong(self):
+    def test_wrong_data_width(self):
         with self.assertRaisesRegex(ValueError,
                 r"Data width must be a positive integer, not -1"):
             Interface(addr_width=16, data_width=-1)
