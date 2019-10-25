@@ -10,7 +10,7 @@ class ElementTestCase(unittest.TestCase):
     def test_layout_1_ro(self):
         elem = Element(1, "r")
         self.assertEqual(elem.width, 1)
-        self.assertEqual(elem.access, "r")
+        self.assertEqual(elem.access, Element.Access.R)
         self.assertEqual(elem.layout, Layout.cast([
             ("r_data", 1),
             ("r_stb", 1),
@@ -19,7 +19,7 @@ class ElementTestCase(unittest.TestCase):
     def test_layout_8_rw(self):
         elem = Element(8, access="rw")
         self.assertEqual(elem.width, 8)
-        self.assertEqual(elem.access, "rw")
+        self.assertEqual(elem.access, Element.Access.RW)
         self.assertEqual(elem.layout, Layout.cast([
             ("r_data", 8),
             ("r_stb", 1),
@@ -30,16 +30,16 @@ class ElementTestCase(unittest.TestCase):
     def test_layout_10_wo(self):
         elem = Element(10, "w")
         self.assertEqual(elem.width, 10)
-        self.assertEqual(elem.access, "w")
+        self.assertEqual(elem.access, Element.Access.W)
         self.assertEqual(elem.layout, Layout.cast([
             ("w_data", 10),
             ("w_stb", 1),
         ]))
 
     def test_layout_0_rw(self): # degenerate but legal case
-        elem = Element(0, access="rw")
+        elem = Element(0, access=Element.Access.RW)
         self.assertEqual(elem.width, 0)
-        self.assertEqual(elem.access, "rw")
+        self.assertEqual(elem.access, Element.Access.RW)
         self.assertEqual(elem.layout, Layout.cast([
             ("r_data", 0),
             ("r_stb", 1),
