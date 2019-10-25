@@ -6,9 +6,9 @@ from nmigen.back.pysim import *
 from ..csr.bus import *
 
 
-class CSRElementTestCase(unittest.TestCase):
+class ElementTestCase(unittest.TestCase):
     def test_layout_1_ro(self):
-        elem = CSRElement(1, "r")
+        elem = Element(1, "r")
         self.assertEqual(elem.width, 1)
         self.assertEqual(elem.access, "r")
         self.assertEqual(elem.layout, Layout.cast([
@@ -17,7 +17,7 @@ class CSRElementTestCase(unittest.TestCase):
         ]))
 
     def test_layout_8_rw(self):
-        elem = CSRElement(8, access="rw")
+        elem = Element(8, access="rw")
         self.assertEqual(elem.width, 8)
         self.assertEqual(elem.access, "rw")
         self.assertEqual(elem.layout, Layout.cast([
@@ -28,7 +28,7 @@ class CSRElementTestCase(unittest.TestCase):
         ]))
 
     def test_layout_10_wo(self):
-        elem = CSRElement(10, "w")
+        elem = Element(10, "w")
         self.assertEqual(elem.width, 10)
         self.assertEqual(elem.access, "w")
         self.assertEqual(elem.layout, Layout.cast([
@@ -37,7 +37,7 @@ class CSRElementTestCase(unittest.TestCase):
         ]))
 
     def test_layout_0_rw(self): # degenerate but legal case
-        elem = CSRElement(0, access="rw")
+        elem = Element(0, access="rw")
         self.assertEqual(elem.width, 0)
         self.assertEqual(elem.access, "rw")
         self.assertEqual(elem.layout, Layout.cast([
@@ -50,17 +50,17 @@ class CSRElementTestCase(unittest.TestCase):
     def test_width_wrong(self):
         with self.assertRaisesRegex(ValueError,
                 r"Width must be a non-negative integer, not -1"):
-            CSRElement(-1, "rw")
+            Element(-1, "rw")
 
     def test_access_wrong(self):
         with self.assertRaisesRegex(ValueError,
                 r"Access mode must be one of \"r\", \"w\", or \"rw\", not 'wo'"):
-            CSRElement(1, "wo")
+            Element(1, "wo")
 
 
-class CSRInterfaceTestCase(unittest.TestCase):
+class InterfaceTestCase(unittest.TestCase):
     def test_layout(self):
-        iface = CSRInterface(addr_width=12, data_width=8)
+        iface = Interface(addr_width=12, data_width=8)
         self.assertEqual(iface.addr_width, 12)
         self.assertEqual(iface.data_width, 8)
         self.assertEqual(iface.layout, Layout.cast([
@@ -74,68 +74,68 @@ class CSRInterfaceTestCase(unittest.TestCase):
     def test_addr_width_wrong(self):
         with self.assertRaisesRegex(ValueError,
                 r"Address width must be a positive integer, not -1"):
-            CSRInterface(addr_width=-1, data_width=8)
+            Interface(addr_width=-1, data_width=8)
 
     def test_data_width_wrong(self):
         with self.assertRaisesRegex(ValueError,
                 r"Data width must be a positive integer, not -1"):
-            CSRInterface(addr_width=16, data_width=-1)
+            Interface(addr_width=16, data_width=-1)
 
 
-class CSRDecoderTestCase(unittest.TestCase):
+class DecoderTestCase(unittest.TestCase):
     def setUp(self):
-        self.dut = CSRDecoder(addr_width=16, data_width=8)
+        self.dut = Decoder(addr_width=16, data_width=8)
 
     def test_alignment_wrong(self):
         with self.assertRaisesRegex(ValueError,
                 r"Alignment must be a non-negative integer, not -1"):
-            CSRDecoder(addr_width=16, data_width=8, alignment=-1)
+            Decoder(addr_width=16, data_width=8, alignment=-1)
 
     def test_attrs(self):
         self.assertEqual(self.dut.alignment, 0)
 
     def test_add_4b(self):
-        self.assertEqual(self.dut.add(CSRElement(4, "rw")),
+        self.assertEqual(self.dut.add(Element(4, "rw")),
                          (0, 1))
 
     def test_add_8b(self):
-        self.assertEqual(self.dut.add(CSRElement(8, "rw")),
+        self.assertEqual(self.dut.add(Element(8, "rw")),
                          (0, 1))
 
     def test_add_12b(self):
-        self.assertEqual(self.dut.add(CSRElement(12, "rw")),
+        self.assertEqual(self.dut.add(Element(12, "rw")),
                          (0, 2))
 
     def test_add_16b(self):
-        self.assertEqual(self.dut.add(CSRElement(16, "rw")),
+        self.assertEqual(self.dut.add(Element(16, "rw")),
                          (0, 2))
 
     def test_add_two(self):
-        self.assertEqual(self.dut.add(CSRElement(16, "rw")),
+        self.assertEqual(self.dut.add(Element(16, "rw")),
                          (0, 2))
-        self.assertEqual(self.dut.add(CSRElement(8, "rw")),
+        self.assertEqual(self.dut.add(Element(8, "rw")),
                          (2, 1))
 
     def test_add_wrong(self):
         with self.assertRaisesRegex(ValueError,
                 r"Width must be a non-negative integer, not -1"):
-            CSRElement(-1, "rw")
+            Element(-1, "rw")
 
     def test_align_to(self):
-        self.assertEqual(self.dut.add(CSRElement(8, "rw")),
+        self.assertEqual(self.dut.add(Element(8, "rw")),
                          (0, 1))
         self.assertEqual(self.dut.align_to(2), 4)
-        self.assertEqual(self.dut.add(CSRElement(8, "rw")),
+        self.assertEqual(self.dut.add(Element(8, "rw")),
                          (4, 1))
 
     def test_sim(self):
         bus = self.dut.bus
 
-        elem_4_r = CSRElement(4, "r")
+        elem_4_r = Element(4, "r")
         self.dut.add(elem_4_r)
-        elem_8_w = CSRElement(8, "w")
+        elem_8_w = Element(8, "w")
         self.dut.add(elem_8_w)
-        elem_16_rw = CSRElement(16, "rw")
+        elem_16_rw = Element(16, "rw")
         self.dut.add(elem_16_rw)
 
         def sim_test():
@@ -202,37 +202,37 @@ class CSRDecoderTestCase(unittest.TestCase):
             sim.run()
 
 
-class CSRDecoderAlignedTestCase(unittest.TestCase):
+class DecoderAlignedTestCase(unittest.TestCase):
     def setUp(self):
-        self.dut = CSRDecoder(addr_width=16, data_width=8, alignment=2)
+        self.dut = Decoder(addr_width=16, data_width=8, alignment=2)
 
     def test_attrs(self):
         self.assertEqual(self.dut.alignment, 2)
 
     def test_add_two(self):
-        self.assertEqual(self.dut.add(CSRElement(8, "rw")),
+        self.assertEqual(self.dut.add(Element(8, "rw")),
                          (0, 4))
-        self.assertEqual(self.dut.add(CSRElement(16, "rw")),
+        self.assertEqual(self.dut.add(Element(16, "rw")),
                          (4, 4))
 
     def test_over_align_to(self):
-        self.assertEqual(self.dut.add(CSRElement(8, "rw")),
+        self.assertEqual(self.dut.add(Element(8, "rw")),
                          (0, 4))
         self.assertEqual(self.dut.align_to(3), 8)
-        self.assertEqual(self.dut.add(CSRElement(8, "rw")),
+        self.assertEqual(self.dut.add(Element(8, "rw")),
                          (8, 4))
 
     def test_under_align_to(self):
-        self.assertEqual(self.dut.add(CSRElement(8, "rw")),
+        self.assertEqual(self.dut.add(Element(8, "rw")),
                          (0, 4))
         self.assertEqual(self.dut.align_to(1), 4)
-        self.assertEqual(self.dut.add(CSRElement(8, "rw")),
+        self.assertEqual(self.dut.add(Element(8, "rw")),
                          (4, 4))
 
     def test_sim(self):
         bus = self.dut.bus
 
-        elem_20_rw = CSRElement(20, "rw")
+        elem_20_rw = Element(20, "rw")
         self.dut.add(elem_20_rw)
 
         def sim_test():

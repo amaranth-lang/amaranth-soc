@@ -3,10 +3,10 @@ from nmigen import *
 from nmigen import tracer
 
 
-__all__ = ["CSRElement", "CSRInterface", "CSRDecoder"]
+__all__ = ["Element", "Interface", "Decoder"]
 
 
-class CSRElement(Record):
+class Element(Record):
     """Peripheral-side CSR interface.
 
     A low-level interface to a single atomically readable and writable register in a peripheral.
@@ -57,7 +57,7 @@ class CSRElement(Record):
         super().__init__(layout, name=name, src_loc_at=1)
 
 
-class CSRInterface(Record):
+class Interface(Record):
     """CPU-side CSR interface.
 
     A low-level interface to a set of atomically readable and writable peripheral CSR registers.
@@ -123,7 +123,7 @@ class CSRInterface(Record):
         ], name=name, src_loc_at=1)
 
 
-class CSRDecoder(Elaboratable):
+class Decoder(Elaboratable):
     """CSR bus decoder.
 
     An address-based multiplexer for CSR registers implementing atomic updates.
@@ -159,20 +159,20 @@ class CSRDecoder(Elaboratable):
     Parameters
     ----------
     addr_width : int
-        Address width. See :class:`CSRInterface`.
+        Address width. See :class:`Interface`.
     data_width : int
-        Data width. See :class:`CSRInterface`.
+        Data width. See :class:`Interface`.
     alignment : int
         Register alignment. The address assigned to each register will be a multiple of
         ``2 ** alignment``.
 
     Attributes
     ----------
-    bus : :class:`CSRInterface`
+    bus : :class:`Interface`
         CSR bus providing access to registers.
     """
     def __init__(self, *, addr_width, data_width, alignment=0):
-        self.bus = CSRInterface(addr_width=addr_width, data_width=data_width)
+        self.bus = Interface(addr_width=addr_width, data_width=data_width)
 
         if not isinstance(alignment, int) or alignment < 0:
             raise ValueError("Alignment must be a non-negative integer, not {!r}"
@@ -187,7 +187,7 @@ class CSRDecoder(Elaboratable):
 
         Arguments
         ---------
-        element : CSRElement
+        element : :class:`Element`
             Interface of the register.
 
         Return value
@@ -196,8 +196,8 @@ class CSRDecoder(Elaboratable):
         the register, and ``size`` is the amount of chunks it takes, which may be greater than
         ``element.size // self.data_width`` due to alignment.
         """
-        if not isinstance(element, CSRElement):
-            raise TypeError("Element must be an instance of CSRElement, not {!r}"
+        if not isinstance(element, Element):
+            raise TypeError("Element must be an instance of csr.Element, not {!r}"
                             .format(element))
 
         addr = self.align_to(self.alignment)
