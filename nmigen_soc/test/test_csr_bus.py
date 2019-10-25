@@ -86,14 +86,6 @@ class DecoderTestCase(unittest.TestCase):
     def setUp(self):
         self.dut = Decoder(addr_width=16, data_width=8)
 
-    def test_alignment_wrong(self):
-        with self.assertRaisesRegex(ValueError,
-                r"Alignment must be a non-negative integer, not -1"):
-            Decoder(addr_width=16, data_width=8, alignment=-1)
-
-    def test_attrs(self):
-        self.assertEqual(self.dut.alignment, 0)
-
     def test_add_4b(self):
         self.assertEqual(self.dut.add(Element(4, "rw")),
                          (0, 1))
@@ -114,7 +106,7 @@ class DecoderTestCase(unittest.TestCase):
         self.assertEqual(self.dut.add(Element(16, "rw")),
                          (0, 2))
         self.assertEqual(self.dut.add(Element(8, "rw")),
-                         (2, 1))
+                         (2, 3))
 
     def test_add_wrong(self):
         with self.assertRaisesRegex(ValueError,
@@ -126,7 +118,7 @@ class DecoderTestCase(unittest.TestCase):
                          (0, 1))
         self.assertEqual(self.dut.align_to(2), 4)
         self.assertEqual(self.dut.add(Element(8, "rw")),
-                         (4, 1))
+                         (4, 5))
 
     def test_sim(self):
         bus = self.dut.bus
@@ -206,28 +198,25 @@ class DecoderAlignedTestCase(unittest.TestCase):
     def setUp(self):
         self.dut = Decoder(addr_width=16, data_width=8, alignment=2)
 
-    def test_attrs(self):
-        self.assertEqual(self.dut.alignment, 2)
-
     def test_add_two(self):
         self.assertEqual(self.dut.add(Element(8, "rw")),
                          (0, 4))
         self.assertEqual(self.dut.add(Element(16, "rw")),
-                         (4, 4))
+                         (4, 8))
 
     def test_over_align_to(self):
         self.assertEqual(self.dut.add(Element(8, "rw")),
                          (0, 4))
         self.assertEqual(self.dut.align_to(3), 8)
         self.assertEqual(self.dut.add(Element(8, "rw")),
-                         (8, 4))
+                         (8, 12))
 
     def test_under_align_to(self):
         self.assertEqual(self.dut.add(Element(8, "rw")),
                          (0, 4))
         self.assertEqual(self.dut.align_to(1), 4)
         self.assertEqual(self.dut.add(Element(8, "rw")),
-                         (4, 4))
+                         (4, 8))
 
     def test_sim(self):
         bus = self.dut.bus
