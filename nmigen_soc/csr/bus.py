@@ -201,7 +201,8 @@ class Multiplexer(Elaboratable):
         CSR bus providing access to registers.
     """
     def __init__(self, *, addr_width, data_width, alignment=0):
-        self.bus  = Interface(addr_width=addr_width, data_width=data_width, alignment=alignment)
+        self.bus  = Interface(addr_width=addr_width, data_width=data_width, alignment=alignment,
+                              name="csr")
         self._map = self.bus.memory_map
 
     def align_to(self, alignment):
@@ -305,7 +306,8 @@ class Decoder(Elaboratable):
         CSR bus providing access to subordinate buses.
     """
     def __init__(self, *, addr_width, data_width, alignment=0):
-        self.bus   = Interface(addr_width=addr_width, data_width=data_width, alignment=alignment)
+        self.bus   = Interface(addr_width=addr_width, data_width=data_width, alignment=alignment,
+                               name="csr")
         self._map  = self.bus.memory_map
         self._subs = dict()
 
