@@ -80,6 +80,8 @@ class Interface(Record):
         Optional. Corresponds to Wishbone signal ``RTY_I`` (initiator) or ``RTY_O`` (target).
     stall : Signal()
         Optional. Corresponds to Wishbone signal ``STALL_I`` (initiator) or ``STALL_O`` (target).
+    lock : Signal()
+        Optional. Corresponds to Wishbone signal ``LOCK_O`` (initiator) or ``LOCK_I`` (target).
     cti : Signal()
         Optional. Corresponds to Wishbone signal ``CTI_O`` (initiator) or ``CTI_I`` (target).
     bte : Signal()
@@ -110,7 +112,7 @@ class Interface(Record):
                                      alignment=alignment)
 
         optional = set(optional)
-        unknown  = optional - {"rty", "err", "stall", "cti", "bte"}
+        unknown  = optional - {"rty", "err", "stall", "lock", "cti", "bte"}
         if unknown:
             raise ValueError("Optional signal(s) {} are not supported"
                              .format(", ".join(map(repr, unknown))))
@@ -130,6 +132,8 @@ class Interface(Record):
             layout += [("rty", 1, Direction.FANIN)]
         if "stall" in optional:
             layout += [("stall", 1, Direction.FANIN)]
+        if "lock" in optional:
+            layout += [("lock",  1, Direction.FANOUT)]
         if "cti" in optional:
             layout += [("cti", CycleType,    Direction.FANOUT)]
         if "bte" in optional:

@@ -44,7 +44,7 @@ class InterfaceTestCase(unittest.TestCase):
 
     def test_optional(self):
         iface = Interface(addr_width=32, data_width=32,
-                          optional={"rty", "err", "stall", "cti", "bte"})
+                          optional={"rty", "err", "stall", "lock", "cti", "bte"})
         self.assertEqual(iface.layout, Layout.cast([
             ("adr",   32, DIR_FANOUT),
             ("dat_w", 32, DIR_FANOUT),
@@ -57,6 +57,7 @@ class InterfaceTestCase(unittest.TestCase):
             ("err",   1,  DIR_FANIN),
             ("rty",   1,  DIR_FANIN),
             ("stall", 1,  DIR_FANIN),
+            ("lock",  1,  DIR_FANOUT),
             ("cti",   CycleType,    DIR_FANOUT),
             ("bte",   BurstTypeExt, DIR_FANOUT),
         ]))
