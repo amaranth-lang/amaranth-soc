@@ -1,6 +1,9 @@
+# nmigen: UnusedElaboratable=no
+
 import unittest
 from nmigen import *
 from nmigen.hdl.rec import *
+from nmigen.back.pysim import *
 
 from ..wishbone.bus import *
 
@@ -42,9 +45,9 @@ class InterfaceTestCase(unittest.TestCase):
             ("ack",   1,  DIR_FANIN),
         ]))
 
-    def test_optional(self):
+    def test_features(self):
         iface = Interface(addr_width=32, data_width=32,
-                          optional={"rty", "err", "stall", "lock", "cti", "bte"})
+                          features={"rty", "err", "stall", "lock", "cti", "bte"})
         self.assertEqual(iface.layout, Layout.cast([
             ("adr",   32, DIR_FANOUT),
             ("dat_w", 32, DIR_FANOUT),
@@ -82,7 +85,214 @@ class InterfaceTestCase(unittest.TestCase):
                 r"Granularity 32 may not be greater than data width 8"):
             Interface(addr_width=0, data_width=8, granularity=32)
 
-    def test_wrong_optional(self):
+    def test_wrong_features(self):
         with self.assertRaisesRegex(ValueError,
                 r"Optional signal\(s\) 'foo' are not supported"):
-            Interface(addr_width=0, data_width=8, optional={"foo"})
+            Interface(addr_width=0, data_width=8, features={"foo"})
+
+
+class DecoderTestCase(unittest.TestCase):
+    def setUp(self):
+        self.dut = Decoder(addr_width=31, data_width=32, granularity=16)
+
+    def test_add_align_to(self):
+        sub_1 = Interface(addr_width=15, data_width=32, granularity=16)
+        sub_2 = Interface(addr_width=15, data_width=32, granularity=16)
+        self.assertEqual(self.dut.add(sub_1), (0x00000000, 0x00010000, 1))
+        self.assertEqual(self.dut.align_to(18), 0x000040000)
+        self.assertEqual(self.dut.add(sub_2), (0x00040000, 0x00050000, 1))
+
+    def test_add_wrong(self):
+        with self.assertRaisesRegex(TypeError,
+                r"Subordinate bus must be an instance of wishbone\.Interface, not 'foo'"):
+            self.dut.add("foo")
+
+    def test_add_wrong_granularity(self):
+        with self.assertRaisesRegex(ValueError,
+                r"Subordinate bus has granularity 32, which is greater than "
+                r"the decoder granularity 16"):
+            self.dut.add(Interface(addr_width=15, data_width=32, granularity=32))
+
+    def test_add_wrong_width_dense(self):
+        with self.assertRaisesRegex(ValueError,
+                r"Subordinate bus has data width 16, which is not the same as decoder "
+                r"data width 32 \(required for dense address translation\)"):
+            self.dut.add(Interface(addr_width=15, data_width=16, granularity=16))
+
+    def test_add_wrong_granularity_sparse(self):
+        with self.assertRaisesRegex(ValueError,
+                r"Subordinate bus has data width 64, which is not the same as subordinate "
+                r"bus granularity 16 \(required for sparse address translation\)"):
+            self.dut.add(Interface(addr_width=15, data_width=64, granularity=16), sparse=True)
+
+    def test_add_wrong_optional_output(self):
+        with self.assertRaisesRegex(ValueError,
+                r"Subordinate bus has optional output 'err', but the decoder does "
+                r"not have a corresponding input"):
+            self.dut.add(Interface(addr_width=15, data_width=32, granularity=16, features={"err"}))
+
+
+class DecoderSimulationTestCase(unittest.TestCase):
+    def test_simple(self):
+        dut = Decoder(addr_width=30, data_width=32, granularity=8,
+                      features={"err", "rty", "stall", "lock", "cti", "bte"})
+        sub_1 = Interface(addr_width=14, data_width=32, granularity=8)
+        dut.add(sub_1, addr=0x10000)
+        sub_2 = Interface(addr_width=14, data_width=32, granularity=8,
+                          features={"err", "rty", "stall", "lock", "cti", "bte"})
+        dut.add(sub_2)
+
+        def sim_test():
+            yield dut.bus.adr.eq(0x10400 >> 2)
+            yield dut.bus.cyc.eq(1)
+            yield dut.bus.stb.eq(1)
+            yield dut.bus.sel.eq(0b11)
+            yield dut.bus.dat_w.eq(0x12345678)
+            yield dut.bus.lock.eq(1)
+            yield dut.bus.cti.eq(CycleType.INCR_BURST)
+            yield dut.bus.bte.eq(BurstTypeExt.WRAP_4)
+            yield sub_1.ack.eq(1)
+            yield sub_1.dat_r.eq(0xabcdef01)
+            yield sub_2.dat_r.eq(0x5678abcd)
+            yield Delay(1e-6)
+            self.assertEqual((yield sub_1.adr), 0x400 >> 2)
+            self.assertEqual((yield sub_1.cyc), 1)
+            self.assertEqual((yield sub_2.cyc), 0)
+            self.assertEqual((yield sub_1.stb), 1)
+            self.assertEqual((yield sub_1.sel), 0b11)
+            self.assertEqual((yield sub_1.dat_w), 0x12345678)
+            self.assertEqual((yield dut.bus.ack), 1)
+            self.assertEqual((yield dut.bus.err), 0)
+            self.assertEqual((yield dut.bus.rty), 0)
+            self.assertEqual((yield dut.bus.dat_r), 0xabcdef01)
+
+            yield dut.bus.adr.eq(0x20400 >> 2)
+            yield sub_1.ack.eq(0)
+            yield sub_2.err.eq(1)
+            yield sub_2.rty.eq(1)
+            yield sub_2.stall.eq(1)
+            yield Delay(1e-6)
+            self.assertEqual((yield sub_2.adr), 0x400 >> 2)
+            self.assertEqual((yield sub_1.cyc), 0)
+            self.assertEqual((yield sub_2.cyc), 1)
+            self.assertEqual((yield sub_1.stb), 1)
+            self.assertEqual((yield sub_1.sel), 0b11)
+            self.assertEqual((yield sub_1.dat_w), 0x12345678)
+            self.assertEqual((yield sub_2.lock), 1)
+            self.assertEqual((yield sub_2.cti), CycleType.INCR_BURST.value)
+            self.assertEqual((yield sub_2.bte), BurstTypeExt.WRAP_4.value)
+            self.assertEqual((yield dut.bus.ack), 0)
+            self.assertEqual((yield dut.bus.err), 1)
+            self.assertEqual((yield dut.bus.rty), 1)
+            self.assertEqual((yield dut.bus.stall), 1)
+            self.assertEqual((yield dut.bus.dat_r), 0x5678abcd)
+
+        with Simulator(dut, vcd_file=open("test.vcd", "w")) as sim:
+            sim.add_process(sim_test())
+            sim.run()
+
+    def test_addr_translate(self):
+        class AddressLoopback(Elaboratable):
+            def __init__(self, **kwargs):
+                self.bus = Interface(**kwargs)
+
+            def elaborate(self, platform):
+                m = Module()
+
+                for index, sel_bit in enumerate(self.bus.sel):
+                    with m.If(sel_bit):
+                        segment = self.bus.dat_r.word_select(index, self.bus.granularity)
+                        m.d.comb += segment.eq(self.bus.adr + index)
+
+                return m
+
+        dut = Decoder(addr_width=20, data_width=32, granularity=16)
+        loop_1 = AddressLoopback(addr_width=7, data_width=32, granularity=16)
+        self.assertEqual(dut.add(loop_1.bus, addr=0x10000),
+                         (0x10000, 0x10100, 1))
+        loop_2 = AddressLoopback(addr_width=6, data_width=32, granularity=8)
+        self.assertEqual(dut.add(loop_2.bus, addr=0x20000),
+                         (0x20000, 0x20080, 2))
+        loop_3 = AddressLoopback(addr_width=8, data_width=16, granularity=16)
+        self.assertEqual(dut.add(loop_3.bus, addr=0x30000, sparse=True),
+                         (0x30000, 0x30100, 1))
+        loop_4 = AddressLoopback(addr_width=8, data_width=8,  granularity=8)
+        self.assertEqual(dut.add(loop_4.bus, addr=0x40000, sparse=True),
+                         (0x40000, 0x40100, 1))
+
+        def sim_test():
+            yield dut.bus.cyc.eq(1)
+
+            yield dut.bus.adr.eq(0x10010 >> 1)
+
+            yield dut.bus.sel.eq(0b11)
+            yield Delay(1e-6)
+            self.assertEqual((yield dut.bus.dat_r), 0x00090008)
+
+            yield dut.bus.sel.eq(0b01)
+            yield Delay(1e-6)
+            self.assertEqual((yield dut.bus.dat_r), 0x00000008)
+
+            yield dut.bus.sel.eq(0b10)
+            yield Delay(1e-6)
+            self.assertEqual((yield dut.bus.dat_r), 0x00090000)
+
+            yield dut.bus.adr.eq(0x20010 >> 1)
+
+            yield dut.bus.sel.eq(0b11)
+            yield Delay(1e-6)
+            self.assertEqual((yield dut.bus.dat_r), 0x13121110)
+
+            yield dut.bus.sel.eq(0b01)
+            yield Delay(1e-6)
+            self.assertEqual((yield dut.bus.dat_r), 0x00001110)
+
+            yield dut.bus.sel.eq(0b10)
+            yield Delay(1e-6)
+            self.assertEqual((yield dut.bus.dat_r), 0x13120000)
+
+            yield dut.bus.adr.eq(0x30010 >> 1)
+
+            yield dut.bus.sel.eq(0b11)
+            yield Delay(1e-6)
+            self.assertEqual((yield dut.bus.dat_r), 0x0008)
+
+            yield dut.bus.sel.eq(0b01)
+            yield Delay(1e-6)
+            self.assertEqual((yield dut.bus.dat_r), 0x0008)
+
+            yield dut.bus.sel.eq(0b10)
+            yield Delay(1e-6)
+            self.assertEqual((yield dut.bus.dat_r), 0x0000)
+
+            yield dut.bus.adr.eq(0x30012 >> 1)
+
+            yield dut.bus.sel.eq(0b11)
+            yield Delay(1e-6)
+            self.assertEqual((yield dut.bus.dat_r), 0x0009)
+
+            yield dut.bus.adr.eq(0x40010 >> 1)
+
+            yield dut.bus.sel.eq(0b11)
+            yield Delay(1e-6)
+            self.assertEqual((yield dut.bus.dat_r), 0x08)
+
+            yield dut.bus.sel.eq(0b01)
+            yield Delay(1e-6)
+            self.assertEqual((yield dut.bus.dat_r), 0x08)
+
+            yield dut.bus.sel.eq(0b10)
+            yield Delay(1e-6)
+            self.assertEqual((yield dut.bus.dat_r), 0x00)
+
+            yield dut.bus.adr.eq(0x40012 >> 1)
+
+            yield dut.bus.sel.eq(0b11)
+            yield Delay(1e-6)
+            self.assertEqual((yield dut.bus.dat_r), 0x09)
+
+        m = Module()
+        m.submodules += dut, loop_1, loop_2, loop_3, loop_4
+        with Simulator(m, vcd_file=open("test.vcd", "w")) as sim:
+            sim.add_process(sim_test())
+            sim.run()

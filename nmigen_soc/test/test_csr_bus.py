@@ -1,3 +1,5 @@
+# nmigen: UnusedElaboratable=no
+
 import unittest
 from nmigen import *
 from nmigen.hdl.rec import Layout
@@ -85,7 +87,6 @@ class InterfaceTestCase(unittest.TestCase):
 class MultiplexerTestCase(unittest.TestCase):
     def setUp(self):
         self.dut = Multiplexer(addr_width=16, data_width=8)
-        Fragment.get(self.dut, platform=None) # silence UnusedElaboratable
 
     def test_add_4b(self):
         self.assertEqual(self.dut.add(Element(4, "rw")),
@@ -201,7 +202,6 @@ class MultiplexerTestCase(unittest.TestCase):
 class MultiplexerAlignedTestCase(unittest.TestCase):
     def setUp(self):
         self.dut = Multiplexer(addr_width=16, data_width=8, alignment=2)
-        Fragment.get(self.dut, platform=None) # silence UnusedElaboratable
 
     def test_add_two(self):
         self.assertEqual(self.dut.add(Element(8, "rw")),
@@ -261,7 +261,6 @@ class MultiplexerAlignedTestCase(unittest.TestCase):
 class DecoderTestCase(unittest.TestCase):
     def setUp(self):
         self.dut = Decoder(addr_width=16, data_width=8)
-        Fragment.get(self.dut, platform=None) # silence UnusedElaboratable
 
     def test_align_to(self):
         self.assertEqual(self.dut.add(Interface(addr_width=10, data_width=8)),
@@ -281,7 +280,7 @@ class DecoderTestCase(unittest.TestCase):
 
         with self.assertRaisesRegex(ValueError,
                 r"Subordinate bus has data width 16, which is not the same as "
-                r"multiplexer data width 8"):
+                r"decoder data width 8"):
             self.dut.add(mux.bus)
 
     def test_sim(self):

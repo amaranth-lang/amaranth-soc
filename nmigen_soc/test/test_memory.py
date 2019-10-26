@@ -216,8 +216,8 @@ class MemoryMapTestCase(unittest.TestCase):
         window_2 = MemoryMap(addr_width=12, data_width=16)
         memory_map.add_window(window_2)
         self.assertEqual(list(memory_map.window_patterns()), [
-            (window_1, "000000----------"),
-            (window_2, "0001------------"),
+            (window_1, ("000000----------", 2)),
+            (window_2, ("0001------------", 1)),
         ])
 
     def test_align_to(self):

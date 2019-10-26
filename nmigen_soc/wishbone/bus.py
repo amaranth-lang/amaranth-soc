@@ -6,7 +6,7 @@ from nmigen.utils import log2_int
 from ..memory import MemoryMap
 
 
-__all__ = ["CycleType", "BurstTypeExt", "Interface"]
+__all__ = ["CycleType", "BurstTypeExt", "Interface", "Decoder"]
 
 
 class CycleType(Enum):
@@ -46,7 +46,7 @@ class Interface(Record):
     granularity : int
         Granularity of select signals ("port granularity" in Wishbone terminology).
         One of 8, 16, 32, 64.
-    optional : iter(str)
+    features : iter(str)
         Selects the optional signals that will be a part of this interface.
     alignment : int
         Resource and window alignment. See :class:`MemoryMap`.
@@ -87,7 +87,7 @@ class Interface(Record):
     bte : Signal()
         Optional. Corresponds to Wishbone signal ``BTE_O`` (initiator) or ``BTE_I`` (target).
     """
-    def __init__(self, *, addr_width, data_width, granularity=None, optional=frozenset(),
+    def __init__(self, *, addr_width, data_width, granularity=None, features=frozenset(),
                  alignment=0, name=None):
         if not isinstance(addr_width, int) or addr_width < 0:
             raise ValueError("Address width must be a non-negative integer, not {!r}"
@@ -111,8 +111,8 @@ class Interface(Record):
                                      data_width=data_width >> granularity_bits,
                                      alignment=alignment)
 
-        optional = set(optional)
-        unknown  = optional - {"rty", "err", "stall", "lock", "cti", "bte"}
+        features = set(features)
+        unknown  = features - {"rty", "err", "stall", "lock", "cti", "bte"}
         if unknown:
             raise ValueError("Optional signal(s) {} are not supported"
                              .format(", ".join(map(repr, unknown))))
@@ -126,16 +126,143 @@ class Interface(Record):
             ("we",    1, Direction.FANOUT),
             ("ack",   1, Direction.FANIN),
         ]
-        if "err" in optional:
+        if "err" in features:
             layout += [("err", 1, Direction.FANIN)]
-        if "rty" in optional:
+        if "rty" in features:
             layout += [("rty", 1, Direction.FANIN)]
-        if "stall" in optional:
+        if "stall" in features:
             layout += [("stall", 1, Direction.FANIN)]
-        if "lock" in optional:
+        if "lock" in features:
             layout += [("lock",  1, Direction.FANOUT)]
-        if "cti" in optional:
+        if "cti" in features:
             layout += [("cti", CycleType,    Direction.FANOUT)]
-        if "bte" in optional:
+        if "bte" in features:
             layout += [("bte", BurstTypeExt, Direction.FANOUT)]
         super().__init__(layout, name=name, src_loc_at=1)
+
+
+class Decoder(Elaboratable):
+    """Wishbone bus decoder.
+
+    An address decoder for subordinate Wishbone buses.
+
+    Parameters
+    ----------
+    addr_width : int
+        Address width. See :class:`Interface`.
+    data_width : int
+        Data width. See :class:`Interface`.
+    granularity : int
+        Granularity. See :class:`Interface`
+    features : iter(str)
+        Optional signal set. See :class:`Interface`.
+    alignment : int
+        Window alignment. See :class:`Interface`.
+
+    Attributes
+    ----------
+    bus : :class:`Interface`
+        CSR bus providing access to subordinate buses.
+    """
+    def __init__(self, *, addr_width, data_width, granularity=None, features=frozenset(),
+                 alignment=0):
+        self.bus   = Interface(addr_width=addr_width, data_width=data_width,
+                               granularity=granularity, features=features,
+                               alignment=alignment)
+        self._map  = self.bus.memory_map
+        self._subs = dict()
+
+    def align_to(self, alignment):
+        """Align the implicit address of the next window.
+
+        See :meth:`MemoryMap.align_to` for details.
+        """
+        return self._map.align_to(alignment)
+
+    def add(self, sub_bus, *, addr=None, sparse=False):
+        """Add a window to a subordinate bus.
+
+        The decoder can perform either sparse or dense address translation. If dense address
+        translation is used (the default), the subordinate bus must have the same data width as
+        the decoder; the window will be contiguous. If sparse address translation is used,
+        the subordinate bus may have data width less than the data width of the decoder;
+        the window may be discontiguous. In either case, the granularity of the subordinate bus
+        must be equal to or less than the granularity of the decoder.
+
+        See :meth:`MemoryMap.add_resource` for details.
+        """
+        if not isinstance(sub_bus, Interface):
+            raise TypeError("Subordinate bus must be an instance of wishbone.Interface, not {!r}"
+                            .format(sub_bus))
+        if sub_bus.granularity > self.bus.granularity:
+            raise ValueError("Subordinate bus has granularity {}, which is greater than the "
+                             "decoder granularity {}"
+                             .format(sub_bus.granularity, self.bus.granularity))
+        if not sparse:
+            if sub_bus.data_width != self.bus.data_width:
+                raise ValueError("Subordinate bus has data width {}, which is not the same as "
+                                 "decoder data width {} (required for dense address translation)"
+                                 .format(sub_bus.data_width, self.bus.data_width))
+        else:
+            if sub_bus.granularity != sub_bus.data_width:
+                raise ValueError("Subordinate bus has data width {}, which is not the same as "
+                                 "subordinate bus granularity {} (required for sparse address "
+                                 "translation)"
+                                 .format(sub_bus.data_width, sub_bus.granularity))
+        for opt_output in {"err", "rty", "stall"}:
+            if hasattr(sub_bus, opt_output) and not hasattr(self.bus, opt_output):
+                raise ValueError("Subordinate bus has optional output {!r}, but the decoder "
+                                 "does not have a corresponding input"
+                                 .format(opt_output))
+
+        self._subs[sub_bus.memory_map] = sub_bus
+        return self._map.add_window(sub_bus.memory_map, addr=addr, sparse=sparse)
+
+    def elaborate(self, platform):
+        m = Module()
+
+        ack_fanin   = 0
+        err_fanin   = 0
+        rty_fanin   = 0
+        stall_fanin = 0
+
+        with m.Switch(self.bus.adr):
+            for sub_map, (sub_pat, sub_ratio) in self._map.window_patterns():
+                sub_bus = self._subs[sub_map]
+
+                m.d.comb += [
+                    sub_bus.adr.eq(self.bus.adr << log2_int(sub_ratio)),
+                    sub_bus.dat_w.eq(self.bus.dat_w),
+                    sub_bus.sel.eq(Cat(Repl(sel, sub_ratio) for sel in self.bus.sel)),
+                    sub_bus.we.eq(self.bus.we),
+                    sub_bus.stb.eq(self.bus.stb),
+                ]
+                if hasattr(sub_bus, "lock"):
+                    m.d.comb += sub_bus.lock.eq(getattr(self.bus, "lock", 0))
+                if hasattr(sub_bus, "cti"):
+                    m.d.comb += sub_bus.cti.eq(getattr(self.bus, "cti", CycleType.CLASSIC))
+                if hasattr(sub_bus, "bte"):
+                    m.d.comb += sub_bus.bte.eq(getattr(self.bus, "bte", BurstTypeExt.LINEAR))
+
+                with m.Case(sub_pat[:-log2_int(self.bus.data_width // self.bus.granularity)]):
+                    m.d.comb += [
+                        sub_bus.cyc.eq(self.bus.cyc),
+                        self.bus.dat_r.eq(sub_bus.dat_r),
+                    ]
+                    ack_fanin |= sub_bus.ack
+                    if hasattr(sub_bus, "err"):
+                        err_fanin |= sub_bus.err
+                    if hasattr(sub_bus, "rty"):
+                        rty_fanin |= sub_bus.rty
+                    if hasattr(sub_bus, "stall"):
+                        stall_fanin |= sub_bus.stall
+
+        m.d.comb += self.bus.ack.eq(ack_fanin)
+        if hasattr(self.bus, "err"):
+            m.d.comb += self.bus.err.eq(err_fanin)
+        if hasattr(self.bus, "rty"):
+            m.d.comb += self.bus.rty.eq(rty_fanin)
+        if hasattr(self.bus, "stall"):
+            m.d.comb += self.bus.stall.eq(stall_fanin)
+
+        return m

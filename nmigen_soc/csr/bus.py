@@ -328,7 +328,7 @@ class Decoder(Elaboratable):
                             .format(sub_bus))
         if sub_bus.data_width != self.bus.data_width:
             raise ValueError("Subordinate bus has data width {}, which is not the same as "
-                             "multiplexer data width {}"
+                             "decoder data width {}"
                              .format(sub_bus.data_width, self.bus.data_width))
         self._subs[sub_bus.memory_map] = sub_bus
         return self._map.add_window(sub_bus.memory_map, addr=addr)
@@ -340,7 +340,9 @@ class Decoder(Elaboratable):
         r_data_fanin = 0
 
         with m.Switch(self.bus.addr):
-            for sub_map, sub_pat in self._map.window_patterns():
+            for sub_map, (sub_pat, sub_ratio) in self._map.window_patterns():
+                assert sub_ratio == 1
+
                 sub_bus = self._subs[sub_map]
                 m.d.comb += sub_bus.addr.eq(self.bus.addr[:sub_bus.addr_width])
 

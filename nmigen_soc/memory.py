@@ -328,15 +328,18 @@ class MemoryMap:
 
         Yield values
         ------------
-        A tuple ``window, pattern`` describing the address range assigned to the window.
+        A tuple ``window, (pattern, ratio)`` describing the address range assigned to the window.
         ``pattern`` is a ``self.addr_width`` wide pattern that may be used in ``Case`` or ``match``
-        to determine if an address signal is within the address range of ``window``.
+        to determine if an address signal is within the address range of ``window``. When bridging
+        buses of unequal data width, ``ratio`` is the amount of contiguous addresses on
+        the narrower bus that are accessed for each transaction on the wider bus. Otherwise,
+        it is always 1.
         """
         for window, window_range in self._windows.items():
             pattern = "{:0{}b}{}".format(window_range.start >> window.addr_width,
                                          self.addr_width - window.addr_width,
                                          "-" * window.addr_width)
-            yield window, pattern
+            yield window, (pattern, window_range.step)
 
     @staticmethod
     def _translate(start, end, width, window, window_range):
