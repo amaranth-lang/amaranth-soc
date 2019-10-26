@@ -209,6 +209,17 @@ class MemoryMapTestCase(unittest.TestCase):
             (window_2, (0x1000, 0x2000, 1)),
         ])
 
+    def test_iter_window_patterns(self):
+        memory_map = MemoryMap(addr_width=16, data_width=16)
+        window_1 = MemoryMap(addr_width=10, data_width=8)
+        memory_map.add_window(window_1, sparse=False)
+        window_2 = MemoryMap(addr_width=12, data_width=16)
+        memory_map.add_window(window_2)
+        self.assertEqual(list(memory_map.window_patterns()), [
+            (window_1, "000000----------"),
+            (window_2, "0001------------"),
+        ])
+
     def test_align_to(self):
         memory_map = MemoryMap(addr_width=16, data_width=8)
         self.assertEqual(memory_map.add_resource("a", size=1), (0, 1))

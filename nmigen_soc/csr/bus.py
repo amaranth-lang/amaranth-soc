@@ -330,14 +330,8 @@ class Decoder(Elaboratable):
             raise ValueError("Subordinate bus has data width {}, which is not the same as "
                              "multiplexer data width {}"
                              .format(sub_bus.data_width, self.bus.data_width))
-
-        start, end, ratio = window_range = self._map.add_window(sub_bus.memory_map, addr=addr)
-        assert ratio == 1
-        pattern = "{:0{}b}{}".format(start >> sub_bus.addr_width,
-                                     self.bus.addr_width - sub_bus.addr_width,
-                                     "-" * sub_bus.addr_width)
-        self._subs[pattern] = sub_bus
-        return window_range
+        self._subs[sub_bus.memory_map] = sub_bus
+        return self._map.add_window(sub_bus.memory_map, addr=addr)
 
     def elaborate(self, platform):
         m = Module()
@@ -346,7 +340,8 @@ class Decoder(Elaboratable):
         r_data_fanin = 0
 
         with m.Switch(self.bus.addr):
-            for sub_pat, sub_bus in self._subs.items():
+            for sub_map, sub_pat in self._map.window_patterns():
+                sub_bus = self._subs[sub_map]
                 m.d.comb += sub_bus.addr.eq(self.bus.addr[:sub_bus.addr_width])
 
                 # The CSR bus interface is defined to output zero when idle, allowing us to avoid

@@ -321,6 +321,23 @@ class MemoryMap:
         for window, window_range in self._windows.items():
             yield window, (window_range.start, window_range.stop, window_range.step)
 
+    def window_patterns(self):
+        """Iterate local windows and patterns that match their address ranges.
+
+        Non-recursively iterate windows in ascending order of their address.
+
+        Yield values
+        ------------
+        A tuple ``window, pattern`` describing the address range assigned to the window.
+        ``pattern`` is a ``self.addr_width`` wide pattern that may be used in ``Case`` or ``match``
+        to determine if an address signal is within the address range of ``window``.
+        """
+        for window, window_range in self._windows.items():
+            pattern = "{:0{}b}{}".format(window_range.start >> window.addr_width,
+                                         self.addr_width - window.addr_width,
+                                         "-" * window.addr_width)
+            yield window, pattern
+
     @staticmethod
     def _translate(start, end, width, window, window_range):
         assert (end - start) % window_range.step == 0
