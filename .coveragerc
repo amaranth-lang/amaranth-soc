@@ -1,0 +1,13 @@
+[run]
+branch = True
+include =
+  nmigen_soc/*
+omit =
+  nmigen_soc/test/*
+  */__init__.py
+
+[report]
+exclude_lines =
+  :nocov:
+partial_branches =
+  :nobr:
