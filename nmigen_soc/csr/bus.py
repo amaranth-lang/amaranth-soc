@@ -235,8 +235,12 @@ class Multiplexer(Elaboratable):
 
         for elem, (elem_start, elem_end) in self._map.resources():
             shadow = Signal(elem.width, name="{}__shadow".format(elem.name))
+            if elem.access.readable():
+                shadow_en = Signal(elem_end - elem_start, name="{}__shadow_en".format(elem.name))
+                m.d.sync += shadow_en.eq(0)
             if elem.access.writable():
                 m.d.comb += elem.w_data.eq(shadow)
+                m.d.sync += elem.w_stb.eq(0)
 
             # Enumerate every address used by the register explicitly, rather than using
             # arithmetic comparisons, since some toolchains (e.g. Yosys) are too eager to infer
@@ -244,20 +248,17 @@ class Multiplexer(Elaboratable):
             # to be powers of 2.)
             with m.Switch(self.bus.addr):
                 for chunk_offset, chunk_addr in enumerate(range(elem_start, elem_end)):
-                    with m.Case(chunk_addr):
-                        shadow_slice = shadow[chunk_offset * self.bus.data_width:
-                                              (chunk_offset + 1) * self.bus.data_width]
+                    shadow_slice = shadow.word_select(chunk_offset, self.bus.data_width)
 
+                    with m.Case(chunk_addr):
                         if elem.access.readable():
-                            chunk_r_stb = Signal(self.bus.data_width,
-                                name="{}__r_stb_{}".format(elem.name, chunk_offset))
-                            r_data_fanin |= Mux(chunk_r_stb, shadow_slice, 0)
+                            r_data_fanin |= Mux(shadow_en[chunk_offset], shadow_slice, 0)
                             if chunk_addr == elem_start:
                                 m.d.comb += elem.r_stb.eq(self.bus.r_stb)
                                 with m.If(self.bus.r_stb):
                                     m.d.sync += shadow.eq(elem.r_data)
                             # Delay by 1 cycle, allowing reads to be pipelined.
-                            m.d.sync += chunk_r_stb.eq(self.bus.r_stb)
+                            m.d.sync += shadow_en.eq(self.bus.r_stb << chunk_offset)
 
                         if elem.access.writable():
                             if chunk_addr == elem_end - 1:
@@ -266,9 +267,6 @@ class Multiplexer(Elaboratable):
                                 m.d.sync += elem.w_stb.eq(self.bus.w_stb)
                             with m.If(self.bus.w_stb):
                                 m.d.sync += shadow_slice.eq(self.bus.w_data)
-
-                with m.Default():
-                    m.d.sync += shadow.eq(0)
 
         m.d.comb += self.bus.r_data.eq(r_data_fanin)
 

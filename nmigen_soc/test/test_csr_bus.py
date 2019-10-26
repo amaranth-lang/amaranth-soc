@@ -167,10 +167,13 @@ class MultiplexerTestCase(unittest.TestCase):
             yield bus.w_stb.eq(1)
             yield
             yield bus.w_stb.eq(0)
+            yield bus.addr.eq(2) # change address
             yield
             self.assertEqual((yield elem_8_w.w_stb), 1)
             self.assertEqual((yield elem_8_w.w_data), 0x3d)
             self.assertEqual((yield elem_16_rw.w_stb), 0)
+            yield
+            self.assertEqual((yield elem_8_w.w_stb), 0)
 
             yield bus.addr.eq(2)
             yield bus.w_data.eq(0x55)
