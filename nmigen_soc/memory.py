@@ -151,8 +151,9 @@ class MemoryMap:
                     overlap_descrs.append("resource {!r} at {:#x}..{:#x}"
                         .format(overlap, resource_range.start, resource_range.stop))
                 if overlap in self._windows:
+                    window_range = self._windows[overlap]
                     overlap_descrs.append("window {!r} at {:#x}..{:#x}"
-                        .format(overlap, resource_range.start, resource_range.stop))
+                        .format(overlap, window_range.start, window_range.stop))
             raise ValueError("Address range {:#x}..{:#x} overlaps with {}"
                              .format(addr, addr + size, ", ".join(overlap_descrs)))
 
@@ -351,7 +352,7 @@ class MemoryMap:
                 for sub_resource, sub_descr in assignment.all_resources():
                     yield sub_resource, self._translate(*sub_descr, assignment, addr_range)
             else:
-                assert False
+                assert False # :nocov:
 
     def find_resource(self, resource):
         """Find address range corresponding to a resource.
@@ -409,4 +410,4 @@ class MemoryMap:
             addr_range = self._windows[assignment]
             return assignment.decode_address((address - addr_range.start) // addr_range.step)
         else:
-            assert False
+            assert False # :nocov:

@@ -181,6 +181,23 @@ class MemoryMapTestCase(unittest.TestCase):
                 r"16 is not an integer multiple of window data width 7"):
             memory_map.add_window(MemoryMap(addr_width=10, data_width=7), sparse=False)
 
+    def test_add_window_wrong_overlap(self):
+        memory_map = MemoryMap(addr_width=16, data_width=8)
+        memory_map.add_window(MemoryMap(addr_width=10, data_width=8))
+        with self.assertRaisesRegex(ValueError,
+                r"Address range 0x200\.\.0x600 overlaps with window "
+                r"<nmigen_soc\.memory\.MemoryMap object at .+?> at 0x0\.\.0x400"):
+            memory_map.add_window(MemoryMap(addr_width=10, data_width=8), addr=0x200)
+
+    def test_add_window_wrong_twice(self):
+        memory_map = MemoryMap(addr_width=16, data_width=8)
+        window = MemoryMap(addr_width=10, data_width=8)
+        memory_map.add_window(window)
+        with self.assertRaisesRegex(ValueError,
+                r"Window <nmigen_soc\.memory\.MemoryMap object at .+?> is already added "
+                r"at address range 0x0\.\.0x400"):
+            memory_map.add_window(window)
+
     def test_iter_windows(self):
         memory_map = MemoryMap(addr_width=16, data_width=16)
         window_1 = MemoryMap(addr_width=10, data_width=8)
@@ -197,6 +214,12 @@ class MemoryMapTestCase(unittest.TestCase):
         self.assertEqual(memory_map.add_resource("a", size=1), (0, 1))
         self.assertEqual(memory_map.align_to(10), 0x400)
         self.assertEqual(memory_map.add_resource("b", size=16), (0x400, 0x410))
+
+    def test_align_to_wrong(self):
+        memory_map = MemoryMap(addr_width=16, data_width=8)
+        with self.assertRaisesRegex(ValueError,
+                r"Alignment must be a non-negative integer, not -1"):
+            memory_map.align_to(-1)
 
 
 class MemoryMapDiscoveryTestCase(unittest.TestCase):

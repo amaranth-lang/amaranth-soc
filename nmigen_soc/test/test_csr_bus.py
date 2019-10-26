@@ -110,9 +110,9 @@ class MultiplexerTestCase(unittest.TestCase):
                          (2, 3))
 
     def test_add_wrong(self):
-        with self.assertRaisesRegex(ValueError,
-                r"Width must be a non-negative integer, not -1"):
-            Element(-1, "rw")
+        with self.assertRaisesRegex(TypeError,
+                r"Element must be an instance of csr\.Element, not 'foo'"):
+            self.dut.add("foo")
 
     def test_align_to(self):
         self.assertEqual(self.dut.add(Element(8, "rw")),
@@ -262,6 +262,13 @@ class DecoderTestCase(unittest.TestCase):
     def setUp(self):
         self.dut = Decoder(addr_width=16, data_width=8)
         Fragment.get(self.dut, platform=None) # silence UnusedElaboratable
+
+    def test_align_to(self):
+        self.assertEqual(self.dut.add(Interface(addr_width=10, data_width=8)),
+                         (0, 0x400, 1))
+        self.assertEqual(self.dut.align_to(12), 0x1000)
+        self.assertEqual(self.dut.add(Interface(addr_width=10, data_width=8)),
+                         (0x1000, 0x1400, 1))
 
     def test_add_wrong_sub_bus(self):
         with self.assertRaisesRegex(TypeError,
