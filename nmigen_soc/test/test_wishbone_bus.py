@@ -350,3 +350,268 @@ class DecoderSimulationTestCase(unittest.TestCase):
         with Simulator(m, vcd_file=open("test.vcd", "w")) as sim:
             sim.add_process(sim_test())
             sim.run()
+
+
+class ArbiterTestCase(unittest.TestCase):
+    def setUp(self):
+        self.dut = Arbiter(addr_width=31, data_width=32, granularity=16,
+                           features={"err"})
+
+    def test_add_wrong(self):
+        with self.assertRaisesRegex(TypeError,
+                r"Initiator bus must be an instance of wishbone\.Interface, not 'foo'"):
+            self.dut.add("foo")
+
+    def test_add_wrong_addr_width(self):
+        with self.assertRaisesRegex(ValueError,
+                r"Initiator bus has address width 15, which is not the same as arbiter "
+                r"address width 31"):
+            self.dut.add(Interface(addr_width=15, data_width=32, granularity=16))
+
+    def test_add_wrong_granularity(self):
+        with self.assertRaisesRegex(ValueError,
+                r"Initiator bus has granularity 8, which is lesser than "
+                r"the arbiter granularity 16"):
+            self.dut.add(Interface(addr_width=31, data_width=32, granularity=8))
+
+    def test_add_wrong_data_width(self):
+        with self.assertRaisesRegex(ValueError,
+                r"Initiator bus has data width 16, which is not the same as arbiter "
+                r"data width 32"):
+            self.dut.add(Interface(addr_width=31, data_width=16, granularity=16))
+
+    def test_add_wrong_optional_output(self):
+        with self.assertRaisesRegex(ValueError,
+                r"Arbiter has optional output 'err', but the initiator bus does "
+                r"not have a corresponding input"):
+            self.dut.add(Interface(addr_width=31, data_width=32, granularity=16))
+
+
+class ArbiterSimulationTestCase(unittest.TestCase):
+    def test_simple(self):
+        dut = Arbiter(addr_width=30, data_width=32, granularity=8,
+                      features={"err", "rty", "stall", "lock", "cti", "bte"})
+        intr_1 = Interface(addr_width=30, data_width=32, granularity=8,
+                           features={"err", "rty"})
+        dut.add(intr_1)
+        intr_2 = Interface(addr_width=30, data_width=32, granularity=16,
+                      features={"err", "rty", "stall", "lock", "cti", "bte"})
+        dut.add(intr_2)
+
+        def sim_test():
+            yield intr_1.adr.eq(0x7ffffffc >> 2)
+            yield intr_1.cyc.eq(1)
+            yield intr_1.stb.eq(1)
+            yield intr_1.sel.eq(0b1111)
+            yield intr_1.we.eq(1)
+            yield intr_1.dat_w.eq(0x12345678)
+            yield dut.bus.dat_r.eq(0xabcdef01)
+            yield dut.bus.ack.eq(1)
+            yield dut.bus.err.eq(1)
+            yield dut.bus.rty.eq(1)
+            yield Delay(1e-7)
+            self.assertEqual((yield dut.bus.adr), 0x7ffffffc >> 2)
+            self.assertEqual((yield dut.bus.cyc), 1)
+            self.assertEqual((yield dut.bus.stb), 1)
+            self.assertEqual((yield dut.bus.sel), 0b1111)
+            self.assertEqual((yield dut.bus.we), 1)
+            self.assertEqual((yield dut.bus.dat_w), 0x12345678)
+            self.assertEqual((yield dut.bus.lock), 1)
+            self.assertEqual((yield dut.bus.cti), CycleType.CLASSIC.value)
+            self.assertEqual((yield dut.bus.bte), BurstTypeExt.LINEAR.value)
+            self.assertEqual((yield intr_1.dat_r), 0xabcdef01)
+            self.assertEqual((yield intr_1.ack), 1)
+            self.assertEqual((yield intr_1.err), 1)
+            self.assertEqual((yield intr_1.rty), 1)
+
+            yield intr_1.cyc.eq(0)
+            yield intr_2.adr.eq(0xe0000000 >> 2)
+            yield intr_2.cyc.eq(1)
+            yield intr_2.stb.eq(1)
+            yield intr_2.sel.eq(0b10)
+            yield intr_2.we.eq(1)
+            yield intr_2.dat_w.eq(0x43218765)
+            yield intr_2.lock.eq(0)
+            yield intr_2.cti.eq(CycleType.INCR_BURST)
+            yield intr_2.bte.eq(BurstTypeExt.WRAP_4)
+            yield Tick()
+
+            yield dut.bus.stall.eq(0)
+            yield Delay(1e-7)
+            self.assertEqual((yield dut.bus.adr), 0xe0000000 >> 2)
+            self.assertEqual((yield dut.bus.cyc), 1)
+            self.assertEqual((yield dut.bus.stb), 1)
+            self.assertEqual((yield dut.bus.sel), 0b1100)
+            self.assertEqual((yield dut.bus.we), 1)
+            self.assertEqual((yield dut.bus.dat_w), 0x43218765)
+            self.assertEqual((yield dut.bus.lock), 0)
+            self.assertEqual((yield dut.bus.cti), CycleType.INCR_BURST.value)
+            self.assertEqual((yield dut.bus.bte), BurstTypeExt.WRAP_4.value)
+            self.assertEqual((yield intr_2.dat_r), 0xabcdef01)
+            self.assertEqual((yield intr_2.ack), 1)
+            self.assertEqual((yield intr_2.err), 1)
+            self.assertEqual((yield intr_2.rty), 1)
+            self.assertEqual((yield intr_2.stall), 0)
+
+        with Simulator(dut, vcd_file=open("test.vcd", "w")) as sim:
+            sim.add_clock(1e-6)
+            sim.add_sync_process(sim_test())
+            sim.run()
+
+    def test_lock(self):
+        dut = Arbiter(addr_width=30, data_width=32, features={"lock"})
+        intr_1 = Interface(addr_width=30, data_width=32, features={"lock"})
+        dut.add(intr_1)
+        intr_2 = Interface(addr_width=30, data_width=32, features={"lock"})
+        dut.add(intr_2)
+
+        def sim_test():
+            yield intr_1.cyc.eq(1)
+            yield intr_1.lock.eq(1)
+            yield intr_2.cyc.eq(1)
+            yield dut.bus.ack.eq(1)
+            yield Delay(1e-7)
+            self.assertEqual((yield intr_1.ack), 1)
+            self.assertEqual((yield intr_2.ack), 0)
+
+            yield Tick()
+            yield Delay(1e-7)
+            self.assertEqual((yield intr_1.ack), 1)
+            self.assertEqual((yield intr_2.ack), 0)
+
+            yield intr_1.lock.eq(0)
+            yield Tick()
+            yield Delay(1e-7)
+            self.assertEqual((yield intr_1.ack), 0)
+            self.assertEqual((yield intr_2.ack), 1)
+
+            yield intr_2.cyc.eq(0)
+            yield Tick()
+            yield Delay(1e-7)
+            self.assertEqual((yield intr_1.ack), 1)
+            self.assertEqual((yield intr_2.ack), 0)
+
+            yield intr_1.stb.eq(1)
+            yield Tick()
+            yield Delay(1e-7)
+            self.assertEqual((yield intr_1.ack), 1)
+            self.assertEqual((yield intr_2.ack), 0)
+
+            yield intr_1.stb.eq(0)
+            yield intr_2.cyc.eq(1)
+            yield Tick()
+            yield Delay(1e-7)
+            self.assertEqual((yield intr_1.ack), 0)
+            self.assertEqual((yield intr_2.ack), 1)
+
+        with Simulator(dut, vcd_file=open("test.vcd", "w")) as sim:
+            sim.add_clock(1e-6)
+            sim.add_sync_process(sim_test())
+            sim.run()
+
+    def test_stall(self):
+        dut = Arbiter(addr_width=30, data_width=32, features={"stall"})
+        intr_1 = Interface(addr_width=30, data_width=32, features={"stall"})
+        dut.add(intr_1)
+        intr_2 = Interface(addr_width=30, data_width=32, features={"stall"})
+        dut.add(intr_2)
+
+        def sim_test():
+            yield intr_1.cyc.eq(1)
+            yield intr_2.cyc.eq(1)
+            yield dut.bus.stall.eq(0)
+            yield Delay(1e-6)
+            self.assertEqual((yield intr_1.stall), 0)
+            self.assertEqual((yield intr_2.stall), 1)
+
+            yield dut.bus.stall.eq(1)
+            yield Delay(1e-6)
+            self.assertEqual((yield intr_1.stall), 1)
+            self.assertEqual((yield intr_2.stall), 1)
+
+        with Simulator(dut, vcd_file=open("test.vcd", "w")) as sim:
+            sim.add_process(sim_test())
+            sim.run()
+
+    def test_stall_compat(self):
+        dut = Arbiter(addr_width=30, data_width=32)
+        intr_1 = Interface(addr_width=30, data_width=32, features={"stall"})
+        dut.add(intr_1)
+        intr_2 = Interface(addr_width=30, data_width=32, features={"stall"})
+        dut.add(intr_2)
+
+        def sim_test():
+            yield intr_1.cyc.eq(1)
+            yield intr_2.cyc.eq(1)
+            yield Delay(1e-6)
+            self.assertEqual((yield intr_1.stall), 1)
+            self.assertEqual((yield intr_2.stall), 1)
+
+            yield dut.bus.ack.eq(1)
+            yield Delay(1e-6)
+            self.assertEqual((yield intr_1.stall), 0)
+            self.assertEqual((yield intr_2.stall), 1)
+
+        with Simulator(dut, vcd_file=open("test.vcd", "w")) as sim:
+            sim.add_process(sim_test())
+            sim.run()
+
+    def test_roundrobin(self):
+        dut = Arbiter(addr_width=30, data_width=32)
+        intr_1 = Interface(addr_width=30, data_width=32)
+        dut.add(intr_1)
+        intr_2 = Interface(addr_width=30, data_width=32)
+        dut.add(intr_2)
+        intr_3 = Interface(addr_width=30, data_width=32)
+        dut.add(intr_3)
+
+        def sim_test():
+            yield intr_1.cyc.eq(1)
+            yield intr_2.cyc.eq(0)
+            yield intr_3.cyc.eq(1)
+            yield dut.bus.ack.eq(1)
+            yield Delay(1e-7)
+            self.assertEqual((yield intr_1.ack), 1)
+            self.assertEqual((yield intr_2.ack), 0)
+            self.assertEqual((yield intr_3.ack), 0)
+
+            yield intr_1.cyc.eq(0)
+            yield intr_2.cyc.eq(0)
+            yield intr_3.cyc.eq(1)
+            yield Tick()
+            yield Delay(1e-7)
+            self.assertEqual((yield intr_1.ack), 0)
+            self.assertEqual((yield intr_2.ack), 0)
+            self.assertEqual((yield intr_3.ack), 1)
+
+            yield intr_1.cyc.eq(1)
+            yield intr_2.cyc.eq(1)
+            yield intr_3.cyc.eq(0)
+            yield Tick()
+            yield Delay(1e-7)
+            self.assertEqual((yield intr_1.ack), 1)
+            self.assertEqual((yield intr_2.ack), 0)
+            self.assertEqual((yield intr_3.ack), 0)
+
+            yield intr_1.cyc.eq(0)
+            yield intr_2.cyc.eq(1)
+            yield intr_3.cyc.eq(1)
+            yield Tick()
+            yield Delay(1e-7)
+            self.assertEqual((yield intr_1.ack), 0)
+            self.assertEqual((yield intr_2.ack), 1)
+            self.assertEqual((yield intr_3.ack), 0)
+
+            yield intr_1.cyc.eq(1)
+            yield intr_2.cyc.eq(0)
+            yield intr_3.cyc.eq(1)
+            yield Tick()
+            yield Delay(1e-7)
+            self.assertEqual((yield intr_1.ack), 0)
+            self.assertEqual((yield intr_2.ack), 0)
+            self.assertEqual((yield intr_3.ack), 1)
+
+        with Simulator(dut, vcd_file=open("test.vcd", "w")) as sim:
+            sim.add_clock(1e-6)
+            sim.add_sync_process(sim_test())
+            sim.run()

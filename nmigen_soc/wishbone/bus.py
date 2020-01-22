@@ -6,7 +6,7 @@ from nmigen.utils import log2_int
 from ..memory import MemoryMap
 
 
-__all__ = ["CycleType", "BurstTypeExt", "Interface", "Decoder"]
+__all__ = ["CycleType", "BurstTypeExt", "Interface", "Decoder", "Arbiter"]
 
 
 class CycleType(Enum):
@@ -309,5 +309,122 @@ class Decoder(Elaboratable):
             m.d.comb += self.bus.rty.eq(rty_fanin)
         if hasattr(self.bus, "stall"):
             m.d.comb += self.bus.stall.eq(stall_fanin)
+
+        return m
+
+
+class Arbiter(Elaboratable):
+    """Wishbone bus arbiter.
+
+    A round-robin arbiter for initiators accessing a shared Wishbone bus.
+
+    Parameters
+    ----------
+    addr_width : int
+        Address width. See :class:`Interface`.
+    data_width : int
+        Data width. See :class:`Interface`.
+    granularity : int
+        Granularity. See :class:`Interface`
+    features : iter(str)
+        Optional signal set. See :class:`Interface`.
+
+    Attributes
+    ----------
+    bus : :class:`Interface`
+        Shared Wishbone bus.
+    """
+    def __init__(self, *, addr_width, data_width, granularity=None, features=frozenset()):
+        self.bus    = Interface(addr_width=addr_width, data_width=data_width,
+                                granularity=granularity, features=features)
+        self._intrs = []
+
+    def add(self, intr_bus):
+        """Add an initiator bus to the arbiter.
+
+        The initiator bus must have the same address width and data width as the arbiter. The
+        granularity of the initiator bus must be greater than or equal to the granularity of
+        the arbiter.
+        """
+        if not isinstance(intr_bus, Interface):
+            raise TypeError("Initiator bus must be an instance of wishbone.Interface, not {!r}"
+                            .format(intr_bus))
+        if intr_bus.addr_width != self.bus.addr_width:
+            raise ValueError("Initiator bus has address width {}, which is not the same as "
+                             "arbiter address width {}"
+                             .format(intr_bus.addr_width, self.bus.addr_width))
+        if intr_bus.granularity < self.bus.granularity:
+            raise ValueError("Initiator bus has granularity {}, which is lesser than the "
+                             "arbiter granularity {}"
+                             .format(intr_bus.granularity, self.bus.granularity))
+        if intr_bus.data_width != self.bus.data_width:
+            raise ValueError("Initiator bus has data width {}, which is not the same as "
+                             "arbiter data width {}"
+                             .format(intr_bus.data_width, self.bus.data_width))
+        for opt_output in {"err", "rty"}:
+            if hasattr(self.bus, opt_output) and not hasattr(intr_bus, opt_output):
+                raise ValueError("Arbiter has optional output {!r}, but the initiator bus "
+                                 "does not have a corresponding input"
+                                 .format(opt_output))
+
+        self._intrs.append(intr_bus)
+
+    def elaborate(self, platform):
+        m = Module()
+
+        requests = Signal(len(self._intrs))
+        grant    = Signal(range(len(self._intrs)))
+        m.d.comb += requests.eq(Cat(intr_bus.cyc for intr_bus in self._intrs))
+
+        bus_busy = self.bus.cyc
+        if hasattr(self.bus, "lock"):
+            # If LOCK is not asserted, we also wait for STB to be deasserted before granting bus
+            # ownership to the next initiator. If we didn't, the next bus owner could receive
+            # an ACK (or ERR, RTY) from the previous transaction when targeting the same
+            # peripheral.
+            bus_busy &= self.bus.lock | self.bus.stb
+
+        with m.If(~bus_busy):
+            with m.Switch(grant):
+                for i in range(len(requests)):
+                    with m.Case(i):
+                        for pred in reversed(range(i)):
+                            with m.If(requests[pred]):
+                                m.d.sync += grant.eq(pred)
+                        for succ in reversed(range(i + 1, len(requests))):
+                            with m.If(requests[succ]):
+                                m.d.sync += grant.eq(succ)
+
+        with m.Switch(grant):
+            for i, intr_bus in enumerate(self._intrs):
+                m.d.comb += intr_bus.dat_r.eq(self.bus.dat_r)
+                if hasattr(intr_bus, "stall"):
+                    intr_bus_stall = Signal(reset=1)
+                    m.d.comb += intr_bus.stall.eq(intr_bus_stall)
+
+                with m.Case(i):
+                    ratio = intr_bus.granularity // self.bus.granularity
+                    m.d.comb += [
+                        self.bus.adr.eq(intr_bus.adr),
+                        self.bus.dat_w.eq(intr_bus.dat_w),
+                        self.bus.sel.eq(Cat(Repl(sel, ratio) for sel in intr_bus.sel)),
+                        self.bus.we.eq(intr_bus.we),
+                        self.bus.stb.eq(intr_bus.stb),
+                    ]
+                    m.d.comb += self.bus.cyc.eq(intr_bus.cyc)
+                    if hasattr(self.bus, "lock"):
+                        m.d.comb += self.bus.lock.eq(getattr(intr_bus, "lock", 1))
+                    if hasattr(self.bus, "cti"):
+                        m.d.comb += self.bus.cti.eq(getattr(intr_bus, "cti", CycleType.CLASSIC))
+                    if hasattr(self.bus, "bte"):
+                        m.d.comb += self.bus.bte.eq(getattr(intr_bus, "bte", BurstTypeExt.LINEAR))
+
+                    m.d.comb += intr_bus.ack.eq(self.bus.ack)
+                    if hasattr(intr_bus, "err"):
+                        m.d.comb += intr_bus.err.eq(getattr(self.bus, "err", 0))
+                    if hasattr(intr_bus, "rty"):
+                        m.d.comb += intr_bus.rty.eq(getattr(self.bus, "rty", 0))
+                    if hasattr(intr_bus, "stall"):
+                        m.d.comb += intr_bus_stall.eq(getattr(self.bus, "stall", ~self.bus.ack))
 
         return m
