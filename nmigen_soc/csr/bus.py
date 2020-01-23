@@ -74,7 +74,7 @@ class Element(Record):
                 ("w_data", width),
                 ("w_stb",  1),
             ]
-        super().__init__(layout, name=name, src_loc_at=1)
+        super().__init__(layout, name=name, src_loc_at=1 + src_loc_at)
 
     # FIXME: get rid of this
     __hash__ = object.__hash__
