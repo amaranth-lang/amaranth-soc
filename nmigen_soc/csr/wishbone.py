@@ -3,6 +3,7 @@ from nmigen.utils import log2_int
 
 from . import Interface as CSRInterface
 from ..wishbone import Interface as WishboneInterface
+from ..memory import MemoryMap
 
 
 __all__ = ["WishboneCSRBridge"]
@@ -48,6 +49,9 @@ class WishboneCSRBridge(Elaboratable):
             data_width=data_width,
             granularity=csr_bus.data_width,
             name="wb")
+
+        self.wb_bus.memory_map = MemoryMap(addr_width=csr_bus.addr_width,
+                                           data_width=csr_bus.data_width)
 
         # Since granularity of the Wishbone interface matches the data width of the CSR bus,
         # no width conversion is performed, even if the Wishbone data width is greater.

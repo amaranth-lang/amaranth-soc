@@ -104,8 +104,6 @@ class Interface(Record):
         Address width. At most ``(2 ** addr_width) * data_width`` register bits will be available.
     data_width : int
         Data width. Registers are accessed in ``data_width`` sized chunks.
-    alignment : int
-        Register and window alignment. See :class:`MemoryMap`.
     name : str
         Name of the underlying record.
 
@@ -132,7 +130,7 @@ class Interface(Record):
         nothing.
     """
 
-    def __init__(self, *, addr_width, data_width, alignment=0, name=None):
+    def __init__(self, *, addr_width, data_width, name=None):
         if not isinstance(addr_width, int) or addr_width <= 0:
             raise ValueError("Address width must be a positive integer, not {!r}"
                              .format(addr_width))
@@ -141,8 +139,7 @@ class Interface(Record):
                              .format(data_width))
         self.addr_width = addr_width
         self.data_width = data_width
-        self.memory_map = MemoryMap(addr_width=addr_width, data_width=data_width,
-                                    alignment=alignment)
+        self._map       = None
 
         super().__init__([
             ("addr",    addr_width),
@@ -151,6 +148,29 @@ class Interface(Record):
             ("w_data",  data_width),
             ("w_stb",   1),
         ], name=name, src_loc_at=1)
+
+    @property
+    def memory_map(self):
+        if self._map is None:
+            raise NotImplementedError("Bus interface {!r} does not have a memory map"
+                                      .format(self))
+        return self._map
+
+    @memory_map.setter
+    def memory_map(self, memory_map):
+        if not isinstance(memory_map, MemoryMap):
+            raise TypeError("Memory map must be an instance of MemoryMap, not {!r}"
+                            .format(memory_map))
+        if memory_map.addr_width != self.addr_width:
+            raise ValueError("Memory map has address width {}, which is not the same as "
+                             "bus interface address width {}"
+                             .format(memory_map.addr_width, self.addr_width))
+        if memory_map.data_width != self.data_width:
+            raise ValueError("Memory map has data width {}, which is not the same as "
+                             "bus interface data width {}"
+                             .format(memory_map.data_width, self.data_width))
+        memory_map.freeze()
+        self._map = memory_map
 
 
 class Multiplexer(Elaboratable):
@@ -201,9 +221,18 @@ class Multiplexer(Elaboratable):
         CSR bus providing access to registers.
     """
     def __init__(self, *, addr_width, data_width, alignment=0):
-        self.bus  = Interface(addr_width=addr_width, data_width=data_width, alignment=alignment,
-                              name="csr")
-        self._map = self.bus.memory_map
+        self._map = MemoryMap(addr_width=addr_width, data_width=data_width, alignment=alignment)
+        self._bus = None
+
+    @property
+    def bus(self):
+        if self._bus is None:
+            self._map.freeze()
+            self._bus = Interface(addr_width=self._map.addr_width,
+                                  data_width=self._map.data_width,
+                                  name="csr")
+            self._bus.memory_map = self._map
+        return self._bus
 
     def align_to(self, alignment):
         """Align the implicit address of the next register.
@@ -212,7 +241,7 @@ class Multiplexer(Elaboratable):
         """
         return self._map.align_to(alignment)
 
-    def add(self, element, *, addr=None, alignment=None):
+    def add(self, element, *, addr=None, alignment=None, extend=False):
         """Add a register.
 
         See :meth:`MemoryMap.add_resource` for details.
@@ -221,8 +250,9 @@ class Multiplexer(Elaboratable):
             raise TypeError("Element must be an instance of csr.Element, not {!r}"
                             .format(element))
 
-        size = (element.width + self.bus.data_width - 1) // self.bus.data_width
-        return self._map.add_resource(element, size=size, addr=addr, alignment=alignment)
+        size = (element.width + self._map.data_width - 1) // self._map.data_width
+        return self._map.add_resource(element, size=size, addr=addr, alignment=alignment,
+                                      extend=extend)
 
     def elaborate(self, platform):
         m = Module()
@@ -306,10 +336,19 @@ class Decoder(Elaboratable):
         CSR bus providing access to subordinate buses.
     """
     def __init__(self, *, addr_width, data_width, alignment=0):
-        self.bus   = Interface(addr_width=addr_width, data_width=data_width, alignment=alignment,
-                               name="csr")
-        self._map  = self.bus.memory_map
+        self._map  = MemoryMap(addr_width=addr_width, data_width=data_width, alignment=alignment)
+        self._bus  = None
         self._subs = dict()
+
+    @property
+    def bus(self):
+        if self._bus is None:
+            self._map.freeze()
+            self._bus = Interface(addr_width=self._map.addr_width,
+                                  data_width=self._map.data_width,
+                                  name="csr")
+            self._bus.memory_map = self._map
+        return self._bus
 
     def align_to(self, alignment):
         """Align the implicit address of the next window.
@@ -318,7 +357,7 @@ class Decoder(Elaboratable):
         """
         return self._map.align_to(alignment)
 
-    def add(self, sub_bus, *, addr=None):
+    def add(self, sub_bus, *, addr=None, extend=False):
         """Add a window to a subordinate bus.
 
         See :meth:`MemoryMap.add_resource` for details.
@@ -326,12 +365,12 @@ class Decoder(Elaboratable):
         if not isinstance(sub_bus, Interface):
             raise TypeError("Subordinate bus must be an instance of csr.Interface, not {!r}"
                             .format(sub_bus))
-        if sub_bus.data_width != self.bus.data_width:
+        if sub_bus.data_width != self._map.data_width:
             raise ValueError("Subordinate bus has data width {}, which is not the same as "
                              "decoder data width {}"
-                             .format(sub_bus.data_width, self.bus.data_width))
+                             .format(sub_bus.data_width, self._map.data_width))
         self._subs[sub_bus.memory_map] = sub_bus
-        return self._map.add_window(sub_bus.memory_map, addr=addr)
+        return self._map.add_window(sub_bus.memory_map, addr=addr, extend=extend)
 
     def elaborate(self, platform):
         m = Module()

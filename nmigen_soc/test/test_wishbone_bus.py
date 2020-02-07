@@ -6,6 +6,7 @@ from nmigen.hdl.rec import *
 from nmigen.back.pysim import *
 
 from ..wishbone.bus import *
+from ..memory import MemoryMap
 
 
 class InterfaceTestCase(unittest.TestCase):
@@ -14,8 +15,6 @@ class InterfaceTestCase(unittest.TestCase):
         self.assertEqual(iface.addr_width, 32)
         self.assertEqual(iface.data_width, 8)
         self.assertEqual(iface.granularity, 8)
-        self.assertEqual(iface.memory_map.addr_width, 32)
-        self.assertEqual(iface.memory_map.data_width, 8)
         self.assertEqual(iface.layout, Layout.cast([
             ("adr",   32, DIR_FANOUT),
             ("dat_w", 8,  DIR_FANOUT),
@@ -32,8 +31,6 @@ class InterfaceTestCase(unittest.TestCase):
         self.assertEqual(iface.addr_width, 30)
         self.assertEqual(iface.data_width, 32)
         self.assertEqual(iface.granularity, 8)
-        self.assertEqual(iface.memory_map.addr_width, 32)
-        self.assertEqual(iface.memory_map.data_width, 8)
         self.assertEqual(iface.layout, Layout.cast([
             ("adr",   30, DIR_FANOUT),
             ("dat_w", 32, DIR_FANOUT),
@@ -90,6 +87,41 @@ class InterfaceTestCase(unittest.TestCase):
                 r"Optional signal\(s\) 'foo' are not supported"):
             Interface(addr_width=0, data_width=8, features={"foo"})
 
+    def test_get_map_wrong(self):
+        iface = Interface(addr_width=0, data_width=8)
+        with self.assertRaisesRegex(NotImplementedError,
+                r"Bus interface \(rec iface adr dat_w dat_r sel cyc stb we ack\) does "
+                r"not have a memory map"):
+            iface.memory_map
+
+    def test_get_map_frozen(self):
+        iface = Interface(addr_width=1, data_width=8)
+        iface.memory_map = MemoryMap(addr_width=1, data_width=8)
+        with self.assertRaisesRegex(ValueError,
+                r"Memory map has been frozen\. Address width cannot be extended "
+                r"further"):
+            iface.memory_map.addr_width = 2
+
+    def test_set_map_wrong(self):
+        iface = Interface(addr_width=0, data_width=8)
+        with self.assertRaisesRegex(TypeError,
+                r"Memory map must be an instance of MemoryMap, not 'foo'"):
+            iface.memory_map = "foo"
+
+    def test_set_map_wrong_data_width(self):
+        iface = Interface(addr_width=30, data_width=32, granularity=8)
+        with self.assertRaisesRegex(ValueError,
+                r"Memory map has data width 32, which is not the same as bus "
+                r"interface granularity 8"):
+            iface.memory_map = MemoryMap(addr_width=32, data_width=32)
+
+    def test_set_map_wrong_addr_width(self):
+        iface = Interface(addr_width=30, data_width=32, granularity=8)
+        with self.assertRaisesRegex(ValueError,
+                r"Memory map has address width 30, which is not the same as bus "
+                r"interface address width 32 \(30 address bits \+ 2 granularity bits\)"):
+            iface.memory_map = MemoryMap(addr_width=30, data_width=8)
+
 
 class DecoderTestCase(unittest.TestCase):
     def setUp(self):
@@ -97,10 +129,18 @@ class DecoderTestCase(unittest.TestCase):
 
     def test_add_align_to(self):
         sub_1 = Interface(addr_width=15, data_width=32, granularity=16)
+        sub_1.memory_map = MemoryMap(addr_width=16, data_width=16)
         sub_2 = Interface(addr_width=15, data_width=32, granularity=16)
+        sub_2.memory_map = MemoryMap(addr_width=16, data_width=16)
         self.assertEqual(self.dut.add(sub_1), (0x00000000, 0x00010000, 1))
         self.assertEqual(self.dut.align_to(18), 0x000040000)
         self.assertEqual(self.dut.add(sub_2), (0x00040000, 0x00050000, 1))
+
+    def test_add_extend(self):
+        sub = Interface(addr_width=31, data_width=32, granularity=16)
+        sub.memory_map = MemoryMap(addr_width=32, data_width=16)
+        self.assertEqual(self.dut.add(sub, addr=1, extend=True), (1, 0x100000001, 1))
+        self.assertEqual(self.dut.bus.addr_width, 32)
 
     def test_add_wrong(self):
         with self.assertRaisesRegex(TypeError,
@@ -131,15 +171,25 @@ class DecoderTestCase(unittest.TestCase):
                 r"not have a corresponding input"):
             self.dut.add(Interface(addr_width=15, data_width=32, granularity=16, features={"err"}))
 
+    def test_add_wrong_out_of_bounds(self):
+        sub = Interface(addr_width=31, data_width=32, granularity=16)
+        sub.memory_map = MemoryMap(addr_width=32, data_width=16)
+        with self.assertRaisesRegex(ValueError,
+            r"Address range 0x1\.\.0x100000001 out of bounds for memory map spanning "
+            r"range 0x0\.\.0x100000000 \(32 address bits\)"):
+            self.dut.add(sub, addr=1)
+
 
 class DecoderSimulationTestCase(unittest.TestCase):
     def test_simple(self):
         dut = Decoder(addr_width=30, data_width=32, granularity=8,
                       features={"err", "rty", "stall", "lock", "cti", "bte"})
         sub_1 = Interface(addr_width=14, data_width=32, granularity=8)
+        sub_1.memory_map = MemoryMap(addr_width=16, data_width=8)
         dut.add(sub_1, addr=0x10000)
         sub_2 = Interface(addr_width=14, data_width=32, granularity=8,
                           features={"err", "rty", "stall", "lock", "cti", "bte"})
+        sub_2.memory_map = MemoryMap(addr_width=16, data_width=8)
         dut.add(sub_2)
 
         def sim_test():
@@ -208,15 +258,19 @@ class DecoderSimulationTestCase(unittest.TestCase):
 
         dut = Decoder(addr_width=20, data_width=32, granularity=16)
         loop_1 = AddressLoopback(addr_width=7, data_width=32, granularity=16)
+        loop_1.bus.memory_map = MemoryMap(addr_width=8, data_width=16)
         self.assertEqual(dut.add(loop_1.bus, addr=0x10000),
                          (0x10000, 0x10100, 1))
         loop_2 = AddressLoopback(addr_width=6, data_width=32, granularity=8)
+        loop_2.bus.memory_map = MemoryMap(addr_width=8, data_width=8)
         self.assertEqual(dut.add(loop_2.bus, addr=0x20000),
                          (0x20000, 0x20080, 2))
         loop_3 = AddressLoopback(addr_width=8, data_width=16, granularity=16)
+        loop_3.bus.memory_map = MemoryMap(addr_width=8, data_width=16)
         self.assertEqual(dut.add(loop_3.bus, addr=0x30000, sparse=True),
                          (0x30000, 0x30100, 1))
         loop_4 = AddressLoopback(addr_width=8, data_width=8,  granularity=8)
+        loop_4.bus.memory_map = MemoryMap(addr_width=8, data_width=8)
         self.assertEqual(dut.add(loop_4.bus, addr=0x40000, sparse=True),
                          (0x40000, 0x40100, 1))
 
