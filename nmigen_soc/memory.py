@@ -1,5 +1,7 @@
 import bisect
 
+from nmigen.utils import bits_for
+
 
 __all__ = ["MemoryMap"]
 
@@ -84,15 +86,50 @@ class MemoryMap:
             raise ValueError("Alignment must be a non-negative integer, not {!r}"
                              .format(alignment))
 
-        self.addr_width = addr_width
-        self.data_width = data_width
-        self.alignment  = alignment
+        self._addr_width = addr_width
+        self._data_width = data_width
+        self._alignment  = alignment
 
-        self._ranges    = _RangeMap()
-        self._resources = dict()
-        self._windows   = dict()
+        self._ranges     = _RangeMap()
+        self._resources  = dict()
+        self._windows    = dict()
 
-        self._next_addr = 0
+        self._next_addr  = 0
+        self._frozen     = False
+
+    @property
+    def addr_width(self):
+        return self._addr_width
+
+    @addr_width.setter
+    def addr_width(self, addr_width):
+        if self._frozen:
+            raise ValueError("Memory map has been frozen. Address width cannot be extended "
+                             "further")
+        if not isinstance(addr_width, int) or addr_width <= 0:
+            raise ValueError("Address width must be a positive integer, not {!r}"
+                             .format(addr_width))
+        if addr_width < self._addr_width:
+            raise ValueError("Address width {!r} must not be less than its previous value {!r}, "
+                             "because resources that were previously added may not fit anymore"
+                             .format(addr_width, self._addr_width))
+        self._addr_width = addr_width
+
+    @property
+    def data_width(self):
+        return self._data_width
+
+    @property
+    def alignment(self):
+        return self._alignment
+
+    def freeze(self):
+        """Freeze the memory map.
+
+        Once frozen, the memory map cannot be extended anymore. Resources and windows may
+        still be added, as long as they fit within the address space bounds.
+        """
+        self._frozen = True
 
     @staticmethod
     def _align_up(value, alignment):
@@ -119,7 +156,7 @@ class MemoryMap:
         self._next_addr = self._align_up(self._next_addr, max(alignment, self.alignment))
         return self._next_addr
 
-    def _compute_addr_range(self, addr, size, step=1, *, alignment):
+    def _compute_addr_range(self, addr, size, step=1, *, alignment, extend):
         if addr is not None:
             if not isinstance(addr, int) or addr < 0:
                 raise ValueError("Address must be a non-negative integer, not {!r}"
@@ -137,9 +174,12 @@ class MemoryMap:
         size = self._align_up(size, alignment)
 
         if addr > (1 << self.addr_width) or addr + size > (1 << self.addr_width):
-            raise ValueError("Address range {:#x}..{:#x} out of bounds for memory map spanning "
-                             "range {:#x}..{:#x} ({} address bits)"
-                             .format(addr, addr + size, 0, 1 << self.addr_width, self.addr_width))
+            if extend:
+                self.addr_width = bits_for(addr + size)
+            else:
+                raise ValueError("Address range {:#x}..{:#x} out of bounds for memory map spanning "
+                                 "range {:#x}..{:#x} ({} address bits)"
+                                 .format(addr, addr + size, 0, 1 << self.addr_width, self.addr_width))
 
         addr_range = range(addr, addr + size, step)
         overlaps = self._ranges.overlaps(addr_range)
@@ -159,7 +199,7 @@ class MemoryMap:
 
         return addr_range
 
-    def add_resource(self, resource, *, size, addr=None, alignment=None):
+    def add_resource(self, resource, *, size, addr=None, alignment=None, extend=False):
         """Add a resource.
 
         A resource is any device on the bus that is a destination for bus transactions, e.g.
@@ -178,6 +218,9 @@ class MemoryMap:
             ``2 ** max(alignment, self.alignment)``.
         alignment : int or None
             Alignment of the resource. If not specified, the memory map alignment is used.
+        extend: bool
+            Allow memory map extension. If ``True``, the upper bound of the address space is
+            raised as needed, in order to fit a resource that would otherwise be out of bounds.
 
         Return value
         ------------
@@ -201,7 +244,7 @@ class MemoryMap:
         else:
             alignment = self.alignment
 
-        addr_range = self._compute_addr_range(addr, size, alignment=alignment)
+        addr_range = self._compute_addr_range(addr, size, alignment=alignment, extend=extend)
         self._ranges.insert(addr_range, resource)
         self._resources[resource] = addr_range
         self._next_addr = addr_range.stop
@@ -219,7 +262,7 @@ class MemoryMap:
         for resource, resource_range in self._resources.items():
             yield resource, (resource_range.start, resource_range.stop)
 
-    def add_window(self, window, *, addr=None, sparse=None):
+    def add_window(self, window, *, addr=None, sparse=None, extend=False):
         """Add a window.
 
         A window is a device on a bus that provides access to a different bus, i.e. a bus bridge.
@@ -248,6 +291,9 @@ class MemoryMap:
         sparse : bool or None
             Address translation type. Ignored if the datapath widths of both memory maps are
             equal; must be specified otherwise.
+        extend : bool
+            Allow memory map extension. If ``True``, the upper bound of the address space is
+            raised as needed, in order to fit a window that would otherwise be out of bounds.
 
         Return value
         ------------
@@ -288,6 +334,8 @@ class MemoryMap:
                                  "data width {}"
                                  .format(self.data_width, window.data_width))
 
+        window.freeze()
+
         if not sparse:
             ratio = self.data_width // window.data_width
         else:
@@ -300,7 +348,8 @@ class MemoryMap:
         # a window can still be aligned using align_to().
         alignment = max(self.alignment, window.addr_width // ratio)
 
-        addr_range = self._compute_addr_range(addr, size, ratio, alignment=alignment)
+        addr_range = self._compute_addr_range(addr, size, ratio, alignment=alignment,
+                                              extend=extend)
         self._ranges.insert(addr_range, window)
         self._windows[window] = addr_range
         self._next_addr = addr_range.stop

@@ -56,6 +56,27 @@ class MemoryMapTestCase(unittest.TestCase):
                 r"Alignment must be a non-negative integer, not -1"):
             MemoryMap(addr_width=16, data_width=8, alignment=-1)
 
+    def test_set_addr_width_wrong(self):
+        with self.assertRaisesRegex(ValueError,
+                r"Address width must be a positive integer, not -1"):
+            memory_map = MemoryMap(addr_width=1, data_width=8)
+            memory_map.addr_width = -1
+
+    def test_set_addr_width_wrong_shrink(self):
+        with self.assertRaisesRegex(ValueError,
+                r"Address width 1 must not be less than its previous value 2, "
+                r"because resources that were previously added may not fit anymore"):
+            memory_map = MemoryMap(addr_width=2, data_width=8)
+            memory_map.addr_width = 1
+
+    def test_set_addr_width_wrong_frozen(self):
+        with self.assertRaisesRegex(ValueError,
+                r"Memory map has been frozen. Address width cannot be extended "
+                r"further"):
+            memory_map = MemoryMap(addr_width=1, data_width=8)
+            memory_map.freeze()
+            memory_map.addr_width = 2
+
     def test_add_resource(self):
         memory_map = MemoryMap(addr_width=16, data_width=8)
         self.assertEqual(memory_map.add_resource("a", size=1), (0, 1))
@@ -76,6 +97,12 @@ class MemoryMapTestCase(unittest.TestCase):
         memory_map = MemoryMap(addr_width=16, data_width=8)
         self.assertEqual(memory_map.add_resource("a", size=1, addr=10), (10, 11))
         self.assertEqual(memory_map.add_resource("b", size=2), (11, 13))
+
+    def test_add_resource_extend(self):
+        memory_map = MemoryMap(addr_width=16, data_width=8)
+        self.assertEqual(memory_map.add_resource("a", size=1, addr=0x10000, extend=True),
+                         (0x10000, 0x10001))
+        self.assertEqual(memory_map.addr_width, 17)
 
     def test_add_resource_wrong_address(self):
         memory_map = MemoryMap(addr_width=16, data_width=8)
@@ -154,6 +181,13 @@ class MemoryMapTestCase(unittest.TestCase):
                                                sparse=False),
                          (0, 0x100, 4))
 
+    def test_add_window_extend(self):
+        memory_map = MemoryMap(addr_width=16, data_width=8)
+        self.assertEqual(memory_map.add_window(MemoryMap(addr_width=17, data_width=8),
+                                               extend=True),
+                         (0, 0x20000, 1))
+        self.assertEqual(memory_map.addr_width, 18)
+
     def test_add_window_wrong_window(self):
         memory_map = MemoryMap(addr_width=16, data_width=8)
         with self.assertRaisesRegex(TypeError,
@@ -180,6 +214,13 @@ class MemoryMapTestCase(unittest.TestCase):
                 r"Dense addressing cannot be used because the memory map data width "
                 r"16 is not an integer multiple of window data width 7"):
             memory_map.add_window(MemoryMap(addr_width=10, data_width=7), sparse=False)
+
+    def test_add_window_wrong_out_of_bounds(self):
+        memory_map = MemoryMap(addr_width=16, data_width=8)
+        with self.assertRaisesRegex(ValueError,
+                r"Address range 0x0\.\.0x20000 out of bounds for memory map spanning "
+                r"range 0x0\.\.0x10000 \(16 address bits\)"):
+            memory_map.add_window(MemoryMap(addr_width=17, data_width=8))
 
     def test_add_window_wrong_overlap(self):
         memory_map = MemoryMap(addr_width=16, data_width=8)
