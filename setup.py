@@ -26,7 +26,7 @@ setup(
     install_requires=["nmigen>=0.1,<0.3"],
     packages=find_packages(),
     project_urls={
-        "Source Code": "https://github.com/m-labs/nmigen-soc",
-        "Bug Tracker": "https://github.com/m-labs/nmigen-soc/issues",
+        "Source Code": "https://github.com/nmigen/nmigen-soc",
+        "Bug Tracker": "https://github.com/nmigen/nmigen-soc/issues",
     },
 )
