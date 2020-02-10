@@ -25,6 +25,25 @@ class BurstTypeExt(Enum):
     WRAP_16 = 0b11
 
 
+def _check_interface(addr_width, data_width, granularity, features):
+    if not isinstance(addr_width, int) or addr_width < 0:
+        raise ValueError("Address width must be a non-negative integer, not {!r}"
+                         .format(addr_width))
+    if data_width not in (8, 16, 32, 64):
+        raise ValueError("Data width must be one of 8, 16, 32, 64, not {!r}"
+                         .format(data_width))
+    if granularity not in (8, 16, 32, 64):
+        raise ValueError("Granularity must be one of 8, 16, 32, 64, not {!r}"
+                         .format(granularity))
+    if granularity > data_width:
+        raise ValueError("Granularity {} may not be greater than data width {}"
+                         .format(granularity, data_width))
+    unknown = set(features) - {"rty", "err", "stall", "lock", "cti", "bte"}
+    if unknown:
+        raise ValueError("Optional signal(s) {} are not supported"
+                         .format(", ".join(map(repr, unknown))))
+
+
 class Interface(Record):
     """Wishbone interface.
 
@@ -48,8 +67,6 @@ class Interface(Record):
         One of 8, 16, 32, 64.
     features : iter(str)
         Selects the optional signals that will be a part of this interface.
-    alignment : int
-        Resource and window alignment. See :class:`MemoryMap`.
     name : str
         Name of the underlying record.
 
@@ -88,34 +105,17 @@ class Interface(Record):
         Optional. Corresponds to Wishbone signal ``BTE_O`` (initiator) or ``BTE_I`` (target).
     """
     def __init__(self, *, addr_width, data_width, granularity=None, features=frozenset(),
-                 alignment=0, name=None):
-        if not isinstance(addr_width, int) or addr_width < 0:
-            raise ValueError("Address width must be a non-negative integer, not {!r}"
-                             .format(addr_width))
-        if data_width not in (8, 16, 32, 64):
-            raise ValueError("Data width must be one of 8, 16, 32, 64, not {!r}"
-                             .format(data_width))
+                 name=None):
         if granularity is None:
-            granularity = data_width
-        elif granularity not in (8, 16, 32, 64):
-            raise ValueError("Granularity must be one of 8, 16, 32, 64, not {!r}"
-                             .format(granularity))
-        if granularity > data_width:
-            raise ValueError("Granularity {} may not be greater than data width {}"
-                             .format(granularity, data_width))
+            granularity  = data_width
+        _check_interface(addr_width, data_width, granularity, features)
+
         self.addr_width  = addr_width
         self.data_width  = data_width
         self.granularity = granularity
-        granularity_bits = log2_int(data_width // granularity)
-        self.memory_map  = MemoryMap(addr_width=max(1, addr_width + granularity_bits),
-                                     data_width=data_width >> granularity_bits,
-                                     alignment=alignment)
+        self._map        = None
 
         features = set(features)
-        unknown  = features - {"rty", "err", "stall", "lock", "cti", "bte"}
-        if unknown:
-            raise ValueError("Optional signal(s) {} are not supported"
-                             .format(", ".join(map(repr, unknown))))
         layout = [
             ("adr",   addr_width, Direction.FANOUT),
             ("dat_w", data_width, Direction.FANOUT),
@@ -139,6 +139,31 @@ class Interface(Record):
         if "bte" in features:
             layout += [("bte", BurstTypeExt, Direction.FANOUT)]
         super().__init__(layout, name=name, src_loc_at=1)
+
+    @property
+    def memory_map(self):
+        if self._map is None:
+            raise NotImplementedError("Bus interface {!r} does not have a memory map"
+                                      .format(self))
+        return self._map
+
+    @memory_map.setter
+    def memory_map(self, memory_map):
+        if not isinstance(memory_map, MemoryMap):
+            raise TypeError("Memory map must be an instance of MemoryMap, not {!r}"
+                            .format(memory_map))
+        if memory_map.data_width != self.granularity:
+            raise ValueError("Memory map has data width {}, which is not the same as bus "
+                             "interface granularity {}"
+                             .format(memory_map.data_width, self.granularity))
+        granularity_bits = log2_int(self.data_width // self.granularity)
+        if memory_map.addr_width != max(1, self.addr_width + granularity_bits):
+            raise ValueError("Memory map has address width {}, which is not the same as bus "
+                             "interface address width {} ({} address bits + {} granularity bits)"
+                             .format(memory_map.addr_width, self.addr_width + granularity_bits,
+                                     self.addr_width, granularity_bits))
+        memory_map.freeze()
+        self._map = memory_map
 
 
 class Decoder(Elaboratable):
@@ -166,11 +191,31 @@ class Decoder(Elaboratable):
     """
     def __init__(self, *, addr_width, data_width, granularity=None, features=frozenset(),
                  alignment=0):
-        self.bus   = Interface(addr_width=addr_width, data_width=data_width,
-                               granularity=granularity, features=features,
-                               alignment=alignment)
-        self._map  = self.bus.memory_map
-        self._subs = dict()
+        if granularity is None:
+            granularity  = data_width
+        _check_interface(addr_width, data_width, granularity, features)
+
+        self.data_width  = data_width
+        self.granularity = granularity
+        self.features    = set(features)
+        self.alignment   = alignment
+
+        granularity_bits = log2_int(data_width // granularity)
+        self._map        = MemoryMap(addr_width=max(1, addr_width + granularity_bits),
+                                     data_width=granularity, alignment=alignment)
+        self._subs       = dict()
+        self._bus        = None
+
+    @property
+    def bus(self):
+        if self._bus is None:
+            self._map.freeze()
+            granularity_bits = log2_int(self.data_width // self.granularity)
+            self._bus = Interface(addr_width=self._map.addr_width - granularity_bits,
+                                  data_width=self.data_width, granularity=self.granularity,
+                                  features=self.features)
+            self._bus.memory_map = self._map
+        return self._bus
 
     def align_to(self, alignment):
         """Align the implicit address of the next window.
@@ -179,7 +224,7 @@ class Decoder(Elaboratable):
         """
         return self._map.align_to(alignment)
 
-    def add(self, sub_bus, *, addr=None, sparse=False):
+    def add(self, sub_bus, *, addr=None, sparse=False, extend=False):
         """Add a window to a subordinate bus.
 
         The decoder can perform either sparse or dense address translation. If dense address
@@ -194,15 +239,15 @@ class Decoder(Elaboratable):
         if not isinstance(sub_bus, Interface):
             raise TypeError("Subordinate bus must be an instance of wishbone.Interface, not {!r}"
                             .format(sub_bus))
-        if sub_bus.granularity > self.bus.granularity:
+        if sub_bus.granularity > self.granularity:
             raise ValueError("Subordinate bus has granularity {}, which is greater than the "
                              "decoder granularity {}"
-                             .format(sub_bus.granularity, self.bus.granularity))
+                             .format(sub_bus.granularity, self.granularity))
         if not sparse:
-            if sub_bus.data_width != self.bus.data_width:
+            if sub_bus.data_width != self.data_width:
                 raise ValueError("Subordinate bus has data width {}, which is not the same as "
                                  "decoder data width {} (required for dense address translation)"
-                                 .format(sub_bus.data_width, self.bus.data_width))
+                                 .format(sub_bus.data_width, self.data_width))
         else:
             if sub_bus.granularity != sub_bus.data_width:
                 raise ValueError("Subordinate bus has data width {}, which is not the same as "
@@ -210,13 +255,13 @@ class Decoder(Elaboratable):
                                  "translation)"
                                  .format(sub_bus.data_width, sub_bus.granularity))
         for opt_output in {"err", "rty", "stall"}:
-            if hasattr(sub_bus, opt_output) and not hasattr(self.bus, opt_output):
+            if hasattr(sub_bus, opt_output) and opt_output not in self.features:
                 raise ValueError("Subordinate bus has optional output {!r}, but the decoder "
                                  "does not have a corresponding input"
                                  .format(opt_output))
 
         self._subs[sub_bus.memory_map] = sub_bus
-        return self._map.add_window(sub_bus.memory_map, addr=addr, sparse=sparse)
+        return self._map.add_window(sub_bus.memory_map, addr=addr, sparse=sparse, extend=extend)
 
     def elaborate(self, platform):
         m = Module()

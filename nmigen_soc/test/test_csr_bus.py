@@ -6,6 +6,7 @@ from nmigen.hdl.rec import Layout
 from nmigen.back.pysim import *
 
 from ..csr.bus import *
+from ..memory import MemoryMap
 
 
 class ElementTestCase(unittest.TestCase):
@@ -83,6 +84,41 @@ class InterfaceTestCase(unittest.TestCase):
                 r"Data width must be a positive integer, not -1"):
             Interface(addr_width=16, data_width=-1)
 
+    def test_get_map_wrong(self):
+        iface = Interface(addr_width=16, data_width=8)
+        with self.assertRaisesRegex(NotImplementedError,
+                r"Bus interface \(rec iface addr r_data r_stb w_data w_stb\) does not "
+                r"have a memory map"):
+            iface.memory_map
+
+    def test_get_map_frozen(self):
+        iface = Interface(addr_width=16, data_width=8)
+        iface.memory_map = MemoryMap(addr_width=16, data_width=8)
+        with self.assertRaisesRegex(ValueError,
+                r"Memory map has been frozen. Address width cannot be extended "
+                r"further"):
+            iface.memory_map.addr_width = 24
+
+    def test_set_map_wrong(self):
+        iface = Interface(addr_width=16, data_width=8)
+        with self.assertRaisesRegex(TypeError,
+                r"Memory map must be an instance of MemoryMap, not 'foo'"):
+            iface.memory_map = "foo"
+
+    def test_set_map_wrong_addr_width(self):
+        iface = Interface(addr_width=16, data_width=8)
+        with self.assertRaisesRegex(ValueError,
+                r"Memory map has address width 8, which is not the same as "
+                r"bus interface address width 16"):
+            iface.memory_map = MemoryMap(addr_width=8, data_width=8)
+
+    def test_set_map_wrong_data_width(self):
+        iface = Interface(addr_width=16, data_width=8)
+        with self.assertRaisesRegex(ValueError,
+                r"Memory map has data width 16, which is not the same as "
+                r"bus interface data width 8"):
+            iface.memory_map = MemoryMap(addr_width=16, data_width=16)
+
 
 class MultiplexerTestCase(unittest.TestCase):
     def setUp(self):
@@ -110,6 +146,11 @@ class MultiplexerTestCase(unittest.TestCase):
         self.assertEqual(self.dut.add(Element(8, "rw")),
                          (2, 3))
 
+    def test_add_extend(self):
+        self.assertEqual(self.dut.add(Element(8, "rw"), addr=0x10000, extend=True),
+                         (0x10000, 0x10001))
+        self.assertEqual(self.dut.bus.addr_width, 17)
+
     def test_add_wrong(self):
         with self.assertRaisesRegex(TypeError,
                 r"Element must be an instance of csr\.Element, not 'foo'"):
@@ -121,6 +162,12 @@ class MultiplexerTestCase(unittest.TestCase):
         self.assertEqual(self.dut.align_to(2), 4)
         self.assertEqual(self.dut.add(Element(8, "rw")),
                          (4, 5))
+
+    def test_add_wrong_out_of_bounds(self):
+        with self.assertRaisesRegex(ValueError,
+                r"Address range 0x10000\.\.0x10001 out of bounds for memory map spanning "
+                r"range 0x0\.\.0x10000 \(16 address bits\)"):
+            self.dut.add(Element(8, "rw"), addr=0x10000)
 
     def test_sim(self):
         bus = self.dut.bus
@@ -263,11 +310,21 @@ class DecoderTestCase(unittest.TestCase):
         self.dut = Decoder(addr_width=16, data_width=8)
 
     def test_align_to(self):
-        self.assertEqual(self.dut.add(Interface(addr_width=10, data_width=8)),
-                         (0, 0x400, 1))
+        sub_1 = Interface(addr_width=10, data_width=8)
+        sub_1.memory_map = MemoryMap(addr_width=10, data_width=8)
+        self.assertEqual(self.dut.add(sub_1), (0, 0x400, 1))
+
         self.assertEqual(self.dut.align_to(12), 0x1000)
-        self.assertEqual(self.dut.add(Interface(addr_width=10, data_width=8)),
-                         (0x1000, 0x1400, 1))
+
+        sub_2 = Interface(addr_width=10, data_width=8)
+        sub_2.memory_map = MemoryMap(addr_width=10, data_width=8)
+        self.assertEqual(self.dut.add(sub_2), (0x1000, 0x1400, 1))
+
+    def test_add_extend(self):
+        iface = Interface(addr_width=17, data_width=8)
+        iface.memory_map = MemoryMap(addr_width=17, data_width=8)
+        self.assertEqual(self.dut.add(iface, extend=True), (0, 0x20000, 1))
+        self.assertEqual(self.dut.bus.addr_width, 18)
 
     def test_add_wrong_sub_bus(self):
         with self.assertRaisesRegex(TypeError,
@@ -282,6 +339,14 @@ class DecoderTestCase(unittest.TestCase):
                 r"Subordinate bus has data width 16, which is not the same as "
                 r"decoder data width 8"):
             self.dut.add(mux.bus)
+
+    def test_add_wrong_out_of_bounds(self):
+        iface = Interface(addr_width=17, data_width=8)
+        iface.memory_map = MemoryMap(addr_width=17, data_width=8)
+        with self.assertRaisesRegex(ValueError,
+                r"Address range 0x0\.\.0x20000 out of bounds for memory map spanning "
+                r"range 0x0\.\.0x10000 \(16 address bits\)"):
+            self.dut.add(iface)
 
     def test_sim(self):
         mux_1  = Multiplexer(addr_width=10, data_width=8)
