@@ -351,6 +351,27 @@ class DecoderSimulationTestCase(unittest.TestCase):
             sim.add_process(sim_test())
             sim.run()
 
+    def test_coarse_granularity(self):
+        dut = Decoder(addr_width=3, data_width=32)
+        sub = Interface(addr_width=2, data_width=32)
+        sub.memory_map = MemoryMap(addr_width=2, data_width=32)
+        dut.add(sub)
+
+        def sim_test():
+            yield dut.bus.cyc.eq(1)
+
+            yield dut.bus.adr.eq(0x0)
+            yield Delay(1e-6)
+            self.assertEqual((yield sub.cyc), 1)
+
+            yield dut.bus.adr.eq(0x4)
+            yield Delay(1e-6)
+            self.assertEqual((yield sub.cyc), 0)
+
+        with Simulator(dut, vcd_file=open("test.vcd", "w")) as sim:
+            sim.add_process(sim_test())
+            sim.run()
+
 
 class ArbiterTestCase(unittest.TestCase):
     def setUp(self):
