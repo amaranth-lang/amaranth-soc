@@ -261,6 +261,14 @@ class MemoryMapTestCase(unittest.TestCase):
             (window_2, ("0001------------", 1)),
         ])
 
+    def test_iter_window_patterns_covered(self):
+        memory_map = MemoryMap(addr_width=16, data_width=8)
+        window = MemoryMap(addr_width=16, data_width=8)
+        memory_map.add_window(window)
+        self.assertEqual(list(memory_map.window_patterns()), [
+            (window, ("----------------", 1)),
+        ])
+
     def test_align_to(self):
         memory_map = MemoryMap(addr_width=16, data_width=8)
         self.assertEqual(memory_map.add_resource("a", size=1), (0, 1))

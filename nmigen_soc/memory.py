@@ -385,9 +385,12 @@ class MemoryMap:
         it is always 1.
         """
         for window, window_range in self._windows.items():
-            pattern = "{:0{}b}{}".format(window_range.start >> window.addr_width,
-                                         self.addr_width - window.addr_width,
-                                         "-" * window.addr_width)
+            const_bits = self.addr_width - window.addr_width
+            if const_bits > 0:
+                const_pat = "{:0{}b}".format(window_range.start >> window.addr_width, const_bits)
+            else:
+                const_pat = ""
+            pattern = "{}{}".format(const_pat, "-" * window.addr_width)
             yield window, (pattern, window_range.step)
 
     @staticmethod
