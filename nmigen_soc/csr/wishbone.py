@@ -84,10 +84,11 @@ class WishboneCSRBridge(Elaboratable):
                 with m.Default():
                     m.d.sync += wb_bus.dat_r[segment(index)].eq(csr_bus.r_data)
                     m.d.sync += wb_bus.ack.eq(1)
-                    m.d.sync += cycle.eq(0)
 
         with m.Else():
             m.d.sync += wb_bus.ack.eq(0)
+
+        with m.If(wb_bus.ack):
             m.d.sync += cycle.eq(0)
 
         return m
