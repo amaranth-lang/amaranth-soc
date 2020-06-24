@@ -58,7 +58,7 @@ class EventMapTestCase(unittest.TestCase):
         src_1 = Source()
         event_map = EventMap()
         event_map.add(src_0)
-        event_map.add(src_1)
+        event_map.add(src=src_1)
         self.assertTrue(src_0 in event_map._sources)
         self.assertTrue(src_1 in event_map._sources)
 
@@ -88,7 +88,7 @@ class EventMapTestCase(unittest.TestCase):
         event_map.add(src_0)
         event_map.add(src_1)
         self.assertEqual(event_map.index(src_0), 0)
-        self.assertEqual(event_map.index(src_1), 1)
+        self.assertEqual(event_map.index(src=src_1), 1)
 
     def test_index_add_twice(self):
         src = Source()
@@ -139,7 +139,7 @@ class MonitorTestCase(unittest.TestCase):
     def test_event_map_wrong(self):
         with self.assertRaisesRegex(TypeError,
                 r"Event map must be an instance of EventMap, not 'foo'"):
-            dut = Monitor("foo")
+            dut = Monitor(event_map="foo")
 
     def test_events(self):
         sub_0 = Source(trigger="level")

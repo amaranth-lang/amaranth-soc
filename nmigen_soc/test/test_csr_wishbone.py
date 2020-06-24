@@ -33,7 +33,7 @@ class WishboneCSRBridgeTestCase(unittest.TestCase):
     def test_wrong_csr_bus(self):
         with self.assertRaisesRegex(ValueError,
                 r"CSR bus must be an instance of CSRInterface, not 'foo'"):
-            WishboneCSRBridge(csr_bus="foo")
+            WishboneCSRBridge("foo")
 
     def test_wrong_csr_bus_data_width(self):
         with self.assertRaisesRegex(ValueError,
