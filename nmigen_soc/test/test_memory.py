@@ -80,7 +80,7 @@ class MemoryMapTestCase(unittest.TestCase):
     def test_add_resource(self):
         memory_map = MemoryMap(addr_width=16, data_width=8)
         self.assertEqual(memory_map.add_resource("a", size=1), (0, 1))
-        self.assertEqual(memory_map.add_resource("b", size=2), (1, 3))
+        self.assertEqual(memory_map.add_resource(resource="b", size=2), (1, 3))
 
     def test_add_resource_map_aligned(self):
         memory_map = MemoryMap(addr_width=16, data_width=8, alignment=1)
@@ -197,7 +197,7 @@ class MemoryMapTestCase(unittest.TestCase):
         memory_map = MemoryMap(addr_width=16, data_width=8)
         with self.assertRaisesRegex(TypeError,
                 r"Window must be a MemoryMap, not 'a'"):
-            memory_map.add_window("a")
+            memory_map.add_window(window="a")
 
     def test_add_window_wrong_wider(self):
         memory_map = MemoryMap(addr_width=16, data_width=8)
@@ -284,7 +284,7 @@ class MemoryMapTestCase(unittest.TestCase):
         memory_map = MemoryMap(addr_width=16, data_width=8)
         with self.assertRaisesRegex(ValueError,
                 r"Alignment must be a non-negative integer, not -1"):
-            memory_map.align_to(-1)
+            memory_map.align_to(alignment=-1)
 
 
 class MemoryMapDiscoveryTestCase(unittest.TestCase):
@@ -334,4 +334,4 @@ class MemoryMapDiscoveryTestCase(unittest.TestCase):
             self.assertEqual(self.root.decode_address(end - 1), res)
 
     def test_decode_address_missing(self):
-        self.assertIsNone(self.root.decode_address(0x00000100))
+        self.assertIsNone(self.root.decode_address(address=0x00000100))

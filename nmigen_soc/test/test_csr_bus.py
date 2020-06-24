@@ -58,7 +58,7 @@ class ElementTestCase(unittest.TestCase):
     def test_access_wrong(self):
         with self.assertRaisesRegex(ValueError,
                 r"Access mode must be one of \"r\", \"w\", or \"rw\", not 'wo'"):
-            Element(1, "wo")
+            Element(width=1, access="wo")
 
 
 class InterfaceTestCase(unittest.TestCase):
@@ -154,7 +154,7 @@ class MultiplexerTestCase(unittest.TestCase):
     def test_add_wrong(self):
         with self.assertRaisesRegex(TypeError,
                 r"Element must be an instance of csr\.Element, not 'foo'"):
-            self.dut.add("foo")
+            self.dut.add(element="foo")
 
     def test_align_to(self):
         self.assertEqual(self.dut.add(Element(8, "rw")),
@@ -266,7 +266,7 @@ class MultiplexerAlignedTestCase(unittest.TestCase):
     def test_under_align_to(self):
         self.assertEqual(self.dut.add(Element(8, "rw")),
                          (0, 4))
-        self.assertEqual(self.dut.align_to(1), 4)
+        self.assertEqual(self.dut.align_to(alignment=1), 4)
         self.assertEqual(self.dut.add(Element(8, "rw")),
                          (4, 8))
 
@@ -315,6 +315,7 @@ class DecoderTestCase(unittest.TestCase):
         self.assertEqual(self.dut.add(sub_1), (0, 0x400, 1))
 
         self.assertEqual(self.dut.align_to(12), 0x1000)
+        self.assertEqual(self.dut.align_to(alignment=12), 0x1000)
 
         sub_2 = Interface(addr_width=10, data_width=8)
         sub_2.memory_map = MemoryMap(addr_width=10, data_width=8)
@@ -329,7 +330,7 @@ class DecoderTestCase(unittest.TestCase):
     def test_add_wrong_sub_bus(self):
         with self.assertRaisesRegex(TypeError,
                 r"Subordinate bus must be an instance of csr\.Interface, not 1"):
-            self.dut.add(1)
+            self.dut.add(sub_bus=1)
 
     def test_add_wrong_data_width(self):
         mux = Multiplexer(addr_width=10, data_width=16)

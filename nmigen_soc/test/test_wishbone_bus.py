@@ -134,6 +134,7 @@ class DecoderTestCase(unittest.TestCase):
         sub_2.memory_map = MemoryMap(addr_width=16, data_width=16)
         self.assertEqual(self.dut.add(sub_1), (0x00000000, 0x00010000, 1))
         self.assertEqual(self.dut.align_to(18), 0x000040000)
+        self.assertEqual(self.dut.align_to(alignment=18), 0x000040000)
         self.assertEqual(self.dut.add(sub_2), (0x00040000, 0x00050000, 1))
 
     def test_add_extend(self):
@@ -145,7 +146,7 @@ class DecoderTestCase(unittest.TestCase):
     def test_add_wrong(self):
         with self.assertRaisesRegex(TypeError,
                 r"Subordinate bus must be an instance of wishbone\.Interface, not 'foo'"):
-            self.dut.add("foo")
+            self.dut.add(sub_bus="foo")
 
     def test_add_wrong_granularity(self):
         with self.assertRaisesRegex(ValueError,
@@ -381,7 +382,7 @@ class ArbiterTestCase(unittest.TestCase):
     def test_add_wrong(self):
         with self.assertRaisesRegex(TypeError,
                 r"Initiator bus must be an instance of wishbone\.Interface, not 'foo'"):
-            self.dut.add("foo")
+            self.dut.add(intr_bus="foo")
 
     def test_add_wrong_addr_width(self):
         with self.assertRaisesRegex(ValueError,
