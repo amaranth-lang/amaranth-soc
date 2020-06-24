@@ -171,7 +171,7 @@ class MemoryMap:
         if not isinstance(size, int) or size < 0:
             raise ValueError("Size must be a non-negative integer, not {!r}"
                              .format(size))
-        size = self._align_up(size, alignment)
+        size = self._align_up(max(size, 1), alignment)
 
         if addr > (1 << self.addr_width) or addr + size > (1 << self.addr_width):
             if extend:

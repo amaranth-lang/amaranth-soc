@@ -104,6 +104,11 @@ class MemoryMapTestCase(unittest.TestCase):
                          (0x10000, 0x10001))
         self.assertEqual(memory_map.addr_width, 17)
 
+    def test_add_resource_size_zero(self):
+        memory_map = MemoryMap(addr_width=1, data_width=8)
+        self.assertEqual(memory_map.add_resource("a", size=0), (0, 1))
+        self.assertEqual(memory_map.add_resource("b", size=0), (1, 2))
+
     def test_add_resource_wrong_address(self):
         memory_map = MemoryMap(addr_width=16, data_width=8)
         with self.assertRaisesRegex(ValueError,
