@@ -22,8 +22,8 @@ setup(
     description="System on Chip toolkit for nMigen",
     #long_description="""TODO""",
     license="BSD",
-    setup_requires=["setuptools_scm"],
-    install_requires=["nmigen>=0.1,<0.3"],
+    setup_requires=["wheel", "setuptools", "setuptools_scm"],
+    install_requires=["nmigen>=0.1,<0.5"],
     packages=find_packages(),
     project_urls={
         "Source Code": "https://github.com/nmigen/nmigen-soc",
