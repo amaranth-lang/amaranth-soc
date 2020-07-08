@@ -438,7 +438,7 @@ class ArbiterSimulationTestCase(unittest.TestCase):
             self.assertEqual((yield dut.bus.sel), 0b1111)
             self.assertEqual((yield dut.bus.we), 1)
             self.assertEqual((yield dut.bus.dat_w), 0x12345678)
-            self.assertEqual((yield dut.bus.lock), 1)
+            self.assertEqual((yield dut.bus.lock), 0)
             self.assertEqual((yield dut.bus.cti), CycleType.CLASSIC.value)
             self.assertEqual((yield dut.bus.bte), BurstTypeExt.LINEAR.value)
             self.assertEqual((yield intr_1.dat_r), 0xabcdef01)
