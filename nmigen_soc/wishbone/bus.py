@@ -99,6 +99,9 @@ class Interface(Record):
         Optional. Corresponds to Wishbone signal ``STALL_I`` (initiator) or ``STALL_O`` (target).
     lock : Signal()
         Optional. Corresponds to Wishbone signal ``LOCK_O`` (initiator) or ``LOCK_I`` (target).
+        nmigen-soc Wishbone support assumes that initiators that don't want bus arbitration to happen in
+        between two transactions need to use ``lock`` feature to guarantee this. An initiator without
+        the ``lock`` feature may be arbitrated in between two transactions even if ``cyc`` is kept high.
     cti : Signal()
         Optional. Corresponds to Wishbone signal ``CTI_O`` (initiator) or ``CTI_I`` (target).
     bte : Signal()
@@ -414,7 +417,7 @@ class Arbiter(Elaboratable):
                     ]
                     m.d.comb += self.bus.cyc.eq(intr_bus.cyc)
                     if hasattr(self.bus, "lock"):
-                        m.d.comb += self.bus.lock.eq(getattr(intr_bus, "lock", 1))
+                        m.d.comb += self.bus.lock.eq(getattr(intr_bus, "lock", 0))
                     if hasattr(self.bus, "cti"):
                         m.d.comb += self.bus.cti.eq(getattr(intr_bus, "cti", CycleType.CLASSIC))
                     if hasattr(self.bus, "bte"):
