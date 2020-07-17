@@ -135,9 +135,10 @@ class WishboneCSRBridgeTestCase(unittest.TestCase):
 
         m = Module()
         m.submodules += mux, reg_1, reg_2, dut
-        with Simulator(m, vcd_file=open("test.vcd", "w")) as sim:
-            sim.add_clock(1e-6)
-            sim.add_sync_process(sim_test())
+        sim = Simulator(m)
+        sim.add_clock(1e-6)
+        sim.add_sync_process(sim_test)
+        with sim.write_vcd(vcd_file=open("test.vcd", "w")):
             sim.run()
 
     def test_wide(self):
@@ -222,7 +223,8 @@ class WishboneCSRBridgeTestCase(unittest.TestCase):
 
         m = Module()
         m.submodules += mux, reg, dut
-        with Simulator(m, vcd_file=open("test.vcd", "w")) as sim:
-            sim.add_clock(1e-6)
-            sim.add_sync_process(sim_test())
+        sim = Simulator(m)
+        sim.add_clock(1e-6)
+        sim.add_sync_process(sim_test)
+        with sim.write_vcd(vcd_file=open("test.vcd", "w")):
             sim.run()

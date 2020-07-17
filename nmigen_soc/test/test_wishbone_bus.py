@@ -238,8 +238,9 @@ class DecoderSimulationTestCase(unittest.TestCase):
             self.assertEqual((yield dut.bus.stall), 1)
             self.assertEqual((yield dut.bus.dat_r), 0x5678abcd)
 
-        with Simulator(dut, vcd_file=open("test.vcd", "w")) as sim:
-            sim.add_process(sim_test())
+        sim = Simulator(dut)
+        sim.add_process(sim_test)
+        with sim.write_vcd(vcd_file=open("test.vcd", "w")):
             sim.run()
 
     def test_addr_translate(self):
@@ -348,8 +349,9 @@ class DecoderSimulationTestCase(unittest.TestCase):
 
         m = Module()
         m.submodules += dut, loop_1, loop_2, loop_3, loop_4
-        with Simulator(m, vcd_file=open("test.vcd", "w")) as sim:
-            sim.add_process(sim_test())
+        sim = Simulator(m)
+        sim.add_process(sim_test)
+        with sim.write_vcd(vcd_file=open("test.vcd", "w")):
             sim.run()
 
     def test_coarse_granularity(self):
@@ -369,8 +371,9 @@ class DecoderSimulationTestCase(unittest.TestCase):
             yield Delay(1e-6)
             self.assertEqual((yield sub.cyc), 0)
 
-        with Simulator(dut, vcd_file=open("test.vcd", "w")) as sim:
-            sim.add_process(sim_test())
+        sim = Simulator(dut)
+        sim.add_process(sim_test)
+        with sim.write_vcd(vcd_file=open("test.vcd", "w")):
             sim.run()
 
 
@@ -475,9 +478,10 @@ class ArbiterSimulationTestCase(unittest.TestCase):
             self.assertEqual((yield intr_2.rty), 1)
             self.assertEqual((yield intr_2.stall), 0)
 
-        with Simulator(dut, vcd_file=open("test.vcd", "w")) as sim:
-            sim.add_clock(1e-6)
-            sim.add_sync_process(sim_test())
+        sim = Simulator(dut)
+        sim.add_clock(1e-6)
+        sim.add_sync_process(sim_test)
+        with sim.write_vcd(vcd_file=open("test.vcd", "w")):
             sim.run()
 
     def test_lock(self):
@@ -526,9 +530,10 @@ class ArbiterSimulationTestCase(unittest.TestCase):
             self.assertEqual((yield intr_1.ack), 0)
             self.assertEqual((yield intr_2.ack), 1)
 
-        with Simulator(dut, vcd_file=open("test.vcd", "w")) as sim:
-            sim.add_clock(1e-6)
-            sim.add_sync_process(sim_test())
+        sim = Simulator(dut)
+        sim.add_clock(1e-6)
+        sim.add_sync_process(sim_test)
+        with sim.write_vcd(vcd_file=open("test.vcd", "w")):
             sim.run()
 
     def test_stall(self):
@@ -551,8 +556,9 @@ class ArbiterSimulationTestCase(unittest.TestCase):
             self.assertEqual((yield intr_1.stall), 1)
             self.assertEqual((yield intr_2.stall), 1)
 
-        with Simulator(dut, vcd_file=open("test.vcd", "w")) as sim:
-            sim.add_process(sim_test())
+        sim = Simulator(dut)
+        sim.add_process(sim_test)
+        with sim.write_vcd(vcd_file=open("test.vcd", "w")):
             sim.run()
 
     def test_stall_compat(self):
@@ -574,8 +580,9 @@ class ArbiterSimulationTestCase(unittest.TestCase):
             self.assertEqual((yield intr_1.stall), 0)
             self.assertEqual((yield intr_2.stall), 1)
 
-        with Simulator(dut, vcd_file=open("test.vcd", "w")) as sim:
-            sim.add_process(sim_test())
+        sim = Simulator(dut)
+        sim.add_process(sim_test)
+        with sim.write_vcd(vcd_file=open("test.vcd", "w")):
             sim.run()
 
     def test_roundrobin(self):
@@ -633,7 +640,8 @@ class ArbiterSimulationTestCase(unittest.TestCase):
             self.assertEqual((yield intr_2.ack), 0)
             self.assertEqual((yield intr_3.ack), 1)
 
-        with Simulator(dut, vcd_file=open("test.vcd", "w")) as sim:
-            sim.add_clock(1e-6)
-            sim.add_sync_process(sim_test())
+        sim = Simulator(dut)
+        sim.add_clock(1e-6)
+        sim.add_sync_process(sim_test)
+        with sim.write_vcd(vcd_file=open("test.vcd", "w")):
             sim.run()

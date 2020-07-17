@@ -240,9 +240,10 @@ class MultiplexerTestCase(unittest.TestCase):
             self.assertEqual((yield elem_16_rw.w_stb), 1)
             self.assertEqual((yield elem_16_rw.w_data), 0xaa55)
 
-        with Simulator(self.dut, vcd_file=open("test.vcd", "w")) as sim:
-            sim.add_clock(1e-6)
-            sim.add_sync_process(sim_test())
+        sim = Simulator(self.dut)
+        sim.add_clock(1e-6)
+        sim.add_sync_process(sim_test)
+        with sim.write_vcd(vcd_file=open("test.vcd", "w")):
             sim.run()
 
 
@@ -299,9 +300,10 @@ class MultiplexerAlignedTestCase(unittest.TestCase):
             self.assertEqual((yield elem_20_rw.w_stb), 1)
             self.assertEqual((yield elem_20_rw.w_data), 0x3aa55)
 
-        with Simulator(self.dut, vcd_file=open("test.vcd", "w")) as sim:
-            sim.add_clock(1e-6)
-            sim.add_sync_process(sim_test())
+        sim = Simulator(self.dut)
+        sim.add_clock(1e-6)
+        sim.add_sync_process(sim_test)
+        with sim.write_vcd(vcd_file=open("test.vcd", "w")):
             sim.run()
 
 
@@ -398,7 +400,8 @@ class DecoderTestCase(unittest.TestCase):
 
         m = Module()
         m.submodules += self.dut, mux_1, mux_2
-        with Simulator(m, vcd_file=open("test.vcd", "w")) as sim:
-            sim.add_clock(1e-6)
-            sim.add_sync_process(sim_test())
+        sim = Simulator(m)
+        sim.add_clock(1e-6)
+        sim.add_sync_process(sim_test)
+        with sim.write_vcd(vcd_file=open("test.vcd", "w")):
             sim.run()
