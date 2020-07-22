@@ -1,0 +1,26 @@
+on:
+  push: {}
+  pull_request:
+    types: [opened, reopened, synchronize]
+name: CI
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.6', '3.7', '3.8', pypy3]
+    steps:
+    - name: Check out source code
+      uses: actions/checkout@v2
+      with:
+        fetch-depth: 0
+    - name: Set up Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: ${{ matrix.python-version }}
+    - name: Install dependencies
+      run: |
+        pip install -e .
+    - name: Run tests
+      run: |
+        python -m unittest discover
