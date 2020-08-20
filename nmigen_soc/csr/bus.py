@@ -192,19 +192,20 @@ class Multiplexer(Elaboratable):
     are possible for connecting the CSR bus to the CPU:
         * The CPU could access the CSR bus directly (with no intervening logic other than simple
           translation of control signals). In this case, the register alignment should be set
-          to 1, and each *w*-bit register would occupy *ceil(w/n)* addresses from the CPU
-          perspective, requiring the same amount of memory instructions to access.
+          to 1 (i.e. `alignment` should be set to 0), and each *w*-bit register would occupy
+          *ceil(w/n)* addresses from the CPU perspective, requiring the same amount of memory
+          instructions to access.
         * The CPU could also access the CSR bus through a width down-converter, which would issue
           *k/n* CSR accesses for each CPU access. In this case, the register alignment should be
           set to *k/n*, and each *w*-bit register would occupy *ceil(w/k)* addresses from the CPU
           perspective, requiring the same amount of memory instructions to access.
 
-    If alignment is greater than 1, it affects which CSR bus write is considered a write to
-    the last register chunk. For example, if a 24-bit register is used with a 8-bit CSR bus and
-    a CPU with a 32-bit datapath, a write to this register requires 4 CSR bus writes to complete
-    and the 4th write is the one that actually writes the value to the register. This allows
-    determining write latency solely from the amount of addresses the register occupies in
-    the CPU address space, and the width of the CSR bus.
+    If the register alignment (i.e. `2 ** alignment`) is greater than 1, it affects which CSR bus
+    write is considered a write to the last register chunk. For example, if a 24-bit register is
+    used with a 8-bit CSR bus and a CPU with a 32-bit datapath, a write to this register requires
+    4 CSR bus writes to complete and the 4th write is the one that actually writes the value to
+    the register. This allows determining write latency solely from the amount of addresses the
+    register occupies in the CPU address space, and the width of the CSR bus.
 
     Parameters
     ----------
@@ -212,8 +213,8 @@ class Multiplexer(Elaboratable):
         Address width. See :class:`Interface`.
     data_width : int
         Data width. See :class:`Interface`.
-    alignment : int
-        Register alignment. See :class:`Interface`.
+    alignment : log2 of int
+        Register alignment. See :class:`..memory.MemoryMap`.
 
     Attributes
     ----------
@@ -327,8 +328,8 @@ class Decoder(Elaboratable):
         Address width. See :class:`Interface`.
     data_width : int
         Data width. See :class:`Interface`.
-    alignment : int
-        Window alignment. See :class:`Interface`.
+    alignment : log2 of int
+        Window alignment. See :class:`..memory.MemoryMap`.
 
     Attributes
     ----------

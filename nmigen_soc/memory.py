@@ -70,7 +70,7 @@ class MemoryMap:
         Address width.
     data_width : int
         Data width.
-    alignment : int
+    alignment : log2 of int
         Range alignment. Each added resource and window will be placed at an address that is
         a multiple of ``2 ** alignment``, and its size will be rounded up to be a multiple of
         ``2 ** alignment``.
@@ -142,7 +142,7 @@ class MemoryMap:
 
         Arguments
         ---------
-        alignment : int
+        alignment : log2 of int
             Address alignment. The start of the implicit next address will be a multiple of
             ``2 ** max(alignment, self.alignment)``.
 
@@ -216,7 +216,7 @@ class MemoryMap:
         size : int
             Size of the resource, in minimal addressable units. Rounded up to a multiple of
             ``2 ** max(alignment, self.alignment)``.
-        alignment : int or None
+        alignment : log2 of int or None
             Alignment of the resource. If not specified, the memory map alignment is used.
         extend: bool
             Allow memory map extension. If ``True``, the upper bound of the address space is
