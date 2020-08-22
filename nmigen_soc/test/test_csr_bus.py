@@ -84,12 +84,9 @@ class InterfaceTestCase(unittest.TestCase):
                 r"Data width must be a positive integer, not -1"):
             Interface(addr_width=16, data_width=-1)
 
-    def test_get_map_wrong(self):
+    def test_get_map_none(self):
         iface = Interface(addr_width=16, data_width=8)
-        with self.assertRaisesRegex(NotImplementedError,
-                r"Bus interface \(rec iface addr r_data r_stb w_data w_stb\) does not "
-                r"have a memory map"):
-            iface.memory_map
+        self.assertEqual(iface.memory_map, None)
 
     def test_get_map_frozen(self):
         iface = Interface(addr_width=16, data_width=8)
@@ -349,6 +346,12 @@ class DecoderTestCase(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,
                 r"Address range 0x0\.\.0x20000 out of bounds for memory map spanning "
                 r"range 0x0\.\.0x10000 \(16 address bits\)"):
+            self.dut.add(iface)
+
+    def test_add_wrong_no_map(self):
+        iface = Interface(addr_width=10, data_width=8)
+        with self.assertRaisesRegex(ValueError,
+                r"Subordinate bus does not have a memory map"):
             self.dut.add(iface)
 
     def test_sim(self):

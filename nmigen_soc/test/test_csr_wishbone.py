@@ -5,6 +5,7 @@ from nmigen import *
 from nmigen.back.pysim import *
 
 from .. import csr
+from ..memory import MemoryMap
 from ..csr.wishbone import *
 
 
@@ -36,9 +37,17 @@ class WishboneCSRBridgeTestCase(unittest.TestCase):
             WishboneCSRBridge("foo")
 
     def test_wrong_csr_bus_data_width(self):
+        csr_bus = csr.Interface(addr_width=10, data_width=7)
+        csr_bus.memory_map = MemoryMap(addr_width=10, data_width=7)
         with self.assertRaisesRegex(ValueError,
                 r"CSR bus data width must be one of 8, 16, 32, 64, not 7"):
-            WishboneCSRBridge(csr_bus=csr.Interface(addr_width=10, data_width=7))
+            WishboneCSRBridge(csr_bus)
+
+    def test_wrong_csr_bus_no_map(self):
+        csr_bus = csr.Interface(addr_width=10, data_width=8)
+        with self.assertRaisesRegex(ValueError,
+                r"CSR bus does not have a memory map"):
+            WishboneCSRBridge(csr_bus)
 
     def test_narrow(self):
         mux   = csr.Multiplexer(addr_width=10, data_width=8)

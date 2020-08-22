@@ -33,11 +33,9 @@ class SourceTestCase(unittest.TestCase):
                 r"Invalid trigger mode 'foo'; must be one of level, rise, fall"):
             src = Source(trigger="foo")
 
-    def test_get_map_wrong(self):
+    def test_get_map_none(self):
         src = Source()
-        with self.assertRaisesRegex(NotImplementedError,
-                r"Event source \(rec src i trg\) does not have an event map"):
-            src.event_map
+        self.assertEqual(src.event_map, None)
 
     def test_get_map_frozen(self):
         src = Source()

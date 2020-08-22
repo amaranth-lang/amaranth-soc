@@ -109,8 +109,6 @@ class Interface(Record):
 
     Attributes
     ----------
-    memory_map : MemoryMap
-        Map of the bus.
     addr : Signal(addr_width)
         Address for reads and writes.
     r_data : Signal(data_width)
@@ -151,9 +149,21 @@ class Interface(Record):
 
     @property
     def memory_map(self):
-        if self._map is None:
-            raise NotImplementedError("Bus interface {!r} does not have a memory map"
-                                      .format(self))
+        """Map of the bus.
+
+        See :class:`..memory.MemoryMap` for details.
+
+        Return value
+        ------------
+        A :class:`~..memory.MemoryMap` describing the target address space, or ``None`` if the
+        interface does not have a memory map.
+
+        Exceptions
+        ----------
+        Raises :exn:`ValueError` if the setter is called with a memory map whose address width is
+        not equal to the interface address width, or whose data width is not equal to the interface
+        data width.
+        """
         return self._map
 
     @memory_map.setter
@@ -370,6 +380,9 @@ class Decoder(Elaboratable):
             raise ValueError("Subordinate bus has data width {}, which is not the same as "
                              "decoder data width {}"
                              .format(sub_bus.data_width, self._map.data_width))
+
+        if sub_bus.memory_map is None:
+            raise ValueError("Subordinate bus does not have a memory map")
         self._subs[sub_bus.memory_map] = sub_bus
         return self._map.add_window(sub_bus.memory_map, addr=addr, extend=extend)
 

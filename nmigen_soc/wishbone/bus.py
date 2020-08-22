@@ -51,10 +51,6 @@ class Interface(Record):
     of the Wishbone signals. The ``RST_I`` and ``CLK_I`` signals are provided as a part of
     the clock domain that drives the interface.
 
-    Note that the data width of the underlying memory map of the interface is equal to port
-    granularity, not port size. If port granularity is less than port size, then the address width
-    of the underlying memory map is extended to reflect that.
-
     Parameters
     ----------
     addr_width : int
@@ -145,9 +141,25 @@ class Interface(Record):
 
     @property
     def memory_map(self):
-        if self._map is None:
-            raise NotImplementedError("Bus interface {!r} does not have a memory map"
-                                      .format(self))
+        """Map of the bus.
+
+        See :class:`..memory.MemoryMap` for details.
+
+        Note that the data width of the memory map must be equal to port granularity, not port
+        size. If port granularity is less than port size, then the address width of the memory map
+        must be extended to ``self.addr_width + log2(self.data_width / self.granularity)``.
+
+        Return value
+        ------------
+        A :class:`~..memory.MemoryMap` describing the target address space, or ``None`` if the
+        interface does not have a memory map.
+
+        Exceptions
+        ----------
+        Raises :exn:`ValueError` if the setter is called with a memory map whose data width is not
+        equal to port granularity, or whose address width is not equal to the extended port
+        address width.
+        """
         return self._map
 
     @memory_map.setter
@@ -263,6 +275,8 @@ class Decoder(Elaboratable):
                                  "does not have a corresponding input"
                                  .format(opt_output))
 
+        if sub_bus.memory_map is None:
+            raise ValueError("Subordinate bus does not have a memory map")
         self._subs[sub_bus.memory_map] = sub_bus
         return self._map.add_window(sub_bus.memory_map, addr=addr, sparse=sparse, extend=extend)
 

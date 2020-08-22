@@ -49,15 +49,9 @@ class Source(Record):
 
         Return value
         ------------
-        A :class:`EventMap` describing subordinate event sources.
-
-        Exceptions
-        ----------
-        Raises :exn:`NotImplementedError` if the source does not have an event map.
+        An :class:`EventMap` describing subordinate event sources, or ``None`` if the source does
+        not have an event map.
         """
-        if self._map is None:
-            raise NotImplementedError("Event source {!r} does not have an event map"
-                                      .format(self))
         return self._map
 
     @event_map.setter

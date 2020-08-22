@@ -87,12 +87,9 @@ class InterfaceTestCase(unittest.TestCase):
                 r"Optional signal\(s\) 'foo' are not supported"):
             Interface(addr_width=0, data_width=8, features={"foo"})
 
-    def test_get_map_wrong(self):
+    def test_get_map_none(self):
         iface = Interface(addr_width=0, data_width=8)
-        with self.assertRaisesRegex(NotImplementedError,
-                r"Bus interface \(rec iface adr dat_w dat_r sel cyc stb we ack\) does "
-                r"not have a memory map"):
-            iface.memory_map
+        self.assertEqual(iface.memory_map, None)
 
     def test_get_map_frozen(self):
         iface = Interface(addr_width=1, data_width=8)
@@ -179,6 +176,12 @@ class DecoderTestCase(unittest.TestCase):
             r"Address range 0x1\.\.0x100000001 out of bounds for memory map spanning "
             r"range 0x0\.\.0x100000000 \(32 address bits\)"):
             self.dut.add(sub, addr=1)
+
+    def test_add_wrong_no_map(self):
+        sub = Interface(addr_width=31, data_width=32, granularity=16)
+        with self.assertRaisesRegex(ValueError,
+                r"Subordinate bus does not have a memory map"):
+            self.dut.add(sub)
 
 
 class DecoderSimulationTestCase(unittest.TestCase):
