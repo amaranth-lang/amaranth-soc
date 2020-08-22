@@ -122,16 +122,12 @@ class PeripheralInfoTestCase(unittest.TestCase):
     def test_irq_none(self):
         memory_map = MemoryMap(addr_width=1, data_width=8)
         info = PeripheralInfo(memory_map=memory_map, irq=None)
-        with self.assertRaisesRegex(NotImplementedError,
-                r"Peripheral info does not have an IRQ line"):
-            info.irq
+        self.assertEqual(info.irq, None)
 
     def test_irq_default(self):
         memory_map = MemoryMap(addr_width=1, data_width=8)
         info = PeripheralInfo(memory_map=memory_map)
-        with self.assertRaisesRegex(NotImplementedError,
-                r"Peripheral info does not have an IRQ line"):
-            info.irq
+        self.assertEqual(info.irq, None)
 
     def test_irq_wrong(self):
         memory_map = MemoryMap(addr_width=1, data_width=8)

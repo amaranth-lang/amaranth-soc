@@ -176,16 +176,9 @@ class PeripheralInfo:
 
         Return value
         ------------
-        An :class:`event.Source` used by the peripheral to request interrupts. If provided, its
-        event map describes local events.
-
-        Exceptions
-        ----------
-        Raises :exn:`NotImplementedError` if the peripheral info does not have an IRQ line.
+        An :class:`event.Source` used by the peripheral to request interrupts, or ``None`` if the
+        peripheral does not have an IRQ line. If provided, its event map describes local events.
         """
-        if self._irq is None:
-            raise NotImplementedError("Peripheral info does not have an IRQ line"
-                                      .format(self))
         return self._irq
 
     @property

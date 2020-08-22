@@ -53,6 +53,9 @@ class WishboneCSRBridge(Elaboratable):
         self.wb_bus.memory_map = MemoryMap(addr_width=csr_bus.addr_width,
                                            data_width=csr_bus.data_width)
 
+        if self.csr_bus.memory_map is None:
+            raise ValueError("CSR bus does not have a memory map")
+
         # Since granularity of the Wishbone interface matches the data width of the CSR bus,
         # no width conversion is performed, even if the Wishbone data width is greater.
         self.wb_bus.memory_map.add_window(self.csr_bus.memory_map)
