@@ -76,9 +76,6 @@ class Element(Record):
             ]
         super().__init__(layout, name=name, src_loc_at=1 + src_loc_at)
 
-    # FIXME: get rid of this
-    __hash__ = object.__hash__
-
 
 class Interface(Record):
     """CPU-side CSR interface.
