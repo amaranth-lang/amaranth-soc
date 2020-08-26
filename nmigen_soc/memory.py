@@ -186,12 +186,12 @@ class MemoryMap:
         if overlaps:
             overlap_descrs = []
             for overlap in overlaps:
-                if overlap in self._resources:
-                    resource_range = self._resources[overlap]
+                if id(overlap) in self._resources:
+                    _, resource_range = self._resources[id(overlap)]
                     overlap_descrs.append("resource {!r} at {:#x}..{:#x}"
                         .format(overlap, resource_range.start, resource_range.stop))
-                if overlap in self._windows:
-                    window_range = self._windows[overlap]
+                if id(overlap) in self._windows:
+                    _, window_range = self._windows[id(overlap)]
                     overlap_descrs.append("window {!r} at {:#x}..{:#x}"
                         .format(overlap, window_range.start, window_range.stop))
             raise ValueError("Address range {:#x}..{:#x} overlaps with {}"
@@ -231,8 +231,8 @@ class MemoryMap:
         Raises :exn:`ValueError` if the requested address and size, after alignment, would overlap
         with any resources or windows that have already been added, or would be out of bounds.
         """
-        if resource in self._resources:
-            addr_range = self._resources[resource]
+        if id(resource) in self._resources:
+            _, addr_range = self._resources[id(resource)]
             raise ValueError("Resource {!r} is already added at address range {:#x}..{:#x}"
                              .format(resource, addr_range.start, addr_range.stop))
 
@@ -246,7 +246,7 @@ class MemoryMap:
 
         addr_range = self._compute_addr_range(addr, size, alignment=alignment, extend=extend)
         self._ranges.insert(addr_range, resource)
-        self._resources[resource] = addr_range
+        self._resources[id(resource)] = resource, addr_range
         self._next_addr = addr_range.stop
         return addr_range.start, addr_range.stop
 
@@ -259,7 +259,7 @@ class MemoryMap:
         ------------
         A tuple ``resource, (start, end)`` describing the address range assigned to the resource.
         """
-        for resource, resource_range in self._resources.items():
+        for resource, resource_range in self._resources.values():
             yield resource, (resource_range.start, resource_range.stop)
 
     def add_window(self, window, *, addr=None, sparse=None, extend=False):
@@ -313,8 +313,8 @@ class MemoryMap:
         if not isinstance(window, MemoryMap):
             raise TypeError("Window must be a MemoryMap, not {!r}"
                             .format(window))
-        if window in self._windows:
-            addr_range = self._windows[window]
+        if id(window) in self._windows:
+            _, addr_range = self._windows[id(window)]
             raise ValueError("Window {!r} is already added at address range {:#x}..{:#x}"
                              .format(window, addr_range.start, addr_range.stop))
 
@@ -351,7 +351,7 @@ class MemoryMap:
         addr_range = self._compute_addr_range(addr, size, ratio, alignment=alignment,
                                               extend=extend)
         self._ranges.insert(addr_range, window)
-        self._windows[window] = addr_range
+        self._windows[id(window)] = window, addr_range
         self._next_addr = addr_range.stop
         return addr_range.start, addr_range.stop, addr_range.step
 
@@ -367,7 +367,7 @@ class MemoryMap:
         contiguous addresses on the narrower bus that are accessed for each transaction on
         the wider bus. Otherwise, it is always 1.
         """
-        for window, window_range in self._windows.items():
+        for window, window_range in self._windows.values():
             yield window, (window_range.start, window_range.stop, window_range.step)
 
     def window_patterns(self):
@@ -384,7 +384,7 @@ class MemoryMap:
         the narrower bus that are accessed for each transaction on the wider bus. Otherwise,
         it is always 1.
         """
-        for window, window_range in self._windows.items():
+        for window, window_range in self._windows.values():
             const_bits = self.addr_width - window.addr_width
             if const_bits > 0:
                 const_pat = "{:0{}b}".format(window_range.start >> window.addr_width, const_bits)
@@ -418,9 +418,9 @@ class MemoryMap:
         uses sparse addressing.
         """
         for addr_range, assignment in self._ranges.items():
-            if assignment in self._resources:
+            if id(assignment) in self._resources:
                 yield assignment, (addr_range.start, addr_range.stop, self.data_width)
-            elif assignment in self._windows:
+            elif id(assignment) in self._windows:
                 for sub_resource, sub_descr in assignment.all_resources():
                     yield sub_resource, self._translate(*sub_descr, assignment, addr_range)
             else:
@@ -448,11 +448,11 @@ class MemoryMap:
         ----------
         Raises :exn:`KeyError` if the resource is not found.
         """
-        if resource in self._resources:
-            resource_range = self._resources[resource]
+        if id(resource) in self._resources:
+            _, resource_range = self._resources[id(resource)]
             return resource_range.start, resource_range.stop, self.data_width
 
-        for window, window_range in self._windows.items():
+        for window, window_range in self._windows.values():
             try:
                 return self._translate(*window.find_resource(resource), window, window_range)
             except KeyError:
@@ -476,10 +476,10 @@ class MemoryMap:
         if assignment is None:
             return
 
-        if assignment in self._resources:
+        if id(assignment) in self._resources:
             return assignment
-        elif assignment in self._windows:
-            addr_range = self._windows[assignment]
+        elif id(assignment) in self._windows:
+            _, addr_range = self._windows[id(assignment)]
             return assignment.decode_address((address - addr_range.start) // addr_range.step)
         else:
             assert False # :nocov:
