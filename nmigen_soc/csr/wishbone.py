@@ -27,13 +27,15 @@ class WishboneCSRBridge(Elaboratable):
         CSR bus driven by the bridge.
     data_width : int or None
         Wishbone bus data width. If not specified, defaults to ``csr_bus.data_width``.
+    name : str
+        Window name. Optional.
 
     Attributes
     ----------
     wb_bus : :class:`..wishbone.Interface`
         Wishbone bus provided by the bridge.
     """
-    def __init__(self, csr_bus, *, data_width=None):
+    def __init__(self, csr_bus, *, data_width=None, name=None):
         if not isinstance(csr_bus, CSRInterface):
             raise ValueError("CSR bus must be an instance of CSRInterface, not {!r}"
                              .format(csr_bus))
@@ -50,12 +52,12 @@ class WishboneCSRBridge(Elaboratable):
             granularity=csr_bus.data_width,
             name="wb")
 
-        self.wb_bus.memory_map = MemoryMap(addr_width=csr_bus.addr_width,
-                                           data_width=csr_bus.data_width)
-
+        wb_map = MemoryMap(addr_width=csr_bus.addr_width, data_width=csr_bus.data_width,
+                           name=name)
         # Since granularity of the Wishbone interface matches the data width of the CSR bus,
         # no width conversion is performed, even if the Wishbone data width is greater.
-        self.wb_bus.memory_map.add_window(self.csr_bus.memory_map)
+        wb_map.add_window(self.csr_bus.memory_map)
+        self.wb_bus.memory_map = wb_map
 
     def elaborate(self, platform):
         csr_bus = self.csr_bus

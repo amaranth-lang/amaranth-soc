@@ -41,6 +41,22 @@ class RangeMapTestCase(unittest.TestCase):
 
 
 class MemoryMapTestCase(unittest.TestCase):
+    def test_name(self):
+        memory_map_0 = MemoryMap(addr_width=1, data_width=8)
+        memory_map_1 = MemoryMap(addr_width=1, data_width=8, name=None)
+        memory_map_2 = MemoryMap(addr_width=1, data_width=8, name="foo")
+        self.assertEqual(memory_map_0.name, None)
+        self.assertEqual(memory_map_1.name, None)
+        self.assertEqual(memory_map_2.name, "foo")
+
+    def test_wrong_name(self):
+        with self.assertRaisesRegex(ValueError,
+                r"Name must be a non-empty string, not 1"):
+            MemoryMap(addr_width=1, data_width=8, name=1)
+        with self.assertRaisesRegex(ValueError,
+                r"Name must be a non-empty string, not ''"):
+            MemoryMap(addr_width=1, data_width=8, name="")
+
     def test_wrong_addr_width(self):
         with self.assertRaisesRegex(ValueError,
                 r"Address width must be a positive integer, not -1"):
@@ -79,100 +95,121 @@ class MemoryMapTestCase(unittest.TestCase):
 
     def test_add_resource(self):
         memory_map = MemoryMap(addr_width=16, data_width=8)
-        self.assertEqual(memory_map.add_resource("a", size=1), (0, 1))
-        self.assertEqual(memory_map.add_resource(resource="b", size=2), (1, 3))
+        self.assertEqual(memory_map.add_resource("a", name="foo", size=1), (0, 1))
+        self.assertEqual(memory_map.add_resource(resource="b", name="bar", size=2), (1, 3))
 
     def test_add_resource_map_aligned(self):
         memory_map = MemoryMap(addr_width=16, data_width=8, alignment=1)
-        self.assertEqual(memory_map.add_resource("a", size=1), (0, 2))
-        self.assertEqual(memory_map.add_resource("b", size=2), (2, 4))
+        self.assertEqual(memory_map.add_resource("a", name="foo", size=1), (0, 2))
+        self.assertEqual(memory_map.add_resource("b", name="bar", size=2), (2, 4))
 
     def test_add_resource_explicit_aligned(self):
         memory_map = MemoryMap(addr_width=16, data_width=8)
-        self.assertEqual(memory_map.add_resource("a", size=1), (0, 1))
-        self.assertEqual(memory_map.add_resource("b", size=1, alignment=1), (2, 4))
-        self.assertEqual(memory_map.add_resource("c", size=2), (4, 6))
+        self.assertEqual(memory_map.add_resource("a", name="foo", size=1), (0, 1))
+        self.assertEqual(memory_map.add_resource("b", name="bar", size=1, alignment=1), (2, 4))
+        self.assertEqual(memory_map.add_resource("c", name="baz", size=2), (4, 6))
 
     def test_add_resource_addr(self):
         memory_map = MemoryMap(addr_width=16, data_width=8)
-        self.assertEqual(memory_map.add_resource("a", size=1, addr=10), (10, 11))
-        self.assertEqual(memory_map.add_resource("b", size=2), (11, 13))
+        self.assertEqual(memory_map.add_resource("a", name="foo", size=1, addr=10), (10, 11))
+        self.assertEqual(memory_map.add_resource("b", name="bar", size=2), (11, 13))
 
     def test_add_resource_extend(self):
         memory_map = MemoryMap(addr_width=16, data_width=8)
-        self.assertEqual(memory_map.add_resource("a", size=1, addr=0x10000, extend=True),
+        self.assertEqual(memory_map.add_resource("a", name="foo", size=1, addr=0x10000,
+                                                 extend=True),
                          (0x10000, 0x10001))
         self.assertEqual(memory_map.addr_width, 17)
 
     def test_add_resource_size_zero(self):
         memory_map = MemoryMap(addr_width=1, data_width=8)
-        self.assertEqual(memory_map.add_resource("a", size=0), (0, 1))
-        self.assertEqual(memory_map.add_resource("b", size=0), (1, 2))
+        self.assertEqual(memory_map.add_resource("a", name="foo", size=0), (0, 1))
+        self.assertEqual(memory_map.add_resource("b", name="bar", size=0), (1, 2))
+
+    def test_add_resource_wrong_frozen(self):
+        memory_map = MemoryMap(addr_width=2, data_width=8)
+        memory_map.freeze()
+        with self.assertRaisesRegex(ValueError,
+                r"Memory map has been frozen. Cannot add resource 'a'"):
+            memory_map.add_resource("a", name="foo", size=0)
+
+    def test_add_resource_wrong_name(self):
+        memory_map = MemoryMap(addr_width=1, data_width=8)
+        with self.assertRaisesRegex(TypeError, r"Name must be a non-empty string, not 1"):
+            memory_map.add_resource("a", name=1, size=0)
+        with self.assertRaisesRegex(TypeError, r"Name must be a non-empty string, not ''"):
+            memory_map.add_resource("a", name="", size=0)
+
+    def test_add_resource_wrong_name_conflict(self):
+        memory_map = MemoryMap(addr_width=1, data_width=8)
+        memory_map.add_resource("a", name="foo", size=0)
+        with self.assertRaisesRegex(ValueError, r"Name foo is already used by 'a'"):
+            memory_map.add_resource("b", name="foo", size=0)
 
     def test_add_resource_wrong_address(self):
         memory_map = MemoryMap(addr_width=16, data_width=8)
         with self.assertRaisesRegex(ValueError,
                 r"Address must be a non-negative integer, not -1"):
-            memory_map.add_resource("a", size=1, addr=-1)
+            memory_map.add_resource("a", name="foo", size=1, addr=-1)
 
     def test_add_resource_wrong_address_unaligned(self):
         memory_map = MemoryMap(addr_width=16, data_width=8, alignment=1)
         with self.assertRaisesRegex(ValueError,
                 r"Explicitly specified address 0x1 must be a multiple of 0x2 bytes"):
-            memory_map.add_resource("a", size=1, addr=1)
+            memory_map.add_resource("a", name="foo", size=1, addr=1)
 
     def test_add_resource_wrong_size(self):
         memory_map = MemoryMap(addr_width=16, data_width=8)
         with self.assertRaisesRegex(ValueError,
                 r"Size must be a non-negative integer, not -1"):
-            memory_map.add_resource("a", size=-1)
+            memory_map.add_resource("a", name="foo", size=-1)
 
     def test_add_resource_wrong_alignment(self):
         memory_map = MemoryMap(addr_width=16, data_width=8)
         with self.assertRaisesRegex(ValueError,
                 r"Alignment must be a non-negative integer, not -1"):
-            memory_map.add_resource("a", size=1, alignment=-1)
+            memory_map.add_resource("a", name="foo", size=1, alignment=-1)
 
     def test_add_resource_wrong_out_of_bounds(self):
         memory_map = MemoryMap(addr_width=16, data_width=8)
         with self.assertRaisesRegex(ValueError,
                 r"Address range 0x10000\.\.0x10001 out of bounds for memory map spanning "
                 r"range 0x0\.\.0x10000 \(16 address bits\)"):
-            memory_map.add_resource("a", addr=0x10000, size=1)
+            memory_map.add_resource("a", name="foo", addr=0x10000, size=1)
         with self.assertRaisesRegex(ValueError,
                 r"Address range 0x0\.\.0x10001 out of bounds for memory map spanning "
                 r"range 0x0\.\.0x10000 \(16 address bits\)"):
-            memory_map.add_resource("a", size=0x10001)
+            memory_map.add_resource("a", name="foo", size=0x10001)
 
     def test_add_resource_wrong_overlap(self):
         memory_map = MemoryMap(addr_width=16, data_width=8)
-        memory_map.add_resource("a", size=16)
+        memory_map.add_resource("a", name="foo", size=16)
         with self.assertRaisesRegex(ValueError,
                 r"Address range 0xa\.\.0xb overlaps with resource 'a' at 0x0\.\.0x10"):
-            memory_map.add_resource("b", size=1, addr=10)
+            memory_map.add_resource("b", name="bar", size=1, addr=10)
 
     def test_add_resource_wrong_twice(self):
         memory_map = MemoryMap(addr_width=16, data_width=8)
-        memory_map.add_resource("a", size=16)
+        memory_map.add_resource("a", name="foo", size=16)
         with self.assertRaisesRegex(ValueError,
                 r"Resource 'a' is already added at address range 0x0..0x10"):
-            memory_map.add_resource("a", size=16)
+            memory_map.add_resource("a", name="bar", size=16)
 
     def test_iter_resources(self):
         memory_map = MemoryMap(addr_width=16, data_width=8)
-        memory_map.add_resource("a", size=1)
-        memory_map.add_resource("b", size=2)
+        memory_map.add_resource("a", name="foo", size=1)
+        memory_map.add_resource("b", name="bar", size=2)
         self.assertEqual(list(memory_map.resources()), [
-            ("a", (0, 1)),
-            ("b", (1, 3)),
+            ("a", "foo", (0, 1)),
+            ("b", "bar", (1, 3)),
         ])
 
     def test_add_window(self):
         memory_map = MemoryMap(addr_width=16, data_width=8)
-        self.assertEqual(memory_map.add_resource("a", size=1), (0, 1))
+        self.assertEqual(memory_map.add_resource("a", name="foo", size=1), (0, 1))
         self.assertEqual(memory_map.add_window(MemoryMap(addr_width=10, data_width=8)),
                          (0x400, 0x800, 1))
-        self.assertEqual(memory_map.add_resource("b", size=1), (0x800, 0x801))
+        self.assertEqual(memory_map.add_resource("b", name="bar", size=1), (0x800, 0x801))
 
     def test_add_window_sparse(self):
         memory_map = MemoryMap(addr_width=16, data_width=32)
@@ -192,6 +229,14 @@ class MemoryMapTestCase(unittest.TestCase):
                                                extend=True),
                          (0, 0x20000, 1))
         self.assertEqual(memory_map.addr_width, 18)
+
+    def test_add_window_wrong_frozen(self):
+        memory_map = MemoryMap(addr_width=2, data_width=8)
+        memory_map.freeze()
+        with self.assertRaisesRegex(ValueError,
+                r"Memory map has been frozen. Cannot add window "
+                r"<nmigen_soc\.memory\.MemoryMap object at .+?>"):
+            memory_map.add_window(MemoryMap(addr_width=1, data_width=8))
 
     def test_add_window_wrong_window(self):
         memory_map = MemoryMap(addr_width=16, data_width=8)
@@ -244,6 +289,26 @@ class MemoryMapTestCase(unittest.TestCase):
                 r"at address range 0x0\.\.0x400"):
             memory_map.add_window(window)
 
+    def test_add_window_wrong_name_conflict(self):
+        memory_map = MemoryMap(addr_width=2, data_width=8)
+        memory_map.add_resource("a", name="foo", size=0)
+        window = MemoryMap(addr_width=1, data_width=8, name="foo")
+        with self.assertRaisesRegex(ValueError, r"Name foo is already used by 'a'"):
+            memory_map.add_window(window)
+
+    def test_add_window_wrong_name_conflict_subordinate(self):
+        memory_map = MemoryMap(addr_width=2, data_width=8)
+        memory_map.add_resource("a", name="foo", size=0)
+        memory_map.add_resource("b", name="bar", size=0)
+        window = MemoryMap(addr_width=1, data_width=8, name=None)
+        window.add_resource("c", name="foo", size=0)
+        window.add_resource("d", name="bar", size=0)
+        with self.assertRaisesRegex(ValueError,
+                r"The following names are already used: "
+                r"bar is used by 'b'; "
+                r"foo is used by 'a'"):
+            memory_map.add_window(window)
+
     def test_iter_windows(self):
         memory_map = MemoryMap(addr_width=16, data_width=16)
         window_1 = MemoryMap(addr_width=10, data_width=8)
@@ -276,9 +341,9 @@ class MemoryMapTestCase(unittest.TestCase):
 
     def test_align_to(self):
         memory_map = MemoryMap(addr_width=16, data_width=8)
-        self.assertEqual(memory_map.add_resource("a", size=1), (0, 1))
+        self.assertEqual(memory_map.add_resource("a", name="foo", size=1), (0, 1))
         self.assertEqual(memory_map.align_to(10), 0x400)
-        self.assertEqual(memory_map.add_resource("b", size=16), (0x400, 0x410))
+        self.assertEqual(memory_map.add_resource("b", name="bar", size=16), (0x400, 0x410))
 
     def test_align_to_wrong(self):
         memory_map = MemoryMap(addr_width=16, data_width=8)
@@ -291,23 +356,23 @@ class MemoryMapDiscoveryTestCase(unittest.TestCase):
     def setUp(self):
         self.root = MemoryMap(addr_width=32, data_width=32)
         self.res1 = "res1"
-        self.root.add_resource(self.res1, size=16)
+        self.root.add_resource(self.res1, name="name1", size=16)
         self.win1 = MemoryMap(addr_width=16, data_width=32)
-        self.root.add_window(self.win1)
         self.res2 = "res2"
-        self.win1.add_resource(self.res2, size=32)
+        self.win1.add_resource(self.res2, name="name2", size=32)
         self.res3 = "res3"
-        self.win1.add_resource(self.res3, size=32)
+        self.win1.add_resource(self.res3, name="name3", size=32)
+        self.root.add_window(self.win1)
         self.res4 = "res4"
-        self.root.add_resource(self.res4, size=1)
+        self.root.add_resource(self.res4, name="name4", size=1)
         self.win2 = MemoryMap(addr_width=16, data_width=8)
-        self.root.add_window(self.win2, sparse=True)
         self.res5 = "res5"
-        self.win2.add_resource(self.res5, size=16)
-        self.win3 = MemoryMap(addr_width=16, data_width=8)
-        self.root.add_window(self.win3, sparse=False)
+        self.win2.add_resource(self.res5, name="name5", size=16)
+        self.root.add_window(self.win2, sparse=True)
+        self.win3 = MemoryMap(addr_width=16, data_width=8, name="win3")
         self.res6 = "res6"
-        self.win3.add_resource(self.res6, size=16)
+        self.win3.add_resource(self.res6, name="name6", size=16)
+        self.root.add_window(self.win3, sparse=False)
 
     def test_iter_all_resources(self):
         self.assertEqual(list(self.root.all_resources()), [

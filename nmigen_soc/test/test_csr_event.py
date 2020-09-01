@@ -67,8 +67,8 @@ class EventMonitorTestCase(unittest.TestCase):
         monitor.add(sub_1)
         resources = list(monitor.bus.memory_map.resources())
         self.assertEqual(len(resources), 2)
-        enable,  enable_range  = resources[0]
-        pending, pending_range = resources[1]
+        enable,  enable_name,  enable_range  = resources[0]
+        pending, pending_name, pending_range = resources[1]
         self.assertEqual(
             (enable.width, enable.access, enable_range),
             (2, Element.Access.RW, (0, 1))

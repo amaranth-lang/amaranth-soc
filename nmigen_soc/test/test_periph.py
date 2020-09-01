@@ -105,8 +105,8 @@ class PeripheralInfoTestCase(unittest.TestCase):
         memory_map = MemoryMap(addr_width=1, data_width=8)
         info = PeripheralInfo(memory_map=memory_map)
         with self.assertRaisesRegex(ValueError,
-                r"Memory map has been frozen. Address width cannot be extended further"):
-            memory_map.add_resource("a", size=3, extend=True)
+                r"Memory map has been frozen. Cannot add resource 'a'"):
+            memory_map.add_resource("a", name="foo", size=3, extend=True)
 
     def test_memory_map_wrong(self):
         with self.assertRaisesRegex(TypeError,

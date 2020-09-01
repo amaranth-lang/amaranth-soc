@@ -186,6 +186,8 @@ class Decoder(Elaboratable):
         Optional signal set. See :class:`Interface`.
     alignment : log2 of int
         Window alignment. See :class:`..memory.MemoryMap`
+    name : str
+        Window name. Optional.
 
     Attributes
     ----------
@@ -193,7 +195,7 @@ class Decoder(Elaboratable):
         CSR bus providing access to subordinate buses.
     """
     def __init__(self, *, addr_width, data_width, granularity=None, features=frozenset(),
-                 alignment=0):
+                 alignment=0, name=None):
         if granularity is None:
             granularity  = data_width
         _check_interface(addr_width, data_width, granularity, features)
@@ -205,7 +207,8 @@ class Decoder(Elaboratable):
 
         granularity_bits = log2_int(data_width // granularity)
         self._map        = MemoryMap(addr_width=max(1, addr_width + granularity_bits),
-                                     data_width=granularity, alignment=alignment)
+                                     data_width=granularity, alignment=alignment,
+                                     name=name)
         self._subs       = dict()
         self._bus        = None
 
