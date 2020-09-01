@@ -364,8 +364,10 @@ class DecoderTestCase(unittest.TestCase):
         mux_2.add(elem_2, addr=2)
         self.dut.add(mux_2.bus)
 
-        elem_1_addr, _, _ = self.dut.bus.memory_map.find_resource(elem_1)
-        elem_2_addr, _, _ = self.dut.bus.memory_map.find_resource(elem_2)
+        elem_1_info = self.dut.bus.memory_map.find_resource(elem_1)
+        elem_2_info = self.dut.bus.memory_map.find_resource(elem_2)
+        elem_1_addr = elem_1_info.start
+        elem_2_addr = elem_2_info.start
         self.assertEqual(elem_1_addr, 0x0000)
         self.assertEqual(elem_2_addr, 0x0402)
 

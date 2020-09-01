@@ -3,7 +3,7 @@ import bisect
 from nmigen.utils import bits_for
 
 
-__all__ = ["MemoryMap"]
+__all__ = ["ResourceInfo", "MemoryMap"]
 
 
 class _RangeMap:
@@ -45,6 +45,71 @@ class _RangeMap:
     def items(self):
         for key in self._keys:
             yield key, self._values[key]
+
+
+class ResourceInfo:
+    """Resource metadata.
+
+    A wrapper class for resource objects, with their assigned name and address range.
+
+    Parameters
+    ----------
+    resource : object
+        Arbitrary object representing a resource. See :meth:`MemoryMap.add_resource` for details.
+    name : iter(str)
+        Name assigned to the resource. It is prefixed by the name of each window sitting between
+        the resource and the memory map from which this :class:`ResourceInfo` was obtained.
+        See :meth:`MemoryMap.add_window` for details.
+    start : int
+        Start of the address range assigned to the resource.
+    end : int
+        End of the address range assigned to the resource.
+    width : int
+        Amount of data bits accessed at each address. It may be equal to the data width of the
+        memory map from which this :class:`ResourceInfo` was obtained, or less if the resource
+        is located behind a window that uses sparse addressing.
+    """
+    def __init__(self, resource, name, start, end, width):
+        if isinstance(name, str):
+            name = (name,)
+        if not name or not all(isinstance(part, str) and part for part in name):
+            raise TypeError("Name must be a non-empty sequence of non-empty strings, not {!r}"
+                            .format(name))
+        if not isinstance(start, int) or start < 0:
+            raise TypeError("Start address must be a non-negative integer, not {!r}"
+                            .format(start))
+        if not isinstance(end, int) or end <= start:
+            raise TypeError("End address must be an integer greater than the start address, "
+                            "not {!r}".format(end))
+        if not isinstance(width, int) or width < 0:
+            raise TypeError("Width must be a non-negative integer, not {!r}"
+                            .format(width))
+
+        self._resource = resource
+        self._name     = tuple(name)
+        self._start    = start
+        self._end      = end
+        self._width    = width
+
+    @property
+    def resource(self):
+        return self._resource
+
+    @property
+    def name(self):
+        return self._name
+
+    @property
+    def start(self):
+        return self._start
+
+    @property
+    def end(self):
+        return self._end
+
+    @property
+    def width(self):
+        return self._width
 
 
 class MemoryMap:
@@ -450,15 +515,17 @@ class MemoryMap:
             yield window, (pattern, window_range.step)
 
     @staticmethod
-    def _translate(start, end, width, window, window_range):
-        assert (end - start) % window_range.step == 0
+    def _translate(resource_info, window, window_range):
+        assert (resource_info.end - resource_info.start) % window_range.step == 0
         # Accessing a resource through a dense and then a sparse window results in very strange
         # layouts that cannot be easily represented, so reject those.
-        assert window_range.step == 1 or width == window.data_width
-        size   = (end - start) // window_range.step
-        start += window_range.start
-        width *= window_range.step
-        return start, start + size, width
+        assert window_range.step == 1 or resource_info.width == window.data_width
+
+        name  = resource_info.name if window.name is None else (window.name, *resource_info.name)
+        size  = (resource_info.end - resource_info.start) // window_range.step
+        start = resource_info.start + window_range.start
+        width = resource_info.width * window_range.step
+        return ResourceInfo(resource_info.resource, name, start, start + size, width)
 
     def all_resources(self):
         """Iterate all resources and their address ranges.
@@ -468,17 +535,16 @@ class MemoryMap:
 
         Yield values
         ------------
-        A tuple ``resource, (start, end, width)`` describing the address range assigned to
-        the resource. ``width`` is the amount of data bits accessed at each address, which may be
-        equal to ``self.data_width``, or less if the resource is located behind a window that
-        uses sparse addressing.
+        An instance of :class:`ResourceInfo` describing the resource and its address range.
         """
         for addr_range, assignment in self._ranges.items():
             if id(assignment) in self._resources:
-                yield assignment, (addr_range.start, addr_range.stop, self.data_width)
+                _, resource_name, _ = self._resources[id(assignment)]
+                yield ResourceInfo(assignment, resource_name, addr_range.start, addr_range.stop,
+                                   self.data_width)
             elif id(assignment) in self._windows:
-                for sub_resource, sub_descr in assignment.all_resources():
-                    yield sub_resource, self._translate(*sub_descr, assignment, addr_range)
+                for resource_info in assignment.all_resources():
+                    yield self._translate(resource_info, assignment, addr_range)
             else:
                 assert False # :nocov:
 
@@ -495,22 +561,20 @@ class MemoryMap:
 
         Return value
         ------------
-        A tuple ``(start, end, width)`` describing the address range assigned to the resource.
-        ``width`` is the amount of data bits accessed at each address, which may be equal to
-        ``self.data_width``, or less if the resource is located behind a window that uses sparse
-        addressing.
+        An instance of :class:`ResourceInfo` describing the resource and its address range.
 
         Exceptions
         ----------
         Raises :exn:`KeyError` if the resource is not found.
         """
         if id(resource) in self._resources:
-            _, _, resource_range = self._resources[id(resource)]
-            return resource_range.start, resource_range.stop, self.data_width
+            _, resource_name, resource_range = self._resources[id(resource)]
+            return ResourceInfo(resource, resource_name, resource_range.start, resource_range.stop,
+                                self.data_width)
 
         for window, window_range in self._windows.values():
             try:
-                return self._translate(*window.find_resource(resource), window, window_range)
+                return self._translate(window.find_resource(resource), window, window_range)
             except KeyError:
                 pass
 
