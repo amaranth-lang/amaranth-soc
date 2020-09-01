@@ -74,8 +74,10 @@ class MemoryMap:
         Range alignment. Each added resource and window will be placed at an address that is
         a multiple of ``2 ** alignment``, and its size will be rounded up to be a multiple of
         ``2 ** alignment``.
+    name : str
+        Name of the address range. Optional.
     """
-    def __init__(self, *, addr_width, data_width, alignment=0):
+    def __init__(self, *, addr_width, data_width, alignment=0, name=None):
         if not isinstance(addr_width, int) or addr_width <= 0:
             raise ValueError("Address width must be a positive integer, not {!r}"
                              .format(addr_width))
@@ -85,14 +87,18 @@ class MemoryMap:
         if not isinstance(alignment, int) or alignment < 0:
             raise ValueError("Alignment must be a non-negative integer, not {!r}"
                              .format(alignment))
+        if name is not None and not (isinstance(name, str) and name):
+            raise ValueError("Name must be a non-empty string, not {!r}".format(name))
 
         self._addr_width = addr_width
         self._data_width = data_width
         self._alignment  = alignment
+        self._name       = name
 
         self._ranges     = _RangeMap()
         self._resources  = dict()
         self._windows    = dict()
+        self._namespace  = dict()
 
         self._next_addr  = 0
         self._frozen     = False
@@ -123,11 +129,15 @@ class MemoryMap:
     def alignment(self):
         return self._alignment
 
+    @property
+    def name(self):
+        return self._name
+
     def freeze(self):
         """Freeze the memory map.
 
-        Once frozen, the memory map cannot be extended anymore. Resources and windows may
-        still be added, as long as they fit within the address space bounds.
+        Once the memory map is frozen, its visible state becomes immutable. Resources and windows
+        cannot be added anymore, and its address width cannot be extended further.
         """
         self._frozen = True
 
@@ -187,7 +197,7 @@ class MemoryMap:
             overlap_descrs = []
             for overlap in overlaps:
                 if id(overlap) in self._resources:
-                    _, resource_range = self._resources[id(overlap)]
+                    _, _, resource_range = self._resources[id(overlap)]
                     overlap_descrs.append("resource {!r} at {:#x}..{:#x}"
                         .format(overlap, resource_range.start, resource_range.stop))
                 if id(overlap) in self._windows:
@@ -199,7 +209,7 @@ class MemoryMap:
 
         return addr_range
 
-    def add_resource(self, resource, *, size, addr=None, alignment=None, extend=False):
+    def add_resource(self, resource, *, name, size, addr=None, alignment=None, extend=False):
         """Add a resource.
 
         A resource is any device on the bus that is a destination for bus transactions, e.g.
@@ -209,6 +219,9 @@ class MemoryMap:
         ---------
         resource : object
             Arbitrary object representing a resource.
+        name : str
+            Name of the resource. It must not collide with the name of other resources or windows
+            present in this memory map.
         addr : int or None
             Address of the resource. If ``None``, the implicit next address will be used.
             Otherwise, the exact specified address (which must be a multiple of
@@ -228,13 +241,27 @@ class MemoryMap:
 
         Exceptions
         ----------
-        Raises :exn:`ValueError` if the requested address and size, after alignment, would overlap
-        with any resources or windows that have already been added, or would be out of bounds.
+        Raises :exn:`ValueError` if one of the following occurs:
+
+        - this memory map is frozen;
+        - the requested address and size, after alignment, would overlap with any resources or
+        windows that have already been added, or would be out of bounds;
+        - the resource has already been added to this memory map;
+        - the name of the resource is already present in the namespace of this memory map;
         """
+        if self._frozen:
+            raise ValueError("Memory map has been frozen. Cannot add resource {!r}"
+                             .format(resource))
+
         if id(resource) in self._resources:
-            _, addr_range = self._resources[id(resource)]
+            _, _, addr_range = self._resources[id(resource)]
             raise ValueError("Resource {!r} is already added at address range {:#x}..{:#x}"
                              .format(resource, addr_range.start, addr_range.stop))
+
+        if not isinstance(name, str) or not name:
+            raise TypeError("Name must be a non-empty string, not {!r}".format(name))
+        if name in self._namespace:
+            raise ValueError("Name {} is already used by {!r}".format(name, self._namespace[name]))
 
         if alignment is not None:
             if not isinstance(alignment, int) or alignment < 0:
@@ -246,7 +273,8 @@ class MemoryMap:
 
         addr_range = self._compute_addr_range(addr, size, alignment=alignment, extend=extend)
         self._ranges.insert(addr_range, resource)
-        self._resources[id(resource)] = resource, addr_range
+        self._resources[id(resource)] = resource, name, addr_range
+        self._namespace[name] = resource
         self._next_addr = addr_range.stop
         return addr_range.start, addr_range.stop
 
@@ -257,10 +285,11 @@ class MemoryMap:
 
         Yield values
         ------------
-        A tuple ``resource, (start, end)`` describing the address range assigned to the resource.
+        A tuple ``resource, name, (start, end)`` describing the address range assigned to the
+        resource.
         """
-        for resource, resource_range in self._resources.values():
-            yield resource, (resource_range.start, resource_range.stop)
+        for resource, resource_name, resource_range in self._resources.values():
+            yield resource, resource_name, (resource_range.start, resource_range.stop)
 
     def add_window(self, window, *, addr=None, sparse=None, extend=False):
         """Add a window.
@@ -283,7 +312,8 @@ class MemoryMap:
         Arguments
         ---------
         window : :class:`MemoryMap`
-            A memory map describing the layout of the window.
+            A memory map describing the layout of the window. It is frozen as a side-effect of
+            being added to this memory map.
         addr : int or None
             Address of the window. If ``None``, the implicit next address will be used after
             aligning it to ``2 ** window.addr_width``. Otherwise, the exact specified address
@@ -304,15 +334,26 @@ class MemoryMap:
 
         Exceptions
         ----------
-        Raises :exn:`ValueError` if the requested address and size, after alignment, would overlap
-        with any resources or windows that have already been added, or would be out of bounds;
-        if the added memory map has wider datapath than this memory map; if dense address
-        translation is used and the datapath width of this memory map is not an integer multiple
-        of the datapath width of the added memory map.
+        Raises :exn:`ValueError` if one of the following occurs:
+
+        - this memory map is frozen;
+        - the requested address and size, after alignment, would overlap with any resources or
+        windows that have already been added, or would be out of bounds;
+        - the added memory map has a wider datapath than this memory map;
+        - dense address translation is used and the datapath width of this memory map is not an
+        integer multiple of the datapath of the added memory map;
+        - the name of the added memory map is already present in the namespace of this memory map;
+        - the added memory map has no name, and the name of one of its subordinate resources or
+        windows is already present in the namespace of this memory map;
         """
         if not isinstance(window, MemoryMap):
             raise TypeError("Window must be a MemoryMap, not {!r}"
                             .format(window))
+
+        if self._frozen:
+            raise ValueError("Memory map has been frozen. Cannot add window {!r}"
+                             .format(window))
+
         if id(window) in self._windows:
             _, addr_range = self._windows[id(window)]
             raise ValueError("Window {!r} is already added at address range {:#x}..{:#x}"
@@ -334,7 +375,17 @@ class MemoryMap:
                                  "data width {}"
                                  .format(self.data_width, window.data_width))
 
-        window.freeze()
+        if window.name is None:
+            name_conflicts = sorted(self._namespace.keys() & window._namespace.keys())
+            if name_conflicts:
+                name_conflict_descrs = ["{} is used by {!r}".format(name, self._namespace[name])
+                                        for name in name_conflicts]
+                raise ValueError("The following names are already used: {}"
+                                 .format("; ".join(name_conflict_descrs)))
+        else:
+            if window.name in self._namespace:
+                raise ValueError("Name {} is already used by {!r}"
+                                 .format(window.name, self._namespace[window.name]))
 
         if not sparse:
             ratio = self.data_width // window.data_width
@@ -350,8 +401,13 @@ class MemoryMap:
 
         addr_range = self._compute_addr_range(addr, size, ratio, alignment=alignment,
                                               extend=extend)
+        window.freeze()
         self._ranges.insert(addr_range, window)
         self._windows[id(window)] = window, addr_range
+        if window.name is None:
+            self._namespace.update(window._namespace)
+        else:
+            self._namespace[window.name] = window
         self._next_addr = addr_range.stop
         return addr_range.start, addr_range.stop, addr_range.step
 
@@ -449,7 +505,7 @@ class MemoryMap:
         Raises :exn:`KeyError` if the resource is not found.
         """
         if id(resource) in self._resources:
-            _, resource_range = self._resources[id(resource)]
+            _, _, resource_range = self._resources[id(resource)]
             return resource_range.start, resource_range.stop, self.data_width
 
         for window, window_range in self._windows.values():

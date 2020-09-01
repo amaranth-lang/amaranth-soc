@@ -125,29 +125,30 @@ class MultiplexerTestCase(unittest.TestCase):
         self.dut = Multiplexer(addr_width=16, data_width=8)
 
     def test_add_4b(self):
-        self.assertEqual(self.dut.add(Element(4, "rw")),
-                         (0, 1))
+        elem_4b = Element(4, "rw")
+        self.assertEqual(self.dut.add(elem_4b), (0, 1))
 
     def test_add_8b(self):
-        self.assertEqual(self.dut.add(Element(8, "rw")),
-                         (0, 1))
+        elem_8b = Element(8, "rw")
+        self.assertEqual(self.dut.add(elem_8b), (0, 1))
 
     def test_add_12b(self):
-        self.assertEqual(self.dut.add(Element(12, "rw")),
-                         (0, 2))
+        elem_12b = Element(12, "rw")
+        self.assertEqual(self.dut.add(elem_12b), (0, 2))
 
     def test_add_16b(self):
-        self.assertEqual(self.dut.add(Element(16, "rw")),
-                         (0, 2))
+        elem_16b = Element(16, "rw")
+        self.assertEqual(self.dut.add(elem_16b), (0, 2))
 
     def test_add_two(self):
-        self.assertEqual(self.dut.add(Element(16, "rw")),
-                         (0, 2))
-        self.assertEqual(self.dut.add(Element(8, "rw")),
-                         (2, 3))
+        elem_8b  = Element( 8, "rw")
+        elem_16b = Element(16, "rw")
+        self.assertEqual(self.dut.add(elem_16b), (0, 2))
+        self.assertEqual(self.dut.add(elem_8b),  (2, 3))
 
     def test_add_extend(self):
-        self.assertEqual(self.dut.add(Element(8, "rw"), addr=0x10000, extend=True),
+        elem_8b  = Element(8, "rw")
+        self.assertEqual(self.dut.add(elem_8b, addr=0x10000, extend=True),
                          (0x10000, 0x10001))
         self.assertEqual(self.dut.bus.addr_width, 17)
 
@@ -157,27 +158,28 @@ class MultiplexerTestCase(unittest.TestCase):
             self.dut.add(element="foo")
 
     def test_align_to(self):
-        self.assertEqual(self.dut.add(Element(8, "rw")),
-                         (0, 1))
+        elem_0  = Element( 8, "rw")
+        elem_1  = Element( 8, "rw")
+        self.assertEqual(self.dut.add(elem_0), (0, 1))
         self.assertEqual(self.dut.align_to(2), 4)
-        self.assertEqual(self.dut.add(Element(8, "rw")),
-                         (4, 5))
+        self.assertEqual(self.dut.add(elem_1), (4, 5))
 
     def test_add_wrong_out_of_bounds(self):
+        elem = Element(8, "rw")
         with self.assertRaisesRegex(ValueError,
                 r"Address range 0x10000\.\.0x10001 out of bounds for memory map spanning "
                 r"range 0x0\.\.0x10000 \(16 address bits\)"):
-            self.dut.add(Element(8, "rw"), addr=0x10000)
+            self.dut.add(elem, addr=0x10000)
 
     def test_sim(self):
-        bus = self.dut.bus
-
         elem_4_r = Element(4, "r")
         self.dut.add(elem_4_r)
         elem_8_w = Element(8, "w")
         self.dut.add(elem_8_w)
         elem_16_rw = Element(16, "rw")
         self.dut.add(elem_16_rw)
+
+        bus = self.dut.bus
 
         def sim_test():
             yield elem_4_r.r_data.eq(0xa)
@@ -252,30 +254,30 @@ class MultiplexerAlignedTestCase(unittest.TestCase):
         self.dut = Multiplexer(addr_width=16, data_width=8, alignment=2)
 
     def test_add_two(self):
-        self.assertEqual(self.dut.add(Element(8, "rw")),
-                         (0, 4))
-        self.assertEqual(self.dut.add(Element(16, "rw")),
-                         (4, 8))
+        elem_0 = Element( 8, "rw")
+        elem_1 = Element(16, "rw")
+        self.assertEqual(self.dut.add(elem_0), (0, 4))
+        self.assertEqual(self.dut.add(elem_1), (4, 8))
 
     def test_over_align_to(self):
-        self.assertEqual(self.dut.add(Element(8, "rw")),
-                         (0, 4))
+        elem_0 = Element(8, "rw")
+        elem_1 = Element(8, "rw")
+        self.assertEqual(self.dut.add(elem_0), (0, 4))
         self.assertEqual(self.dut.align_to(3), 8)
-        self.assertEqual(self.dut.add(Element(8, "rw")),
-                         (8, 12))
+        self.assertEqual(self.dut.add(elem_1), (8, 12))
 
     def test_under_align_to(self):
-        self.assertEqual(self.dut.add(Element(8, "rw")),
-                         (0, 4))
+        elem_0 = Element(8, "rw")
+        elem_1 = Element(8, "rw")
+        self.assertEqual(self.dut.add(elem_0), (0, 4))
         self.assertEqual(self.dut.align_to(alignment=1), 4)
-        self.assertEqual(self.dut.add(Element(8, "rw")),
-                         (4, 8))
+        self.assertEqual(self.dut.add(elem_1), (4, 8))
 
     def test_sim(self):
-        bus = self.dut.bus
-
         elem_20_rw = Element(20, "rw")
         self.dut.add(elem_20_rw)
+
+        bus = self.dut.bus
 
         def sim_test():
             yield bus.w_stb.eq(1)
@@ -353,14 +355,14 @@ class DecoderTestCase(unittest.TestCase):
 
     def test_sim(self):
         mux_1  = Multiplexer(addr_width=10, data_width=8)
-        self.dut.add(mux_1.bus)
         elem_1 = Element(8, "rw")
         mux_1.add(elem_1)
+        self.dut.add(mux_1.bus)
 
         mux_2  = Multiplexer(addr_width=10, data_width=8)
-        self.dut.add(mux_2.bus)
         elem_2 = Element(8, "rw")
         mux_2.add(elem_2, addr=2)
+        self.dut.add(mux_2.bus)
 
         elem_1_addr, _, _ = self.dut.bus.memory_map.find_resource(elem_1)
         elem_2_addr, _, _ = self.dut.bus.memory_map.find_resource(elem_2)

@@ -212,14 +212,17 @@ class Multiplexer(Elaboratable):
         Data width. See :class:`Interface`.
     alignment : log2 of int
         Register alignment. See :class:`..memory.MemoryMap`.
+    name : str
+        Window name. Optional.
 
     Attributes
     ----------
     bus : :class:`Interface`
         CSR bus providing access to registers.
     """
-    def __init__(self, *, addr_width, data_width, alignment=0):
-        self._map = MemoryMap(addr_width=addr_width, data_width=data_width, alignment=alignment)
+    def __init__(self, *, addr_width, data_width, alignment=0, name=None):
+        self._map = MemoryMap(addr_width=addr_width, data_width=data_width, alignment=alignment,
+                              name=name)
         self._bus = None
 
     @property
@@ -250,7 +253,7 @@ class Multiplexer(Elaboratable):
 
         size = (element.width + self._map.data_width - 1) // self._map.data_width
         return self._map.add_resource(element, size=size, addr=addr, alignment=alignment,
-                                      extend=extend)
+                                      extend=extend, name=element.name)
 
     def elaborate(self, platform):
         m = Module()
@@ -262,7 +265,7 @@ class Multiplexer(Elaboratable):
         # 2-AND or 2-OR gates.
         r_data_fanin = 0
 
-        for elem, (elem_start, elem_end) in self._map.resources():
+        for elem, _, (elem_start, elem_end) in self._map.resources():
             shadow = Signal(elem.width, name="{}__shadow".format(elem.name))
             if elem.access.readable():
                 shadow_en = Signal(elem_end - elem_start, name="{}__shadow_en".format(elem.name))
@@ -327,14 +330,17 @@ class Decoder(Elaboratable):
         Data width. See :class:`Interface`.
     alignment : log2 of int
         Window alignment. See :class:`..memory.MemoryMap`.
+    name : str
+        Window name. Optional.
 
     Attributes
     ----------
     bus : :class:`Interface`
         CSR bus providing access to subordinate buses.
     """
-    def __init__(self, *, addr_width, data_width, alignment=0):
-        self._map  = MemoryMap(addr_width=addr_width, data_width=data_width, alignment=alignment)
+    def __init__(self, *, addr_width, data_width, alignment=0, name=None):
+        self._map  = MemoryMap(addr_width=addr_width, data_width=data_width, alignment=alignment,
+                               name=name)
         self._bus  = None
         self._subs = dict()
 
