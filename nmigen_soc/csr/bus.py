@@ -293,7 +293,9 @@ class Multiplexer(Elaboratable):
                             m.d.sync += shadow_en.eq(self.bus.r_stb << chunk_offset)
 
                         if elem.access.writable():
-                            if chunk_addr == elem_end - 1:
+                            # Write when chunk_addr matches the start address of a chunk
+                            # aligned to the data width of the bus.
+                            if chunk_addr == elem_end - (1 << (log2_int(self.bus.data_width) - 3)):
                                 # Delay by 1 cycle, avoiding combinatorial paths through
                                 # the CSR bus and into CSR registers.
                                 m.d.sync += elem.w_stb.eq(self.bus.w_stb)

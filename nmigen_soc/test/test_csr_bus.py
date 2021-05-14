@@ -7,6 +7,7 @@ from nmigen.back.pysim import *
 
 from ..csr.bus import *
 from ..memory import MemoryMap
+from .utils import MockRegister
 
 
 class ElementTestCase(unittest.TestCase):
@@ -306,6 +307,61 @@ class MultiplexerAlignedTestCase(unittest.TestCase):
         with sim.write_vcd(vcd_file=open("test.vcd", "w")):
             sim.run()
 
+class MultiplexerAlignedWideTestCase(unittest.TestCase):
+    def setUp(self):
+        self.dut = Multiplexer(addr_width=16, data_width=32, alignment=2)
+
+    def test_sim(self):
+        bus = self.dut.bus
+
+        elem_1 = MockRegister("elem1", 32)
+        elem_1_rw = elem_1.element
+        self.dut.add(elem_1_rw)
+        elem_2 = MockRegister("elem2", 32)
+        elem_2_rw = elem_2.element
+        self.dut.add(elem_2_rw)
+
+        def sim_test():
+            # Write 0x01020304 to 0x00
+            yield bus.addr.eq(0)
+            yield bus.w_stb.eq(1)
+            yield bus.w_data.eq(0x01020304)
+            yield
+            self.assertEqual((yield elem_1_rw.w_stb), 0)
+            yield bus.w_stb.eq(0)
+            yield
+            self.assertEqual((yield elem_1_rw.w_stb), 1)
+            self.assertEqual((yield elem_1_rw.w_data), 0x01020304)
+            yield
+            self.assertEqual((yield elem_1_rw.w_stb), 0)
+
+            # Write 0x11223344 to 0x04
+            yield bus.addr.eq(4)
+            yield bus.w_stb.eq(1)
+            yield bus.w_data.eq(0x11223344)
+            yield
+            self.assertEqual((yield elem_2_rw.w_stb), 0)
+            yield bus.w_stb.eq(0)
+            yield
+            self.assertEqual((yield elem_2_rw.w_stb), 1)
+            self.assertEqual((yield elem_2_rw.w_data), 0x11223344)
+
+            # Read from 0x00
+            yield bus.addr.eq(0)
+            yield bus.r_stb.eq(1)
+            yield
+            self.assertEqual((yield elem_1_rw.r_stb), 1)
+            yield bus.r_stb.eq(0)
+            yield
+            self.assertEqual((yield bus.r_data), 0x01020304)
+
+        m = Module()
+        m.submodules += self.dut, elem_1, elem_2
+        sim = Simulator(m)
+        sim.add_clock(1e-6)
+        sim.add_sync_process(sim_test)
+        with sim.write_vcd(vcd_file=open("test.vcd", "w")):
+            sim.run()
 
 class DecoderTestCase(unittest.TestCase):
     def setUp(self):

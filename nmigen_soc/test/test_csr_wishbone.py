@@ -6,27 +6,7 @@ from nmigen.back.pysim import *
 
 from .. import csr
 from ..csr.wishbone import *
-
-
-class MockRegister(Elaboratable):
-    def __init__(self, width):
-        self.element = csr.Element(width, "rw")
-        self.r_count = Signal(8)
-        self.w_count = Signal(8)
-        self.data    = Signal(width)
-
-    def elaborate(self, platform):
-        m = Module()
-
-        with m.If(self.element.r_stb):
-            m.d.sync += self.r_count.eq(self.r_count + 1)
-        m.d.comb += self.element.r_data.eq(self.data)
-
-        with m.If(self.element.w_stb):
-            m.d.sync += self.w_count.eq(self.w_count + 1)
-            m.d.sync += self.data.eq(self.element.w_data)
-
-        return m
+from .utils import MockRegister
 
 
 class WishboneCSRBridgeTestCase(unittest.TestCase):
@@ -42,9 +22,9 @@ class WishboneCSRBridgeTestCase(unittest.TestCase):
 
     def test_narrow(self):
         mux   = csr.Multiplexer(addr_width=10, data_width=8)
-        reg_1 = MockRegister(8)
+        reg_1 = MockRegister("reg_1", 8)
         mux.add(reg_1.element)
-        reg_2 = MockRegister(16)
+        reg_2 = MockRegister("reg_2", 16)
         mux.add(reg_2.element)
         dut   = WishboneCSRBridge(mux.bus)
 
@@ -143,7 +123,7 @@ class WishboneCSRBridgeTestCase(unittest.TestCase):
 
     def test_wide(self):
         mux = csr.Multiplexer(addr_width=10, data_width=8)
-        reg = MockRegister(32)
+        reg = MockRegister("reg", 32)
         mux.add(reg.element)
         dut = WishboneCSRBridge(mux.bus, data_width=32)
 
