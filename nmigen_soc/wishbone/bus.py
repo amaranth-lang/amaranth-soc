@@ -283,7 +283,6 @@ class Decoder(Elaboratable):
                     sub_bus.dat_w.eq(self.bus.dat_w),
                     sub_bus.sel.eq(Cat(Repl(sel, sub_ratio) for sel in self.bus.sel)),
                     sub_bus.we.eq(self.bus.we),
-                    sub_bus.stb.eq(self.bus.stb),
                 ]
                 if hasattr(sub_bus, "lock"):
                     m.d.comb += sub_bus.lock.eq(getattr(self.bus, "lock", 0))
@@ -295,6 +294,7 @@ class Decoder(Elaboratable):
                 granularity_bits = log2_int(self.bus.data_width // self.bus.granularity)
                 with m.Case(sub_pat[:-granularity_bits if granularity_bits > 0 else None]):
                     m.d.comb += [
+                        sub_bus.stb.eq(self.bus.stb),
                         sub_bus.cyc.eq(self.bus.cyc),
                         self.bus.dat_r.eq(sub_bus.dat_r),
                     ]
