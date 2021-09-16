@@ -63,6 +63,7 @@ class WishboneCSRBridgeTestCase(unittest.TestCase):
             self.assertEqual((yield dut.wb_bus.ack), 1)
             yield dut.wb_bus.stb.eq(0)
             yield
+            self.assertEqual((yield dut.wb_bus.ack), 0)
             self.assertEqual((yield reg_1.r_count), 0)
             self.assertEqual((yield reg_1.w_count), 1)
             self.assertEqual((yield reg_1.data), 0x55)
@@ -76,6 +77,7 @@ class WishboneCSRBridgeTestCase(unittest.TestCase):
             yield dut.wb_bus.stb.eq(0)
             self.assertEqual((yield dut.wb_bus.ack), 1)
             yield
+            self.assertEqual((yield dut.wb_bus.ack), 0)
             self.assertEqual((yield reg_2.r_count), 0)
             self.assertEqual((yield reg_2.w_count), 0)
             self.assertEqual((yield reg_2.data), 0)
@@ -89,6 +91,7 @@ class WishboneCSRBridgeTestCase(unittest.TestCase):
             self.assertEqual((yield dut.wb_bus.ack), 1)
             yield dut.wb_bus.stb.eq(0)
             yield
+            self.assertEqual((yield dut.wb_bus.ack), 0)
             self.assertEqual((yield reg_2.r_count), 0)
             self.assertEqual((yield reg_2.w_count), 1)
             self.assertEqual((yield reg_2.data), 0xbbaa)
@@ -104,6 +107,7 @@ class WishboneCSRBridgeTestCase(unittest.TestCase):
             self.assertEqual((yield dut.wb_bus.dat_r), 0x55)
             yield dut.wb_bus.stb.eq(0)
             yield
+            self.assertEqual((yield dut.wb_bus.ack), 0)
             self.assertEqual((yield reg_1.r_count), 1)
             self.assertEqual((yield reg_1.w_count), 1)
 
@@ -116,6 +120,7 @@ class WishboneCSRBridgeTestCase(unittest.TestCase):
             self.assertEqual((yield dut.wb_bus.dat_r), 0xaa)
             yield dut.wb_bus.stb.eq(0)
             yield
+            self.assertEqual((yield dut.wb_bus.ack), 0)
             self.assertEqual((yield reg_2.r_count), 1)
             self.assertEqual((yield reg_2.w_count), 1)
 
@@ -130,6 +135,7 @@ class WishboneCSRBridgeTestCase(unittest.TestCase):
             self.assertEqual((yield dut.wb_bus.dat_r), 0xbb)
             yield dut.wb_bus.stb.eq(0)
             yield
+            self.assertEqual((yield dut.wb_bus.ack), 0)
             self.assertEqual((yield reg_2.r_count), 1)
             self.assertEqual((yield reg_2.w_count), 1)
 
@@ -165,6 +171,7 @@ class WishboneCSRBridgeTestCase(unittest.TestCase):
             self.assertEqual((yield dut.wb_bus.ack), 1)
             yield dut.wb_bus.stb.eq(0)
             yield
+            self.assertEqual((yield dut.wb_bus.ack), 0)
             self.assertEqual((yield reg.r_count), 0)
             self.assertEqual((yield reg.w_count), 1)
             self.assertEqual((yield reg.data), 0x44332211)
@@ -182,6 +189,7 @@ class WishboneCSRBridgeTestCase(unittest.TestCase):
             self.assertEqual((yield dut.wb_bus.ack), 1)
             yield dut.wb_bus.stb.eq(0)
             yield
+            self.assertEqual((yield dut.wb_bus.ack), 0)
             self.assertEqual((yield reg.r_count), 0)
             self.assertEqual((yield reg.w_count), 1)
             self.assertEqual((yield reg.data), 0x44332211)
@@ -200,6 +208,7 @@ class WishboneCSRBridgeTestCase(unittest.TestCase):
             self.assertEqual((yield dut.wb_bus.dat_r), 0x44332211)
             yield dut.wb_bus.stb.eq(0)
             yield
+            self.assertEqual((yield dut.wb_bus.ack), 0)
             self.assertEqual((yield reg.r_count), 1)
             self.assertEqual((yield reg.w_count), 1)
 
@@ -218,6 +227,7 @@ class WishboneCSRBridgeTestCase(unittest.TestCase):
             self.assertEqual((yield dut.wb_bus.dat_r), 0x00332200)
             yield dut.wb_bus.stb.eq(0)
             yield
+            self.assertEqual((yield dut.wb_bus.ack), 0)
             self.assertEqual((yield reg.r_count), 1)
             self.assertEqual((yield reg.w_count), 1)
 
