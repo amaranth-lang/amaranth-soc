@@ -1,7 +1,7 @@
 from enum import Enum
-from nmigen import *
-from nmigen.hdl.rec import Direction
-from nmigen.utils import log2_int
+from amaranth import *
+from amaranth.hdl.rec import Direction
+from amaranth.utils import log2_int
 
 from ..memory import MemoryMap
 
@@ -72,7 +72,7 @@ class Interface(Record):
 
     Attributes
     ----------
-    The correspondence between the nMigen-SoC signals and the Wishbone signals changes depending
+    The correspondence between the Amaranth-SoC signals and the Wishbone signals changes depending
     on whether the interface acts as an initiator or a target.
 
     adr : Signal(addr_width)
@@ -99,7 +99,7 @@ class Interface(Record):
         Optional. Corresponds to Wishbone signal ``STALL_I`` (initiator) or ``STALL_O`` (target).
     lock : Signal()
         Optional. Corresponds to Wishbone signal ``LOCK_O`` (initiator) or ``LOCK_I`` (target).
-        nmigen-soc Wishbone support assumes that initiators that don't want bus arbitration to happen in
+        amaranth-soc Wishbone support assumes that initiators that don't want bus arbitration to happen in
         between two transactions need to use ``lock`` feature to guarantee this. An initiator without
         the ``lock`` feature may be arbitrated in between two transactions even if ``cyc`` is kept high.
     cti : Signal()

@@ -15,18 +15,21 @@ def scm_version():
 
 
 setup(
-    name="nmigen-soc",
+    name="amaranth-soc",
     use_scm_version=scm_version(),
     author="whitequark",
     author_email="whitequark@whitequark.org",
-    description="System on Chip toolkit for nMigen",
+    description="System on Chip toolkit for Amaranth HDL",
     #long_description="""TODO""",
     license="BSD",
     setup_requires=["wheel", "setuptools", "setuptools_scm"],
-    install_requires=["nmigen>=0.2,<0.5"],
+    install_requires=[
+        "amaranth>=0.2,<0.5",
+        "importlib_metadata; python_version<'3.8'",
+    ],
     packages=find_packages(),
     project_urls={
-        "Source Code": "https://github.com/nmigen/nmigen-soc",
-        "Bug Tracker": "https://github.com/nmigen/nmigen-soc/issues",
+        "Source Code": "https://github.com/amaranth-lang/amaranth-soc",
+        "Bug Tracker": "https://github.com/amaranth-lang/amaranth-soc/issues",
     },
 )

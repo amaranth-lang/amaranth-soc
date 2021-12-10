@@ -1,6 +1,6 @@
 import enum
-from nmigen import *
-from nmigen.utils import log2_int
+from amaranth import *
+from amaranth.utils import log2_int
 
 from ..memory import MemoryMap
 

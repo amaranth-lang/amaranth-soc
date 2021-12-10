@@ -1,7 +1,7 @@
 import enum
 from collections import OrderedDict
 
-from nmigen import *
+from amaranth import *
 
 
 __all__ = ["Source", "EventMap", "Monitor"]

@@ -1,9 +1,9 @@
 [run]
 branch = True
 include =
-  nmigen_soc/*
+  amaranth_soc/*
 omit =
-  nmigen_soc/test/*
+  amaranth_soc/test/*
   */__init__.py
 
 [report]

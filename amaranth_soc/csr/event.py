@@ -1,6 +1,6 @@
-# nmigen: UnusedElaboratable=no
+# amaranth: UnusedElaboratable=no
 
-from nmigen import *
+from amaranth import *
 
 from . import Element, Multiplexer
 from .. import event

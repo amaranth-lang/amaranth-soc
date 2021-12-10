@@ -1,7 +1,7 @@
 from collections import OrderedDict
 from collections.abc import Mapping
 
-from nmigen.utils import bits_for
+from amaranth.utils import bits_for
 
 from .memory import MemoryMap
 from . import event

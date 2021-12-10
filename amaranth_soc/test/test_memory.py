@@ -283,7 +283,7 @@ class MemoryMapTestCase(unittest.TestCase):
         memory_map.freeze()
         with self.assertRaisesRegex(ValueError,
                 r"Memory map has been frozen. Cannot add window "
-                r"<nmigen_soc\.memory\.MemoryMap object at .+?>"):
+                r"<amaranth_soc\.memory\.MemoryMap object at .+?>"):
             memory_map.add_window(MemoryMap(addr_width=1, data_width=8))
 
     def test_add_window_wrong_window(self):
@@ -325,7 +325,7 @@ class MemoryMapTestCase(unittest.TestCase):
         memory_map.add_window(MemoryMap(addr_width=10, data_width=8))
         with self.assertRaisesRegex(ValueError,
                 r"Address range 0x200\.\.0x600 overlaps with window "
-                r"<nmigen_soc\.memory\.MemoryMap object at .+?> at 0x0\.\.0x400"):
+                r"<amaranth_soc\.memory\.MemoryMap object at .+?> at 0x0\.\.0x400"):
             memory_map.add_window(MemoryMap(addr_width=10, data_width=8), addr=0x200)
 
     def test_add_window_wrong_twice(self):
@@ -333,7 +333,7 @@ class MemoryMapTestCase(unittest.TestCase):
         window = MemoryMap(addr_width=10, data_width=8)
         memory_map.add_window(window)
         with self.assertRaisesRegex(ValueError,
-                r"Window <nmigen_soc\.memory\.MemoryMap object at .+?> is already added "
+                r"Window <amaranth_soc\.memory\.MemoryMap object at .+?> is already added "
                 r"at address range 0x0\.\.0x400"):
             memory_map.add_window(window)
 

@@ -1,9 +1,9 @@
-# nmigen: UnusedElaboratable=no
+# amaranth: UnusedElaboratable=no
 
 import unittest
-from nmigen import *
-from nmigen.hdl.rec import Layout
-from nmigen.back.pysim import *
+from amaranth import *
+from amaranth.hdl.rec import Layout
+from amaranth.back.pysim import *
 
 from ..csr.bus import *
 from ..memory import MemoryMap

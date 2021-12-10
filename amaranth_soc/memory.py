@@ -1,6 +1,6 @@
 import bisect
 
-from nmigen.utils import bits_for
+from amaranth.utils import bits_for
 
 
 __all__ = ["ResourceInfo", "MemoryMap"]
