@@ -1,12 +1,13 @@
 from enum import Enum
 from amaranth import *
+from amaranth.lib import coding
 from amaranth.hdl.rec import Direction
 from amaranth.utils import log2_int
 
 from ..memory import MemoryMap
 
 
-__all__ = ["CycleType", "BurstTypeExt", "Interface", "Decoder", "Arbiter"]
+__all__ = ["CycleType", "BurstTypeExt", "Interface", "Connector", "Decoder", "Arbiter"]
 
 
 class CycleType(Enum):
@@ -167,6 +168,122 @@ class Interface(Record):
                                      self.addr_width, granularity_bits))
         memory_map.freeze()
         self._map = memory_map
+
+
+class Connector(Elaboratable):
+    """Module to connect one Wishbone initiator bus to one Wishbone subordinate bus
+    
+    This class also handles data_width conversion if the two buses have compatible
+    granularity. This means that granularity of subordinate bus has to be smaller or
+    equal to the granularity of the initiator bus.
+    Currently initiating multiple subordinate bus cycles for initiator bus cycle is
+    not implemented. As a consequence an initiator bus data width bigger than the
+    subordinate bus data width is not supported.
+
+    Parameters:
+    -----------
+    intr_bus : :class:`Interface`
+        The initiator bus
+    sub_bus : :class:`Interface`
+        The subordinate bus
+    """
+    def __init__(self, *, intr_bus, sub_bus):
+        if not isinstance(intr_bus, Interface):
+            raise TypeError("Initiator bus must be an instance of wishbone.Interface, not {!r}"
+                            .format(intr_bus))
+        if not isinstance(sub_bus, Interface):
+            raise TypeError("Subordinate bus must be an instance of wishbone.Interface, not {!r}"
+                            .format(sub_bus))
+        intr_size = (2**intr_bus.addr_width)*intr_bus.data_width
+        sub_size = (2**sub_bus.addr_width)*sub_bus.data_width
+        if intr_size != sub_size:
+            raise ValueError("Total bit size of initiator and subordinate bus have to be the same")
+        if sub_bus.granularity > intr_bus.granularity:
+            raise ValueError(
+                "Granularity of subordinate bus has to be smaller or equal to "
+                "granulariy of initiator bus"
+            )
+        for opt_output in {"lock"}:
+            if hasattr(intr_bus, opt_output) and not hasattr(sub_bus, opt_output):
+                raise ValueError("Initiator bus has optional output {!r}, but the subordinate bus "
+                                 "does not have a corresponding input"
+                                 .format(opt_output))
+        for opt_output in {"err", "rty"}:
+            if hasattr(sub_bus, opt_output) and not hasattr(intr_bus, opt_output):
+                raise ValueError("Subordinate bus has optional output {!r}, but the initiator bus "
+                                 "does not have a corresponding input"
+                                 .format(opt_output))
+        if intr_bus.data_width > sub_bus.data_width:
+            raise NotImplementedError(
+                "Support for multi-cycle bus operation when initiator data_width is"
+                "bigger than the subordinate one is not implemented."
+            )
+
+        self.intr_bus = intr_bus
+        self.sub_bus = sub_bus
+
+    def elaborate(self, platform):
+        m = Module()
+
+        common_addr_width = min(self.intr_bus.addr_width, self.sub_bus.addr_width)
+        m.d.comb += [
+            self.sub_bus.cyc.eq(self.intr_bus.cyc),
+            self.sub_bus.we.eq(self.intr_bus.we),
+            self.sub_bus.adr[(self.sub_bus.addr_width-common_addr_width):self.sub_bus.addr_width].eq(
+                self.intr_bus.adr[(self.intr_bus.addr_width-common_addr_width):self.intr_bus.addr_width]
+            ),
+            self.intr_bus.ack.eq(self.sub_bus.ack),
+        ]
+        if hasattr(self.intr_bus, "err"):
+            m.d.comb += self.intr_bus.err.eq(getattr(self.sub_bus, "err", 0))
+        if hasattr(self.intr_bus, "rty"):
+            m.d.comb += self.intr_bus.rty.eq(getattr(self.sub_bus, "rty", 0))
+        if hasattr(self.sub_bus, "lock"):
+            m.d.comb += self.sub_bus.lock.eq(getattr(self.intr_bus, "lock", 0))
+        if hasattr(self.sub_bus, "cti"):
+            m.d.comb += self.sub_bus.cti.eq(getattr(self.intr_bus, "cti", CycleType.CLASSIC))
+        if hasattr(self.sub_bus, "bte"):
+            m.d.comb += self.sub_bus.bte.eq(getattr(self.intr_bus, "bte", BurstTypeExt.LINEAR))
+
+        # stb and stall for different pipeline combinations of initiator and subordinate bus
+        if hasattr(self.intr_bus, "stall") == hasattr(self.sub_bus, "stall"):
+            m.d.comb += self.sub_bus.stb.eq(self.intr_bus.stb)
+            if hasattr(self.intr_bus, "stall"):
+                m.d.comb += self.intr_bus.stall.eq(self.sub_bus.stall)
+        elif hasattr(self.intr_bus, "stall"):
+            # See Wishbone B4 spec: 5.2 Pipelined master connected to standard slave
+            m.d.comb += [
+                self.sub_bus.stb.eq(self.intr_bus.stb),
+                self.intr_bus.stall.eq(self.intr_bus.cyc & ~self.sub_bus.ack),
+            ]
+        else:
+            # See Wishbone B4 spec: 5.1 Standard master connected to pipelined slave
+            wait4ack = Signal()
+            m.d.sync += wait4ack.eq(self.intr_bus.stb & ~(wait4ack & self.sub_bus.ack))
+            m.d.comb += self.sub_bus.stb.eq(self.intr_bus.stb & ~wait4ack)
+
+        # Data and sel width conversion
+        m.submodules.sel_decoder = sel_decoder = coding.Decoder(width=1<<(self.intr_bus.addr_width-self.sub_bus.addr_width))
+        sel_from_granularity = Const(-1, self.intr_bus.granularity//self.sub_bus.granularity)
+        m.d.comb += [
+            sel_decoder.i.eq(self.intr_bus.adr[:self.intr_bus.addr_width-self.sub_bus.addr_width]),
+            self.sub_bus.dat_w.eq(Repl(self.intr_bus.dat_w, self.sub_bus.data_width//self.intr_bus.data_width)),
+            self.intr_bus.dat_r.eq(self.sub_bus.dat_r.word_select(sel_decoder.i, self.intr_bus.data_width)),
+            self.sub_bus.sel.eq(
+                Cat(
+                    Cat(
+                        Cat(
+                            sel_a & sel_i & sel_g
+                            for sel_g in sel_from_granularity
+                        )
+                        for sel_i in self.intr_bus.sel
+                    )
+                    for sel_a in sel_decoder.o
+                )
+            ),
+        ]
+
+        return m
 
 
 class Decoder(Elaboratable):

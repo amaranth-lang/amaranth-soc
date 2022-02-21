@@ -123,6 +123,269 @@ class InterfaceTestCase(unittest.TestCase):
             iface.memory_map = MemoryMap(addr_width=30, data_width=8)
 
 
+class ConnectorTestCase(unittest.TestCase):
+    def test_wrong_intr(self):
+        sub_bus = Interface(addr_width=10, data_width=8)
+        with self.assertRaisesRegex(TypeError,
+                r"Initiator bus must be an instance of wishbone.Interface, not 'foo'"):
+            Connector(intr_bus="foo", sub_bus=sub_bus)
+
+    def test_wrong_sub(self):
+        intr_bus = Interface(addr_width=10, data_width=8)
+        with self.assertRaisesRegex(TypeError,
+                r"Subordinate bus must be an instance of wishbone.Interface, not 'foo'"):
+            Connector(intr_bus=intr_bus, sub_bus="foo")
+
+    def test_wrong_bitsize(self):
+        intr_bus = Interface(addr_width=10, data_width=32)
+        sub_bus = Interface(addr_width=10, data_width=8)
+        with self.assertRaisesRegex(ValueError,
+                r"Total bit size of initiator and subordinate bus have to be the same"):
+            Connector(intr_bus=intr_bus, sub_bus=sub_bus)
+
+    def test_wrong_granularity(self):
+        intr_bus = Interface(addr_width=12, data_width=8)
+        sub_bus = Interface(addr_width=10, data_width=32)
+        with self.assertRaisesRegex(ValueError,
+                r"Granularity of subordinate bus has to be smaller or equal to "
+                r"granulariy of initiator bus"):
+            Connector(intr_bus=intr_bus, sub_bus=sub_bus)
+
+    def test_lock_mismatch(self):
+        intr_bus = Interface(addr_width=10, data_width=8, features={"lock"})
+        sub_bus = Interface(addr_width=10, data_width=8)
+        with self.assertRaisesRegex(ValueError,
+                r"Initiator bus has optional output 'lock', but the subordinate bus "
+                r"does not have a corresponding input"):
+            Connector(intr_bus=intr_bus, sub_bus=sub_bus)
+
+    def test_err_mismatch(self):
+        intr_bus = Interface(addr_width=10, data_width=8)
+        sub_bus = Interface(addr_width=10, data_width=8, features={"err"})
+        with self.assertRaisesRegex(ValueError,
+                r"Subordinate bus has optional output 'err', but the initiator bus "
+                r"does not have a corresponding input"):
+            Connector(intr_bus=intr_bus, sub_bus=sub_bus)
+
+    def test_rty_mismatch(self):
+        intr_bus = Interface(addr_width=10, data_width=8)
+        sub_bus = Interface(addr_width=10, data_width=8, features={"rty"})
+        with self.assertRaisesRegex(ValueError,
+                r"Subordinate bus has optional output 'rty', but the initiator bus "
+                r"does not have a corresponding input"):
+            Connector(intr_bus=intr_bus, sub_bus=sub_bus)
+
+    def test_not_implemented_multicycle(self):
+        intr_bus = Interface(addr_width=10, data_width=32)
+        sub_bus = Interface(addr_width=12, data_width=8)
+        with self.assertRaisesRegex(NotImplementedError,
+                r"Support for multi-cycle bus operation when initiator data_width is"
+                r"bigger than the subordinate one is not implemented."):
+            Connector(intr_bus=intr_bus, sub_bus=sub_bus)
+
+
+class ConnectorSimulationTestCase(unittest.TestCase):
+    def test_same(self):
+        intr_bus = Interface(addr_width=10, data_width=32, granularity=8)
+        sub_bus = Interface(addr_width=10, data_width=32, granularity=8)
+        dut = Connector(intr_bus=intr_bus, sub_bus=sub_bus)
+
+        def sim_test():
+            yield intr_bus.adr.eq(1)
+            yield intr_bus.we.eq(0)
+            yield intr_bus.cyc.eq(1)
+            yield intr_bus.stb.eq(1)
+            yield intr_bus.sel.eq(5)
+            yield Delay(1e-6)
+            self.assertEqual((yield sub_bus.adr), 1)
+            self.assertEqual((yield sub_bus.we), 0)
+            self.assertEqual((yield sub_bus.cyc), 1)
+            self.assertEqual((yield sub_bus.stb), 1)
+            self.assertEqual((yield sub_bus.sel), 5)
+            yield sub_bus.ack.eq(1)
+            yield Delay(1e-6)
+            self.assertEqual((yield intr_bus.ack), 1)
+            yield intr_bus.adr.eq(127)
+            yield intr_bus.we.eq(1)
+            yield intr_bus.cyc.eq(1)
+            yield intr_bus.stb.eq(0)
+            yield intr_bus.sel.eq(10)
+            yield Delay(1e-6)
+            self.assertEqual((yield sub_bus.adr), 127)
+            self.assertEqual((yield sub_bus.we), 1)
+            self.assertEqual((yield sub_bus.cyc), 1)
+            self.assertEqual((yield sub_bus.stb), 0)
+            self.assertEqual((yield sub_bus.sel), 10)
+
+        sim = Simulator(dut)
+        sim.add_process(sim_test)
+        with sim.write_vcd(vcd_file=open("test.vcd", "w")):
+            sim.run()
+
+    def test_same_pipelined(self):
+        intr_bus = Interface(addr_width=10, data_width=8, features={"stall"})
+        sub_bus = Interface(addr_width=10, data_width=8, features={"stall"})
+        dut = Connector(intr_bus=intr_bus, sub_bus=sub_bus)
+
+        def sim_test():
+            yield intr_bus.adr.eq(1)
+            yield intr_bus.we.eq(0)
+            yield intr_bus.cyc.eq(1)
+            yield intr_bus.stb.eq(1)
+            yield intr_bus.sel.eq(1)
+            yield sub_bus.stall.eq(1)
+            yield Delay(1e-6)
+            self.assertEqual((yield sub_bus.adr), 1)
+            self.assertEqual((yield sub_bus.we), 0)
+            self.assertEqual((yield sub_bus.cyc), 1)
+            self.assertEqual((yield sub_bus.stb), 1)
+            self.assertEqual((yield sub_bus.sel), 1)
+            self.assertEqual((yield intr_bus.stall), 1)
+            yield sub_bus.stall.eq(0)
+            yield Delay(1e-6)
+            self.assertEqual((yield intr_bus.stall), 0)
+            yield sub_bus.ack.eq(1)
+            yield Delay(1e-6)
+            self.assertEqual((yield intr_bus.ack), 1)
+
+        sim = Simulator(dut)
+        sim.add_process(sim_test)
+        with sim.write_vcd(vcd_file=open("test.vcd", "w")):
+            sim.run()
+
+    def test_default(self):
+        intr_bus = Interface(addr_width=10, data_width=8, features={"err", "rty"})
+        sub_bus = Interface(addr_width=10, data_width=8, features={"lock", "cti", "bte"})
+        dut = Connector(intr_bus=intr_bus, sub_bus=sub_bus)
+
+        def sim_test():
+            yield Delay(1e-6)
+            self.assertEqual((yield intr_bus.err), 0)
+            self.assertEqual((yield intr_bus.rty), 0)
+            self.assertEqual((yield sub_bus.lock), 0)
+            self.assertEqual((yield sub_bus.cti), CycleType.CLASSIC.value)
+            self.assertEqual((yield sub_bus.bte), BurstTypeExt.LINEAR.value)
+
+        sim = Simulator(dut)
+        sim.add_process(sim_test)
+        with sim.write_vcd(vcd_file=open("test.vcd", "w")):
+            sim.run()
+
+    def test_conv_granularity(self):
+        intr_bus = Interface(addr_width=10, data_width=32)
+        sub_bus = Interface(addr_width=10, data_width=32, granularity=8)
+        dut = Connector(intr_bus=intr_bus, sub_bus=sub_bus)
+
+        def sim_test():
+            yield intr_bus.sel.eq(1)
+            yield Delay(1e-6)
+            self.assertEqual((yield sub_bus.sel), 0b1111)
+            yield intr_bus.sel.eq(0)
+            yield Delay(1e-6)
+            self.assertEqual((yield sub_bus.sel), 0b0000)
+
+        sim = Simulator(dut)
+        sim.add_process(sim_test)
+        with sim.write_vcd(vcd_file=open("test.vcd", "w")):
+            sim.run()
+
+    def test_conv_addr_width(self):
+        intr_bus = Interface(addr_width=12, data_width=8)
+        sub_bus = Interface(addr_width=10, data_width=32, granularity=8)
+        dut = Connector(intr_bus=intr_bus, sub_bus=sub_bus)
+
+        def sim_test():
+            yield intr_bus.adr.eq(1)
+            yield intr_bus.sel.eq(1)
+            yield intr_bus.dat_w.eq(0xA5)
+            yield sub_bus.dat_r.eq(0x03020100)
+            yield Delay(1e-6)
+            self.assertEqual((yield sub_bus.sel), 0b0010)
+            self.assertEqual((yield sub_bus.dat_w), 0xA5A5A5A5)
+            self.assertEqual((yield intr_bus.dat_r), 0x01)
+
+        sim = Simulator(dut)
+        sim.add_process(sim_test)
+        with sim.write_vcd(vcd_file=open("test.vcd", "w")):
+            sim.run()
+
+    def test_conv_granularity_addr_width(self):
+        intr_bus = Interface(addr_width=11, data_width=16)
+        sub_bus = Interface(addr_width=10, data_width=32, granularity=8)
+        dut = Connector(intr_bus=intr_bus, sub_bus=sub_bus)
+
+        def sim_test():
+            yield intr_bus.adr.eq(3)
+            yield intr_bus.sel.eq(1)
+            yield intr_bus.dat_w.eq(0xA55A)
+            yield sub_bus.dat_r.eq(0x03020100)
+            yield Delay(1e-6)
+            self.assertEqual((yield sub_bus.sel), 0b1100)
+            self.assertEqual((yield sub_bus.dat_w), 0xA55AA55A)
+            self.assertEqual((yield intr_bus.dat_r), 0x0302)
+
+        sim = Simulator(dut)
+        sim.add_process(sim_test)
+        with sim.write_vcd(vcd_file=open("test.vcd", "w")):
+            sim.run()
+
+    def test_pipelined_initiator(self):
+        intr_bus = Interface(addr_width=10, data_width=8, features={"stall"})
+        sub_bus = Interface(addr_width=10, data_width=8)
+        dut = Connector(intr_bus=intr_bus, sub_bus=sub_bus)
+
+        def sim_test():
+            yield intr_bus.adr.eq(1)
+            yield intr_bus.sel.eq(1)
+            yield intr_bus.cyc.eq(1)
+            yield intr_bus.stb.eq(1)
+            yield Delay(1e-7)
+            self.assertEqual((yield sub_bus.cyc), 1)
+            self.assertEqual((yield sub_bus.stb), 1)
+            self.assertEqual((yield intr_bus.ack), 0)
+            self.assertEqual((yield intr_bus.stall), 1)
+            yield Delay(1e-7)
+            yield sub_bus.ack.eq(1)
+            yield Delay(1e-7)
+            self.assertEqual((yield intr_bus.stall), 0)
+
+        sim = Simulator(dut)
+        sim.add_process(sim_test)
+        with sim.write_vcd(vcd_file=open("test.vcd", "w")):
+            sim.run()
+
+    def test_pipelined_subordinate(self):
+        intr_bus = Interface(addr_width=10, data_width=8)
+        sub_bus = Interface(addr_width=10, data_width=8, features={"stall"})
+        dut = Connector(intr_bus=intr_bus, sub_bus=sub_bus)
+
+        def sim_test():
+            yield intr_bus.adr.eq(1)
+            yield intr_bus.sel.eq(1)
+            yield intr_bus.cyc.eq(1)
+            yield intr_bus.stb.eq(1)
+            yield Delay(1e-8)
+            self.assertEqual((yield sub_bus.cyc), 1)
+            self.assertEqual((yield sub_bus.stb), 1)
+            self.assertEqual((yield intr_bus.ack), 0)
+            yield
+            yield sub_bus.ack.eq(1)
+            yield Delay(1e-8)
+            self.assertEqual((yield intr_bus.ack), 1)
+            yield intr_bus.stb.eq(0)
+            yield
+            self.assertEqual((yield intr_bus.ack), 1)
+            yield sub_bus.ack.eq(0)
+            yield
+            self.assertEqual((yield intr_bus.ack), 0)
+
+        sim = Simulator(dut)
+        sim.add_clock(1e-6)
+        sim.add_sync_process(sim_test)
+        with sim.write_vcd(vcd_file=open("test.vcd", "w")):
+            sim.run()
+
+
 class DecoderTestCase(unittest.TestCase):
     def setUp(self):
         self.dut = Decoder(addr_width=31, data_width=32, granularity=16)
