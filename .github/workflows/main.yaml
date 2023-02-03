@@ -1,26 +1,36 @@
-on:
-  push: {}
-  pull_request:
-    types: [opened, reopened, synchronize]
+on: [push, pull_request]
 name: CI
 jobs:
   test:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ['3.6', '3.7', '3.8', pypy3]
+        python-version:
+        - '3.7'
+        # this version range needs to be synchronized with the one in pyproject.toml
+        amaranth-version:
+        - '0.3'
+        - 'git'
+      fail-fast: false
     steps:
-    - name: Check out source code
-      uses: actions/checkout@v2
-      with:
-        fetch-depth: 0
-    - name: Set up Python
-      uses: actions/setup-python@v2
-      with:
-        python-version: ${{ matrix.python-version }}
-    - name: Install dependencies
-      run: |
-        pip install -e .
-    - name: Run tests
-      run: |
-        python -m unittest discover
+      - name: Check out source code
+        uses: actions/checkout@v3
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install Amaranth release
+        if: ${{ matrix.amaranth-version != 'git' }}
+        run: |
+          pip install 'amaranth==${{ matrix.amaranth-version }}'
+      - name: Downgrade MarkupSafe
+        if: ${{ matrix.amaranth-version == '0.3' }}
+        run: |
+          pip install 'MarkupSafe==2.0.1'
+      - name: Install Amaranth from git
+        if: ${{ matrix.amaranth-version == 'git' }}
+        run: |
+          pip install git+https://github.com/amaranth-lang/amaranth.git
+      - name: Test
+        run: |
+          python -m unittest discover
