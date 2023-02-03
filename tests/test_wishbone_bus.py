@@ -3,10 +3,10 @@
 import unittest
 from amaranth import *
 from amaranth.hdl.rec import *
-from amaranth.back.pysim import *
+from amaranth.sim import *
 
-from ..wishbone.bus import *
-from ..memory import MemoryMap
+from amaranth_soc.wishbone.bus import *
+from amaranth_soc.memory import MemoryMap
 
 
 class InterfaceTestCase(unittest.TestCase):

@@ -2,10 +2,10 @@
 
 import unittest
 from amaranth import *
-from amaranth.back.pysim import *
+from amaranth.sim import *
 
-from .. import csr
-from ..csr.wishbone import *
+from amaranth_soc import csr
+from amaranth_soc.csr.wishbone import *
 
 
 class MockRegister(Elaboratable):

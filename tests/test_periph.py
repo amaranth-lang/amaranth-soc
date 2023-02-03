@@ -1,8 +1,8 @@
 import unittest
 
-from ..periph import *
-from ..memory import MemoryMap
-from .. import event
+from amaranth_soc.periph import *
+from amaranth_soc.memory import MemoryMap
+from amaranth_soc import event
 
 
 class ConstantBoolTestCase(unittest.TestCase):

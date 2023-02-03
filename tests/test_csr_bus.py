@@ -3,10 +3,10 @@
 import unittest
 from amaranth import *
 from amaranth.hdl.rec import Layout
-from amaranth.back.pysim import *
+from amaranth.sim import *
 
-from ..csr.bus import *
-from ..memory import MemoryMap
+from amaranth_soc.csr.bus import *
+from amaranth_soc.memory import MemoryMap
 
 
 class ElementTestCase(unittest.TestCase):

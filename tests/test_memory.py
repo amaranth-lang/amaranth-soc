@@ -1,6 +1,6 @@
 import unittest
 
-from ..memory import _RangeMap, ResourceInfo, MemoryMap
+from amaranth_soc.memory import _RangeMap, ResourceInfo, MemoryMap
 
 
 class RangeMapTestCase(unittest.TestCase):

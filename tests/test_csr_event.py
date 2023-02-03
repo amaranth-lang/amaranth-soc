@@ -2,10 +2,10 @@
 
 import unittest
 from amaranth import *
-from amaranth.back.pysim import *
+from amaranth.sim import *
 
-from ..csr import *
-from .. import event
+from amaranth_soc.csr import *
+from amaranth_soc import event
 
 
 def simulation_test(dut, process):

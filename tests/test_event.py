@@ -2,9 +2,9 @@
 
 import unittest
 from amaranth import *
-from amaranth.back.pysim import *
+from amaranth.sim import *
 
-from ..event import *
+from amaranth_soc.event import *
 
 
 def simulation_test(dut, process):
