@@ -1,3 +1,24 @@
 [build-system]
-requires = ["wheel", "setuptools", "setuptools_scm"]
+requires = ["wheel", "setuptools~=67.0", "setuptools_scm[toml]>=6.2"]
 build-backend = "setuptools.build_meta"
+
+[project]
+dynamic = ["version"]
+
+name = "amaranth-soc"
+description = "System on Chip toolkit for Amaranth HDL"
+authors = [{name = "Amaranth HDL contributors"}]
+license = {file = "LICENSE.txt"}
+
+dependencies = [
+  "importlib_metadata; python_version<'3.8'",
+  # this version requirement needs to be synchronized with the one in .github/workflows/main.yml
+  "amaranth>=0.3,<0.5",
+]
+
+[project.urls]
+"Source Code" = "https://github.com/amaranth-lang/amaranth-soc"
+"Bug Tracker" = "https://github.com/amaranth-lang/amaranth-soc/issues"
+
+[tool.setuptools_scm]
+local_scheme = "node-and-timestamp"
