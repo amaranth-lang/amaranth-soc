@@ -192,7 +192,7 @@ class Decoder(Elaboratable):
     Attributes
     ----------
     bus : :class:`Interface`
-        CSR bus providing access to subordinate buses.
+        Wishbone bus providing access to subordinate buses.
     """
     def __init__(self, *, addr_width, data_width, granularity=None, features=frozenset(),
                  alignment=0, name=None):
