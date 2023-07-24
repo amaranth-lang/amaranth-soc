@@ -172,81 +172,103 @@ class MultiplexerTestCase(unittest.TestCase):
             self.dut.add(elem, addr=0x10000)
 
     def test_sim(self):
-        elem_4_r = Element(4, "r")
-        self.dut.add(elem_4_r)
-        elem_8_w = Element(8, "w")
-        self.dut.add(elem_8_w)
-        elem_16_rw = Element(16, "rw")
-        self.dut.add(elem_16_rw)
+        for shadow_overlaps in [None, 0, 1]:
+            with self.subTest(shadow_overlaps=shadow_overlaps):
+                dut = Multiplexer(addr_width=16, data_width=8, shadow_overlaps=shadow_overlaps)
 
-        bus = self.dut.bus
+                elem_4_r = Element(4, "r")
+                dut.add(elem_4_r)
+                elem_8_w = Element(8, "w")
+                dut.add(elem_8_w)
+                elem_16_rw = Element(16, "rw")
+                dut.add(elem_16_rw)
 
-        def sim_test():
-            yield elem_4_r.r_data.eq(0xa)
-            yield elem_16_rw.r_data.eq(0x5aa5)
+                bus = dut.bus
 
-            yield bus.addr.eq(0)
-            yield bus.r_stb.eq(1)
-            yield
-            yield bus.r_stb.eq(0)
-            self.assertEqual((yield elem_4_r.r_stb), 1)
-            self.assertEqual((yield elem_16_rw.r_stb), 0)
-            yield
-            self.assertEqual((yield bus.r_data), 0xa)
+                def sim_test():
+                    yield elem_4_r.r_data.eq(0xa)
+                    yield elem_16_rw.r_data.eq(0x5aa5)
 
-            yield bus.addr.eq(2)
-            yield bus.r_stb.eq(1)
-            yield
-            yield bus.r_stb.eq(0)
-            self.assertEqual((yield elem_4_r.r_stb), 0)
-            self.assertEqual((yield elem_16_rw.r_stb), 1)
-            yield
-            yield bus.addr.eq(3) # pipeline a read
-            self.assertEqual((yield bus.r_data), 0xa5)
+                    yield bus.addr.eq(0)
+                    yield bus.r_stb.eq(1)
+                    yield
+                    yield bus.r_stb.eq(0)
+                    self.assertEqual((yield elem_4_r.r_stb), 1)
+                    self.assertEqual((yield elem_16_rw.r_stb), 0)
+                    yield
+                    self.assertEqual((yield bus.r_data), 0xa)
 
-            yield bus.r_stb.eq(1)
-            yield
-            yield bus.r_stb.eq(0)
-            self.assertEqual((yield elem_4_r.r_stb), 0)
-            self.assertEqual((yield elem_16_rw.r_stb), 0)
-            yield
-            self.assertEqual((yield bus.r_data), 0x5a)
+                    yield bus.addr.eq(2)
+                    yield bus.r_stb.eq(1)
+                    yield
+                    yield bus.r_stb.eq(0)
+                    self.assertEqual((yield elem_4_r.r_stb), 0)
+                    self.assertEqual((yield elem_16_rw.r_stb), 1)
+                    yield
+                    yield bus.addr.eq(3) # pipeline a read
+                    self.assertEqual((yield bus.r_data), 0xa5)
 
-            yield bus.addr.eq(1)
-            yield bus.w_data.eq(0x3d)
-            yield bus.w_stb.eq(1)
-            yield
-            yield bus.w_stb.eq(0)
-            yield bus.addr.eq(2) # change address
-            yield
-            self.assertEqual((yield elem_8_w.w_stb), 1)
-            self.assertEqual((yield elem_8_w.w_data), 0x3d)
-            self.assertEqual((yield elem_16_rw.w_stb), 0)
-            yield
-            self.assertEqual((yield elem_8_w.w_stb), 0)
+                    yield bus.r_stb.eq(1)
+                    yield
+                    yield bus.r_stb.eq(0)
+                    self.assertEqual((yield elem_4_r.r_stb), 0)
+                    self.assertEqual((yield elem_16_rw.r_stb), 0)
+                    yield
+                    self.assertEqual((yield bus.r_data), 0x5a)
 
-            yield bus.addr.eq(2)
-            yield bus.w_data.eq(0x55)
-            yield bus.w_stb.eq(1)
-            yield
-            self.assertEqual((yield elem_8_w.w_stb), 0)
-            self.assertEqual((yield elem_16_rw.w_stb), 0)
-            yield bus.addr.eq(3) # pipeline a write
-            yield bus.w_data.eq(0xaa)
-            yield
-            self.assertEqual((yield elem_8_w.w_stb), 0)
-            self.assertEqual((yield elem_16_rw.w_stb), 0)
-            yield bus.w_stb.eq(0)
-            yield
-            self.assertEqual((yield elem_8_w.w_stb), 0)
-            self.assertEqual((yield elem_16_rw.w_stb), 1)
-            self.assertEqual((yield elem_16_rw.w_data), 0xaa55)
+                    yield bus.addr.eq(1)
+                    yield bus.w_data.eq(0x3d)
+                    yield bus.w_stb.eq(1)
+                    yield
+                    yield bus.w_stb.eq(0)
+                    yield bus.addr.eq(2) # change address
+                    yield
+                    self.assertEqual((yield elem_8_w.w_stb), 1)
+                    self.assertEqual((yield elem_8_w.w_data), 0x3d)
+                    self.assertEqual((yield elem_16_rw.w_stb), 0)
+                    yield
+                    self.assertEqual((yield elem_8_w.w_stb), 0)
 
-        sim = Simulator(self.dut)
-        sim.add_clock(1e-6)
-        sim.add_sync_process(sim_test)
-        with sim.write_vcd(vcd_file=open("test.vcd", "w")):
-            sim.run()
+                    yield bus.addr.eq(2)
+                    yield bus.w_data.eq(0x55)
+                    yield bus.w_stb.eq(1)
+                    yield
+                    self.assertEqual((yield elem_8_w.w_stb), 0)
+                    self.assertEqual((yield elem_16_rw.w_stb), 0)
+                    yield bus.addr.eq(3) # pipeline a write
+                    yield bus.w_data.eq(0xaa)
+                    yield
+                    self.assertEqual((yield elem_8_w.w_stb), 0)
+                    self.assertEqual((yield elem_16_rw.w_stb), 0)
+                    yield bus.w_stb.eq(0)
+                    yield
+                    self.assertEqual((yield elem_8_w.w_stb), 0)
+                    self.assertEqual((yield elem_16_rw.w_stb), 1)
+                    self.assertEqual((yield elem_16_rw.w_data), 0xaa55)
+
+                    yield bus.addr.eq(2)
+                    yield bus.r_stb.eq(1)
+                    yield bus.w_data.eq(0x66)
+                    yield bus.w_stb.eq(1)
+                    yield
+                    self.assertEqual((yield elem_16_rw.r_stb), 1)
+                    self.assertEqual((yield elem_16_rw.w_stb), 0)
+                    yield
+                    yield bus.addr.eq(3) # pipeline a read and a write
+                    yield bus.w_data.eq(0xbb)
+                    self.assertEqual((yield bus.r_data), 0xa5)
+                    yield
+                    yield Delay()
+                    self.assertEqual((yield bus.r_data), 0x5a)
+                    self.assertEqual((yield elem_16_rw.r_stb), 0)
+                    self.assertEqual((yield elem_16_rw.w_stb), 1)
+                    self.assertEqual((yield elem_16_rw.w_data), 0xbb66)
+
+                sim = Simulator(dut)
+                sim.add_clock(1e-6)
+                sim.add_sync_process(sim_test)
+                with sim.write_vcd(vcd_file=open("test.vcd", "w")):
+                    sim.run()
 
 
 class MultiplexerAlignedTestCase(unittest.TestCase):
@@ -274,39 +296,44 @@ class MultiplexerAlignedTestCase(unittest.TestCase):
         self.assertEqual(self.dut.add(elem_1), (4, 8))
 
     def test_sim(self):
-        elem_20_rw = Element(20, "rw")
-        self.dut.add(elem_20_rw)
+        for shadow_overlaps in [None, 0, 1]:
+            with self.subTest(shadow_overlaps=shadow_overlaps):
+                dut = Multiplexer(addr_width=16, data_width=8, alignment=2,
+                                  shadow_overlaps=shadow_overlaps)
 
-        bus = self.dut.bus
+                elem_20_rw = Element(20, "rw")
+                dut.add(elem_20_rw)
 
-        def sim_test():
-            yield bus.w_stb.eq(1)
-            yield bus.addr.eq(0)
-            yield bus.w_data.eq(0x55)
-            yield
-            self.assertEqual((yield elem_20_rw.w_stb), 0)
-            yield bus.addr.eq(1)
-            yield bus.w_data.eq(0xaa)
-            yield
-            self.assertEqual((yield elem_20_rw.w_stb), 0)
-            yield bus.addr.eq(2)
-            yield bus.w_data.eq(0x33)
-            yield
-            self.assertEqual((yield elem_20_rw.w_stb), 0)
-            yield bus.addr.eq(3)
-            yield bus.w_data.eq(0xdd)
-            yield
-            self.assertEqual((yield elem_20_rw.w_stb), 0)
-            yield bus.w_stb.eq(0)
-            yield
-            self.assertEqual((yield elem_20_rw.w_stb), 1)
-            self.assertEqual((yield elem_20_rw.w_data), 0x3aa55)
+                bus = dut.bus
 
-        sim = Simulator(self.dut)
-        sim.add_clock(1e-6)
-        sim.add_sync_process(sim_test)
-        with sim.write_vcd(vcd_file=open("test.vcd", "w")):
-            sim.run()
+                def sim_test():
+                    yield bus.w_stb.eq(1)
+                    yield bus.addr.eq(0)
+                    yield bus.w_data.eq(0x55)
+                    yield
+                    self.assertEqual((yield elem_20_rw.w_stb), 0)
+                    yield bus.addr.eq(1)
+                    yield bus.w_data.eq(0xaa)
+                    yield
+                    self.assertEqual((yield elem_20_rw.w_stb), 0)
+                    yield bus.addr.eq(2)
+                    yield bus.w_data.eq(0x33)
+                    yield
+                    self.assertEqual((yield elem_20_rw.w_stb), 0)
+                    yield bus.addr.eq(3)
+                    yield bus.w_data.eq(0xdd)
+                    yield
+                    self.assertEqual((yield elem_20_rw.w_stb), 0)
+                    yield bus.w_stb.eq(0)
+                    yield
+                    self.assertEqual((yield elem_20_rw.w_stb), 1)
+                    self.assertEqual((yield elem_20_rw.w_data), 0x3aa55)
+
+                sim = Simulator(dut)
+                sim.add_clock(1e-6)
+                sim.add_sync_process(sim_test)
+                with sim.write_vcd(vcd_file=open("test.vcd", "w")):
+                    sim.run()
 
 
 class DecoderTestCase(unittest.TestCase):
