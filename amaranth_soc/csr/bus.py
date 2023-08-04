@@ -174,7 +174,7 @@ class Interface(Record):
 class Multiplexer(Elaboratable):
     class _Shadow:
         class Chunk:
-            """The interface between of a CSR multiplexer and a shadow register chunk."""
+            """The interface between a CSR multiplexer and a shadow register chunk."""
             def __init__(self, shadow, offset, elements):
                 self.name = f"{shadow.name}__{offset}"
                 self.data = Signal(shadow.granularity, name=f"{self.name}__data")
@@ -195,7 +195,7 @@ class Multiplexer(Elaboratable):
         granularity : :class:`int`
             Amount of bits stored in a chunk of the shadow register.
         overlaps : :class:`int`
-            Maximum amount of CSR elements that can share a chunk of the shadow register. Optional.
+            Maximum number of CSR elements that can share a chunk of the shadow register. Optional.
             If ``None``, it is implicitly set by :meth:`Multiplexer._Shadow.prepare`.
         """
         def __init__(self, granularity, overlaps, *, name):
@@ -272,7 +272,7 @@ class Multiplexer(Elaboratable):
                          └─────── log2(self.size)
 
 
-                The decoded offset would therefore be ``0xc`` (i.e. ``0b1100``).
+                The decoded offset would therefore be ``8`` (i.e. ``0b1000``).
             """
             assert elem_range in self._ranges and addr in elem_range
             elem_size = 2 ** ceil(log2(elem_range.stop - elem_range.start))
