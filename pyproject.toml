@@ -1,6 +1,4 @@
-[build-system]
-requires = ["wheel", "setuptools~=67.0", "setuptools_scm[toml]>=6.2"]
-build-backend = "setuptools.build_meta"
+# Project metadata
 
 [project]
 dynamic = ["version"]
@@ -20,5 +18,28 @@ dependencies = [
 "Source Code" = "https://github.com/amaranth-lang/amaranth-soc"
 "Bug Tracker" = "https://github.com/amaranth-lang/amaranth-soc/issues"
 
+# Build system configuration
+
+[build-system]
+requires = ["wheel", "setuptools>=67.0", "setuptools_scm[toml]>=6.2"]
+build-backend = "setuptools.build_meta"
+
 [tool.setuptools_scm]
 local_scheme = "node-and-timestamp"
+
+# Development workflow configuration
+
+[tool.pdm.dev-dependencies]
+test = [
+  "coverage",
+]
+docs = [
+  "sphinx~=5.3",
+  "sphinx-rtd-theme~=1.2",
+  "sphinx-autobuild",
+]
+
+[tool.pdm.scripts]
+test.composite = ["test-code"]
+test-code.env = {PYTHONWARNINGS = "error"}
+test-code.cmd = "python -m coverage run -m unittest discover -t . -s tests -v"
