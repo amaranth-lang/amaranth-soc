@@ -176,62 +176,53 @@ class InterfaceTestCase(unittest.TestCase):
 
 
 class MultiplexerTestCase(unittest.TestCase):
-    def setUp(self):
-        self.dut = csr.Multiplexer(addr_width=16, data_width=8)
+    def test_memory_map(self):
+        elem_4_rw  = csr.Element(4, "rw", path=("elem_4_rw",))
+        elem_8_rw  = csr.Element(8, "rw", path=("elem_8_rw",))
 
-    def test_add_4b(self):
-        elem_4b = csr.Element(4, "rw", path=("elem_4b",))
-        self.assertEqual(self.dut.add(elem_4b, name="elem_4b"), (0, 1))
+        memory_map = MemoryMap(addr_width=2, data_width=4)
+        memory_map.add_resource(elem_4_rw, name="elem_4_rw", size=1)
+        memory_map.add_resource(elem_8_rw, name="elem_8_rw", size=2)
+        memory_map.freeze()
 
-    def test_add_8b(self):
-        elem_8b = csr.Element(8, "rw", path=("elem_8b",))
-        self.assertEqual(self.dut.add(elem_8b, name="elem_8b"), (0, 1))
+        dut = csr.Multiplexer(memory_map)
 
-    def test_add_12b(self):
-        elem_12b = csr.Element(12, "rw", path=("elem_12b",))
-        self.assertEqual(self.dut.add(elem_12b, name="elem_8b"), (0, 2))
+        self.assertIs(dut.bus.memory_map, memory_map)
+        self.assertEqual(dut.bus.addr_width, 2)
+        self.assertEqual(dut.bus.data_width, 4)
 
-    def test_add_16b(self):
-        elem_16b = csr.Element(16, "rw", path=("elem_16b",))
-        self.assertEqual(self.dut.add(elem_16b, name="elem_16b"), (0, 2))
-
-    def test_add_two(self):
-        elem_8b  = csr.Element( 8, "rw", path=("elem_8b",))
-        elem_16b = csr.Element(16, "rw", path=("elem_16b",))
-        self.assertEqual(self.dut.add(elem_16b, name="elem_16b"), (0, 2))
-        self.assertEqual(self.dut.add(elem_8b,  name="elem_8b"), (2, 3))
-
-    def test_add_wrong(self):
+    def test_wrong_memory_map(self):
         with self.assertRaisesRegex(TypeError,
-                r"Element must be an instance of csr\.Element, not 'foo'"):
-            self.dut.add(elem="foo", name="elem_4b")
+                r"Memory map must be an instance of MemoryMap, not 'foo'"):
+            csr.Multiplexer("foo")
 
-    def test_align_to(self):
-        elem_0 = csr.Element(8, "rw", path=("elem_0",))
-        elem_1 = csr.Element(8, "rw", path=("elem_1",))
-        self.assertEqual(self.dut.add(elem_0, name="elem_0"), (0, 1))
-        self.assertEqual(self.dut.align_to(2), 4)
-        self.assertEqual(self.dut.add(elem_1, name="elem_1"), (4, 5))
+    def test_wrong_memory_map_resource(self):
+        memory_map = MemoryMap(addr_width=1, data_width=8)
+        memory_map.add_resource("foo", name="foo", size=1)
+        with self.assertRaisesRegex(TypeError,
+                r"Memory map resource must be an instance of csr\.Element, not 'foo'"):
+            csr.Multiplexer(memory_map)
 
-    def test_add_wrong_out_of_bounds(self):
-        elem = csr.Element(8, "rw", path=("elem",))
-        with self.assertRaisesRegex(ValueError,
-                r"Address range 0x10000\.\.0x10001 out of bounds for memory map spanning "
-                r"range 0x0\.\.0x10000 \(16 address bits\)"):
-            self.dut.add(elem, name="elem", addr=0x10000)
+    def test_wrong_memory_map_windows(self):
+        memory_map_0 = MemoryMap(addr_width=1, data_width=8)
+        memory_map_1 = MemoryMap(addr_width=1, data_width=8)
+        memory_map_0.add_window(memory_map_1)
+        with self.assertRaisesRegex(ValueError, r"Memory map cannot have windows"):
+            csr.Multiplexer(memory_map_0)
 
     def test_sim(self):
         for shadow_overlaps in [None, 0, 1]:
             with self.subTest(shadow_overlaps=shadow_overlaps):
-                dut = csr.Multiplexer(addr_width=16, data_width=8, shadow_overlaps=shadow_overlaps)
-
-                elem_4_r = csr.Element(4, "r", path=("elem_4_r",))
-                dut.add(elem_4_r, name="elem_4_r")
-                elem_8_w = csr.Element(8, "w", path=("elem_8_w",))
-                dut.add(elem_8_w, name="elem_8_w")
+                elem_4_r   = csr.Element( 4, "r",  path=("elem_4_r",))
+                elem_8_w   = csr.Element( 8, "w",  path=("elem_8_w",))
                 elem_16_rw = csr.Element(16, "rw", path=("elem_16_rw",))
-                dut.add(elem_16_rw, name="elem_16_rw")
 
+                memory_map = MemoryMap(addr_width=16, data_width=8)
+                memory_map.add_resource(elem_4_r,   name="elem_4_r",   size=1)
+                memory_map.add_resource(elem_8_w,   name="elem_8_w",   size=1)
+                memory_map.add_resource(elem_16_rw, name="elem_16_rw", size=2)
+
+                dut = csr.Multiplexer(memory_map, shadow_overlaps=shadow_overlaps)
                 bus = dut.bus
 
                 def sim_test():
@@ -309,38 +300,14 @@ class MultiplexerTestCase(unittest.TestCase):
 
 
 class MultiplexerAlignedTestCase(unittest.TestCase):
-    def setUp(self):
-        self.dut = csr.Multiplexer(addr_width=16, data_width=8, alignment=2)
-
-    def test_add_two(self):
-        elem_0 = csr.Element( 8, "rw", path=("elem_0",))
-        elem_1 = csr.Element(16, "rw", path=("elem_1",))
-        self.assertEqual(self.dut.add(elem_0, name="elem_0"), (0, 4))
-        self.assertEqual(self.dut.add(elem_1, name="elem_1"), (4, 8))
-
-    def test_over_align_to(self):
-        elem_0 = csr.Element(8, "rw", path=("elem_0",))
-        elem_1 = csr.Element(8, "rw", path=("elem_1",))
-        self.assertEqual(self.dut.add(elem_0, name="elem_0"), (0, 4))
-        self.assertEqual(self.dut.align_to(3), 8)
-        self.assertEqual(self.dut.add(elem_1, name="elem_1"), (8, 12))
-
-    def test_under_align_to(self):
-        elem_0 = csr.Element(8, "rw", path=("elem_0",))
-        elem_1 = csr.Element(8, "rw", path=("elem_1",))
-        self.assertEqual(self.dut.add(elem_0, name="elem_0"), (0, 4))
-        self.assertEqual(self.dut.align_to(alignment=1), 4)
-        self.assertEqual(self.dut.add(elem_1, name="elem_1"), (4, 8))
-
     def test_sim(self):
         for shadow_overlaps in [None, 0, 1]:
             with self.subTest(shadow_overlaps=shadow_overlaps):
-                dut = csr.Multiplexer(addr_width=16, data_width=8, alignment=2,
-                                      shadow_overlaps=shadow_overlaps)
-
                 elem_20_rw = csr.Element(20, "rw", path=("elem_20_rw",))
-                dut.add(elem_20_rw, name="elem_20_rw")
+                memory_map = MemoryMap(addr_width=16, data_width=8, alignment=2)
+                memory_map.add_resource(elem_20_rw, name="elem_20_rw", size=3)
 
+                dut = csr.Multiplexer(memory_map, shadow_overlaps=shadow_overlaps)
                 bus = dut.bus
 
                 def sim_test():
@@ -392,7 +359,7 @@ class DecoderTestCase(unittest.TestCase):
             self.dut.add(sub_bus=1)
 
     def test_add_wrong_data_width(self):
-        mux = csr.Multiplexer(addr_width=10, data_width=16)
+        mux = csr.Multiplexer(MemoryMap(addr_width=10, data_width=16))
         Fragment.get(mux, platform=None) # silence UnusedElaboratable
 
         with self.assertRaisesRegex(ValueError,
@@ -409,14 +376,19 @@ class DecoderTestCase(unittest.TestCase):
             self.dut.add(iface)
 
     def test_sim(self):
-        mux_1  = csr.Multiplexer(addr_width=10, data_width=8)
         elem_1 = csr.Element(8, "rw", path=("elem_1",))
-        mux_1.add(elem_1, name="elem_1")
-        self.dut.add(mux_1.bus)
-
-        mux_2  = csr.Multiplexer(addr_width=10, data_width=8)
         elem_2 = csr.Element(8, "rw", path=("elem_2",))
-        mux_2.add(elem_2, name="elem_2", addr=2)
+
+        memory_map_1 = MemoryMap(addr_width=10, data_width=8)
+        memory_map_1.add_resource(elem_1, name="elem_1", size=1)
+
+        memory_map_2 = MemoryMap(addr_width=10, data_width=8)
+        memory_map_2.add_resource(elem_2, name="elem_2", size=1, addr=2)
+
+        mux_1 = csr.Multiplexer(memory_map_1)
+        mux_2 = csr.Multiplexer(memory_map_2)
+
+        self.dut.add(mux_1.bus)
         self.dut.add(mux_2.bus)
 
         elem_1_info = self.dut.bus.memory_map.find_resource(elem_1)

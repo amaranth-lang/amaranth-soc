@@ -155,6 +155,18 @@ class Element(wiring.PureInterface):
     def access(self):
         return self.signature.access
 
+    def add_to(self, memory_map, *, name, addr=None, alignment=None):
+        """Add register to memory map.
+
+        See :meth:`MemoryMap.add_resource` for details.
+        """
+        if not isinstance(memory_map, MemoryMap):
+            raise TypeError("Memory map must be an instance of MemoryMap, not {!r}"
+                            .format(memory_map))
+        size = (self.width + memory_map.data_width - 1) // memory_map.data_width
+        return memory_map.add_resource(self, size=size, addr=addr, alignment=alignment,
+                                       name=name)
+
     def __repr__(self):
         return f"csr.Element({self.signature!r})"
 
@@ -519,31 +531,25 @@ class Multiplexer(wiring.Component):
     are possible for connecting the CSR bus to the CPU:
         * The CPU could access the CSR bus directly (with no intervening logic other than simple
           translation of control signals). In this case, the register alignment should be set
-          to 1 (i.e. `alignment` should be set to 0), and each *w*-bit register would occupy
-          *ceil(w/n)* addresses from the CPU perspective, requiring the same amount of memory
-          instructions to access.
+          to 1 (i.e. `memory_map.alignment` should be set to 0), and each *w*-bit register would
+          occupy *ceil(w/n)* addresses from the CPU perspective, requiring the same amount of
+          memory instructions to access.
         * The CPU could also access the CSR bus through a width down-converter, which would issue
           *k/n* CSR accesses for each CPU access. In this case, the register alignment should be
           set to *k/n*, and each *w*-bit register would occupy *ceil(w/k)* addresses from the CPU
           perspective, requiring the same amount of memory instructions to access.
 
-    If the register alignment (i.e. `2 ** alignment`) is greater than 1, it affects which CSR bus
-    write is considered a write to the last register chunk. For example, if a 24-bit register is
-    used with a 8-bit CSR bus and a CPU with a 32-bit datapath, a write to this register requires
-    4 CSR bus writes to complete and the 4th write is the one that actually writes the value to
-    the register. This allows determining write latency solely from the amount of addresses the
-    register occupies in the CPU address space, and the width of the CSR bus.
+    If the register alignment (i.e. `2 ** memory_map.alignment`) is greater than 1, it affects
+    which CSR bus write is considered a write to the last register chunk. For example, if a 24-bit
+    register is used with a 8-bit CSR bus and a CPU with a 32-bit datapath, a write to this
+    register requires 4 CSR bus writes to complete and the 4th write is the one that actually
+    writes the value to the register. This allows determining write latency solely from the amount
+    of addresses the register occupies in the CPU address space, and the width of the CSR bus.
 
     Parameters
     ----------
-    addr_width : int
-        Address width. See :class:`Interface`.
-    data_width : int
-        Data width. See :class:`Interface`.
-    alignment : int, power-of-2 exponent
-        Register alignment. See :class:`..memory.MemoryMap`.
-    name : :class:`str`
-        Window name. Optional. See :class:`..memory.MemoryMap`.
+    memory_map : :class:`..memory.MemoryMap`
+        Memory map of the CSR bus.
     shadow_overlaps : int
         Maximum number of CSR registers that can share a chunk of a shadow register.
         Optional. If ``None``, any number of CSR registers can share a shadow chunk.
@@ -554,31 +560,24 @@ class Multiplexer(wiring.Component):
     bus : :class:`Interface`
         CSR bus providing access to registers.
     """
-    def __init__(self, *, addr_width, data_width, alignment=0, name=None, shadow_overlaps=None):
-        super().__init__({"bus": In(Signature(addr_width=addr_width, data_width=data_width))})
-        self.bus.memory_map = MemoryMap(addr_width=addr_width, data_width=data_width,
-                                        alignment=alignment, name=name)
-        self._r_shadow = Multiplexer._Shadow(data_width, shadow_overlaps, name="r_shadow")
-        self._w_shadow = Multiplexer._Shadow(data_width, shadow_overlaps, name="w_shadow")
+    def __init__(self, memory_map, *, shadow_overlaps=None):
+        if not isinstance(memory_map, MemoryMap):
+            raise TypeError("Memory map must be an instance of MemoryMap, not {!r}"
+                            .format(memory_map))
+        for elem, elem_name, (elem_start, elem_end) in memory_map.resources():
+            if not isinstance(elem, Element):
+                raise TypeError("Memory map resource must be an instance of csr.Element, not {!r}"
+                                .format(elem))
+        if list(memory_map.windows()):
+            raise ValueError("Memory map cannot have windows")
 
-    def align_to(self, alignment):
-        """Align the implicit address of the next register.
-
-        See :meth:`MemoryMap.align_to` for details.
-        """
-        return self.bus.memory_map.align_to(alignment)
-
-    def add(self, elem, *, name, addr=None, alignment=None):
-        """Add a register.
-
-        See :meth:`MemoryMap.add_resource` for details.
-        """
-        if not isinstance(elem, Element):
-            raise TypeError(f"Element must be an instance of csr.Element, not {elem!r}")
-
-        size = (elem.width + self.bus.memory_map.data_width - 1) // self.bus.memory_map.data_width
-        return self.bus.memory_map.add_resource(elem, size=size, addr=addr, alignment=alignment,
-                                                name=name)
+        super().__init__({
+            "bus": In(Signature(addr_width=memory_map.addr_width,
+                                data_width=memory_map.data_width))
+        })
+        self.bus.memory_map = memory_map
+        self._r_shadow = self._Shadow(memory_map.data_width, shadow_overlaps, name="r_shadow")
+        self._w_shadow = self._Shadow(memory_map.data_width, shadow_overlaps, name="w_shadow")
 
     def elaborate(self, platform):
         m = Module()
