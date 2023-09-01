@@ -284,7 +284,7 @@ class Decoder(Elaboratable):
                 m.d.comb += [
                     sub_bus.adr.eq(self.bus.adr << log2_int(sub_ratio)),
                     sub_bus.dat_w.eq(self.bus.dat_w),
-                    sub_bus.sel.eq(Cat(Repl(sel, sub_ratio) for sel in self.bus.sel)),
+                    sub_bus.sel.eq(Cat(sel.replicate(sub_ratio) for sel in self.bus.sel)),
                     sub_bus.we.eq(self.bus.we),
                     sub_bus.stb.eq(self.bus.stb),
                 ]
@@ -414,7 +414,7 @@ class Arbiter(Elaboratable):
                     m.d.comb += [
                         self.bus.adr.eq(intr_bus.adr),
                         self.bus.dat_w.eq(intr_bus.dat_w),
-                        self.bus.sel.eq(Cat(Repl(sel, ratio) for sel in intr_bus.sel)),
+                        self.bus.sel.eq(Cat(sel.replicate(ratio) for sel in intr_bus.sel)),
                         self.bus.we.eq(intr_bus.we),
                         self.bus.stb.eq(intr_bus.stb),
                     ]
