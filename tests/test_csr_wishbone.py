@@ -6,6 +6,7 @@ from amaranth.sim import *
 
 from amaranth_soc import csr
 from amaranth_soc.csr.wishbone import *
+from amaranth_soc.memory import MemoryMap
 
 
 class MockRegister(Elaboratable):
@@ -42,12 +43,15 @@ class WishboneCSRBridgeTestCase(unittest.TestCase):
             WishboneCSRBridge(csr_bus)
 
     def test_narrow(self):
-        mux   = csr.Multiplexer(addr_width=10, data_width=8)
-        reg_1 = MockRegister(8, name="reg_1")
-        mux.add(reg_1.element, name="reg_1")
+        reg_1 = MockRegister( 8, name="reg_1")
         reg_2 = MockRegister(16, name="reg_2")
-        mux.add(reg_2.element, name="reg_2")
-        dut   = WishboneCSRBridge(mux.bus)
+
+        memory_map = MemoryMap(addr_width=10, data_width=8)
+        reg_1.element.add_to(memory_map, name="reg_1")
+        reg_2.element.add_to(memory_map, name="reg_2")
+
+        mux = csr.Multiplexer(memory_map)
+        dut = WishboneCSRBridge(mux.bus)
 
         def sim_test():
             yield dut.wb_bus.cyc.eq(1)
@@ -143,9 +147,12 @@ class WishboneCSRBridgeTestCase(unittest.TestCase):
             sim.run()
 
     def test_wide(self):
-        mux = csr.Multiplexer(addr_width=10, data_width=8)
         reg = MockRegister(32, name="reg")
-        mux.add(reg.element, name="reg")
+
+        memory_map = MemoryMap(addr_width=10, data_width=8)
+        reg.element.add_to(memory_map, name="reg")
+
+        mux = csr.Multiplexer(memory_map)
         dut = WishboneCSRBridge(mux.bus, data_width=32)
 
         def sim_test():

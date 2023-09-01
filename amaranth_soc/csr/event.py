@@ -59,10 +59,11 @@ class EventMonitor(wiring.Component):
 
         elem_size  = ceil(event_map.size / data_width)
         addr_width = 1 + max(ceil_log2(elem_size), alignment)
-        self._mux  = Multiplexer(addr_width=addr_width, data_width=data_width,
-                                 alignment=alignment)
-        self._mux.add(self._enable,  name="enable")
-        self._mux.add(self._pending, name="pending")
+        memory_map = MemoryMap(addr_width=addr_width, data_width=data_width, alignment=alignment)
+
+        self._enable .add_to(memory_map, name="enable")
+        self._pending.add_to(memory_map, name="pending")
+        self._mux = Multiplexer(memory_map)
 
         super().__init__({
             "src": Out(self._monitor.src.signature),
