@@ -1,15 +1,15 @@
-from enum import Enum
 from amaranth import *
-from amaranth.hdl.rec import Direction
+from amaranth.lib import enum, wiring
+from amaranth.lib.wiring import In, Out
 from amaranth.utils import log2_int
 
 from ..memory import MemoryMap
 
 
-__all__ = ["CycleType", "BurstTypeExt", "Interface", "Decoder", "Arbiter"]
+__all__ = ["CycleType", "BurstTypeExt", "Feature", "Signature", "Interface", "Decoder", "Arbiter"]
 
 
-class CycleType(Enum):
+class CycleType(enum.Enum):
     """Wishbone Registered Feedback cycle type."""
     CLASSIC      = 0b000
     CONST_BURST  = 0b001
@@ -17,7 +17,7 @@ class CycleType(Enum):
     END_OF_BURST = 0b111
 
 
-class BurstTypeExt(Enum):
+class BurstTypeExt(enum.Enum):
     """Wishbone Registered Feedback burst type extension."""
     LINEAR  = 0b00
     WRAP_4  = 0b01
@@ -25,27 +25,18 @@ class BurstTypeExt(Enum):
     WRAP_16 = 0b11
 
 
-def _check_interface(addr_width, data_width, granularity, features):
-    if not isinstance(addr_width, int) or addr_width < 0:
-        raise ValueError("Address width must be a non-negative integer, not {!r}"
-                         .format(addr_width))
-    if data_width not in (8, 16, 32, 64):
-        raise ValueError("Data width must be one of 8, 16, 32, 64, not {!r}"
-                         .format(data_width))
-    if granularity not in (8, 16, 32, 64):
-        raise ValueError("Granularity must be one of 8, 16, 32, 64, not {!r}"
-                         .format(granularity))
-    if granularity > data_width:
-        raise ValueError("Granularity {} may not be greater than data width {}"
-                         .format(granularity, data_width))
-    unknown = set(features) - {"rty", "err", "stall", "lock", "cti", "bte"}
-    if unknown:
-        raise ValueError("Optional signal(s) {} are not supported"
-                         .format(", ".join(map(repr, unknown))))
+class Feature(enum.Enum):
+    """Optional Wishbone interface signals."""
+    ERR   = "err"
+    RTY   = "rty"
+    STALL = "stall"
+    LOCK  = "lock"
+    CTI   = "cti"
+    BTE   = "bte"
 
 
-class Interface(Record):
-    """Wishbone interface.
+class Signature(wiring.Signature):
+    """Wishbone interface signature.
 
     See the `Wishbone specification <https://opencores.org/howto/wishbone>`_ for description
     of the Wishbone signals. The ``RST_I`` and ``CLK_I`` signals are provided as a part of
@@ -65,13 +56,11 @@ class Interface(Record):
     granularity : int
         Granularity of select signals ("port granularity" in Wishbone terminology).
         One of 8, 16, 32, 64.
-    features : iter(str)
+    features : iter(:class:`Feature`)
         Selects the optional signals that will be a part of this interface.
-    name : str
-        Name of the underlying record.
 
-    Attributes
-    ----------
+    Interface attributes
+    --------------------
     The correspondence between the Amaranth-SoC signals and the Wishbone signals changes depending
     on whether the interface acts as an initiator or a target.
 
@@ -107,66 +96,184 @@ class Interface(Record):
     bte : Signal()
         Optional. Corresponds to Wishbone signal ``BTE_O`` (initiator) or ``BTE_I`` (target).
     """
-    def __init__(self, *, addr_width, data_width, granularity=None, features=frozenset(),
-                 name=None):
+    @classmethod
+    def check(cls, *, addr_width, data_width, granularity, features):
+        """Validate signature parameters.
+
+        Raises
+        ------
+        :exc:`TypeError`
+            If ``addr_width`` is not an integer greater than or equal to 0.
+        :exc:`ValueError`
+            If ``data_width`` is not 8, 16, 32 or 64.
+        :exc:`ValueError`
+            If ``granularity`` is not 8, 16, 32 or 64.
+        :exc:`ValueError`
+            If ``granularity`` is greater than ``data_width``
+        :exc:`ValueError`
+            If ``features`` contains other values than :class:`Feature` members.
+        """
+        if not isinstance(addr_width, int) or addr_width < 0:
+            raise TypeError(f"Address width must be a non-negative integer, not {addr_width!r}")
+        if data_width not in (8, 16, 32, 64):
+            raise ValueError(f"Data width must be one of 8, 16, 32, 64, not {data_width!r}")
+        if granularity not in (8, 16, 32, 64):
+            raise ValueError(f"Granularity must be one of 8, 16, 32, 64, not {granularity!r}")
+        if granularity > data_width:
+            raise ValueError(f"Granularity {granularity} may not be greater than data width "
+                             f"{data_width}")
+        for feature in features:
+            Feature(feature) # raises ValueError if feature is invalid
+
+    def __init__(self, *, addr_width, data_width, granularity=None, features=frozenset()):
         if granularity is None:
             granularity  = data_width
-        _check_interface(addr_width, data_width, granularity, features)
+        self.check(addr_width=addr_width, data_width=data_width, granularity=granularity,
+                   features=features)
 
-        self.addr_width  = addr_width
-        self.data_width  = data_width
-        self.granularity = granularity
-        self._map        = None
+        self._addr_width  = addr_width
+        self._data_width  = data_width
+        self._granularity = granularity
+        self._features    = frozenset(Feature(f) for f in features)
 
-        features = set(features)
-        layout = [
-            ("adr",   addr_width, Direction.FANOUT),
-            ("dat_w", data_width, Direction.FANOUT),
-            ("dat_r", data_width, Direction.FANIN),
-            ("sel",   data_width // granularity, Direction.FANOUT),
-            ("cyc",   1, Direction.FANOUT),
-            ("stb",   1, Direction.FANOUT),
-            ("we",    1, Direction.FANOUT),
-            ("ack",   1, Direction.FANIN),
-        ]
-        if "err" in features:
-            layout += [("err", 1, Direction.FANIN)]
-        if "rty" in features:
-            layout += [("rty", 1, Direction.FANIN)]
-        if "stall" in features:
-            layout += [("stall", 1, Direction.FANIN)]
-        if "lock" in features:
-            layout += [("lock",  1, Direction.FANOUT)]
-        if "cti" in features:
-            layout += [("cti", CycleType,    Direction.FANOUT)]
-        if "bte" in features:
-            layout += [("bte", BurstTypeExt, Direction.FANOUT)]
-        super().__init__(layout, name=name, src_loc_at=1)
+        members = {
+            "adr"   : Out(self.addr_width),
+            "dat_w" : Out(self.data_width),
+            "dat_r" : In(self.data_width),
+            "sel"   : Out(self.data_width // self.granularity),
+            "cyc"   : Out(1),
+            "stb"   : Out(1),
+            "we"    : Out(1),
+            "ack"   : In(1),
+        }
+        if Feature.ERR in self.features:
+            members["err"]   = In(1)
+        if Feature.RTY in self.features:
+            members["rty"]   = In(1)
+        if Feature.STALL in self.features:
+            members["stall"] = In(1)
+        if Feature.LOCK in self.features:
+            members["lock"]  = Out(1)
+        if Feature.CTI in self.features:
+            members["cti"]   = Out(CycleType)
+        if Feature.BTE in self.features:
+            members["bte"]   = Out(BurstTypeExt)
+        super().__init__(members)
+
+    def __eq__(self, other):
+        """Compare signatures.
+
+        Two signatures are equal if they have the same address width, data width, granularity and
+        features.
+        """
+        other_unflipped = other.flip() if isinstance(other, wiring.FlippedSignature) else other
+        return (isinstance(other_unflipped, Signature) and
+                self.addr_width == other.addr_width and
+                self.data_width == other.data_width and
+                self.granularity == other.granularity and
+                self.features == other.features)
+
+    @property
+    def addr_width(self):
+        return self._addr_width
+
+    @property
+    def data_width(self):
+        return self._data_width
+
+    @property
+    def granularity(self):
+        return self._granularity
+
+    @property
+    def features(self):
+        return self._features
+
+    def create(self, *, path=()):
+        """Create a compatible interface.
+
+        See :meth:`wiring.Signature.create` for details.
+
+        Returns
+        -------
+        A :class:`Interface` object using this signature.
+        """
+        return Interface(self, path=path)
+
+    def __repr__(self):
+        return f"wishbone.Signature({self.members!r})"
+
+
+class Interface(wiring.Interface):
+    """Wishbone bus interface.
+
+    Parameters
+    ----------
+    signature : :class:`Signature`
+        Wishbone interface signature.
+    path : iter(:class:`str`)
+        Path to this Wishbone interface. Signal names are prefixed by their path, separated by "__"
+        (e.g. "foo__bar__cyc").
+
+    Attributes
+    ----------
+    addr_width : :class:`int`
+        Width of the address signal. See :class:`Signature`.
+    data_width : :class:`int`
+        Width of the data signals. See :class:`Signature`.
+    granularity : :class:`int`
+        Granularity of select signals. See :class:`Signature`.
+    features : iter(:class:`Feature`)
+        Describes the optional signals of this interface. See :class:`Signature`.
+    """
+    def __init__(self, signature, *, path=()):
+        if not isinstance(signature, Signature):
+            raise TypeError(f"This interface requires a Wishbone signature, not {signature!r}")
+        super().__init__(signature, path=path)
+
+        self._map = None
+
+    @property
+    def addr_width(self):
+        return self.signature.addr_width
+
+    @property
+    def data_width(self):
+        return self.signature.data_width
+
+    @property
+    def granularity(self):
+        return self.signature.granularity
+
+    @property
+    def features(self):
+        return self.signature.features
 
     @property
     def memory_map(self):
         if self._map is None:
-            raise NotImplementedError("Bus interface {!r} does not have a memory map"
-                                      .format(self))
+            raise NotImplementedError(f"{self!r} does not have a memory map")
         return self._map
 
     @memory_map.setter
     def memory_map(self, memory_map):
         if not isinstance(memory_map, MemoryMap):
-            raise TypeError("Memory map must be an instance of MemoryMap, not {!r}"
-                            .format(memory_map))
+            raise TypeError(f"Memory map must be an instance of MemoryMap, not {memory_map!r}")
         if memory_map.data_width != self.granularity:
-            raise ValueError("Memory map has data width {}, which is not the same as bus "
-                             "interface granularity {}"
-                             .format(memory_map.data_width, self.granularity))
+            raise ValueError(f"Memory map has data width {memory_map.data_width}, which is not "
+                             f"the same as bus interface granularity {self.granularity}")
         granularity_bits = log2_int(self.data_width // self.granularity)
-        if memory_map.addr_width != max(1, self.addr_width + granularity_bits):
-            raise ValueError("Memory map has address width {}, which is not the same as bus "
-                             "interface address width {} ({} address bits + {} granularity bits)"
-                             .format(memory_map.addr_width, self.addr_width + granularity_bits,
-                                     self.addr_width, granularity_bits))
+        expected_addr_width = self.addr_width + granularity_bits
+        if memory_map.addr_width != max(1, expected_addr_width):
+            raise ValueError(f"Memory map has address width {memory_map.addr_width}, which is not "
+                             f"the same as bus interface address width {expected_addr_width} "
+                             f"({self.addr_width} address bits + {granularity_bits} granularity "
+                             f"bits)")
         memory_map.freeze()
         self._map = memory_map
+
+    def __repr__(self):
+        return f"wishbone.Interface({self.signature!r})"
 
 
 class Decoder(Elaboratable):
@@ -177,13 +284,13 @@ class Decoder(Elaboratable):
     Parameters
     ----------
     addr_width : int
-        Address width. See :class:`Interface`.
+        Address width. See :class:`Signature`.
     data_width : int
-        Data width. See :class:`Interface`.
+        Data width. See :class:`Signature`.
     granularity : int
-        Granularity. See :class:`Interface`
-    features : iter(str)
-        Optional signal set. See :class:`Interface`.
+        Granularity. See :class:`Signature`
+    features : iter(:class:`Feature`)
+        Optional signal set. See :class:`Signature`.
     alignment : log2 of int
         Window alignment. See :class:`..memory.MemoryMap`
     name : str
@@ -197,16 +304,15 @@ class Decoder(Elaboratable):
     def __init__(self, *, addr_width, data_width, granularity=None, features=frozenset(),
                  alignment=0, name=None):
         if granularity is None:
-            granularity  = data_width
-        _check_interface(addr_width, data_width, granularity, features)
+            granularity = data_width
+        Signature.check(addr_width=addr_width, data_width=data_width, granularity=granularity,
+                        features=features)
 
         self.data_width  = data_width
         self.granularity = granularity
         self.features    = set(features)
         self.alignment   = alignment
-
-        granularity_bits = log2_int(data_width // granularity)
-        self._map        = MemoryMap(addr_width=max(1, addr_width + granularity_bits),
+        self._map        = MemoryMap(addr_width=max(1, addr_width + log2_int(data_width // granularity)),
                                      data_width=granularity, alignment=alignment,
                                      name=name)
         self._subs       = dict()
@@ -216,10 +322,9 @@ class Decoder(Elaboratable):
     def bus(self):
         if self._bus is None:
             self._map.freeze()
-            granularity_bits = log2_int(self.data_width // self.granularity)
-            self._bus = Interface(addr_width=self._map.addr_width - granularity_bits,
-                                  data_width=self.data_width, granularity=self.granularity,
-                                  features=self.features)
+            bus_addr_width = self._map.addr_width - log2_int(self.data_width // self.granularity)
+            self._bus  = Signature(addr_width=bus_addr_width, data_width=self.data_width,
+                                   granularity=self.granularity, features=self.features).create()
             self._bus.memory_map = self._map
         return self._bus
 
@@ -243,28 +348,25 @@ class Decoder(Elaboratable):
         See :meth:`MemoryMap.add_resource` for details.
         """
         if not isinstance(sub_bus, Interface):
-            raise TypeError("Subordinate bus must be an instance of wishbone.Interface, not {!r}"
-                            .format(sub_bus))
+            raise TypeError(f"Subordinate bus must be an instance of wishbone.Interface, not "
+                            f"{sub_bus!r}")
         if sub_bus.granularity > self.granularity:
-            raise ValueError("Subordinate bus has granularity {}, which is greater than the "
-                             "decoder granularity {}"
-                             .format(sub_bus.granularity, self.granularity))
+            raise ValueError(f"Subordinate bus has granularity {sub_bus.granularity}, which is "
+                             f"greater than the decoder granularity {self.granularity}")
         if not sparse:
             if sub_bus.data_width != self.data_width:
-                raise ValueError("Subordinate bus has data width {}, which is not the same as "
-                                 "decoder data width {} (required for dense address translation)"
-                                 .format(sub_bus.data_width, self.data_width))
+                raise ValueError(f"Subordinate bus has data width {sub_bus.data_width}, which is "
+                                 f"not the same as decoder data width {self.data_width} (required "
+                                 f"for dense address translation)")
         else:
             if sub_bus.granularity != sub_bus.data_width:
-                raise ValueError("Subordinate bus has data width {}, which is not the same as "
-                                 "subordinate bus granularity {} (required for sparse address "
-                                 "translation)"
-                                 .format(sub_bus.data_width, sub_bus.granularity))
+                raise ValueError(f"Subordinate bus has data width {sub_bus.data_width}, which is "
+                                 f"not the same as its granularity {sub_bus.granularity} "
+                                 f"(required for sparse address translation)")
         for opt_output in {"err", "rty", "stall"}:
             if hasattr(sub_bus, opt_output) and opt_output not in self.features:
-                raise ValueError("Subordinate bus has optional output {!r}, but the decoder "
-                                 "does not have a corresponding input"
-                                 .format(opt_output))
+                raise ValueError(f"Subordinate bus has optional output {opt_output!r}, but the "
+                                 f"decoder does not have a corresponding input")
 
         self._subs[sub_bus.memory_map] = sub_bus
         return self._map.add_window(sub_bus.memory_map, addr=addr, sparse=sparse, extend=extend)
@@ -328,13 +430,13 @@ class Arbiter(Elaboratable):
     Parameters
     ----------
     addr_width : int
-        Address width. See :class:`Interface`.
+        Address width. See :class:`Signature`.
     data_width : int
-        Data width. See :class:`Interface`.
+        Data width. See :class:`Signature`.
     granularity : int
-        Granularity. See :class:`Interface`
-    features : iter(str)
-        Optional signal set. See :class:`Interface`.
+        Granularity. See :class:`Signature`
+    features : iter(:class:`Feature`)
+        Optional signal set. See :class:`Signature`.
 
     Attributes
     ----------
@@ -342,9 +444,13 @@ class Arbiter(Elaboratable):
         Shared Wishbone bus.
     """
     def __init__(self, *, addr_width, data_width, granularity=None, features=frozenset()):
-        self.bus    = Interface(addr_width=addr_width, data_width=data_width,
-                                granularity=granularity, features=features)
+        self._bus   = Signature(addr_width=addr_width, data_width=data_width,
+                                granularity=granularity, features=features).create()
         self._intrs = []
+
+    @property
+    def bus(self):
+        return self._bus
 
     def add(self, intr_bus):
         """Add an initiator bus to the arbiter.
@@ -354,25 +460,21 @@ class Arbiter(Elaboratable):
         the arbiter.
         """
         if not isinstance(intr_bus, Interface):
-            raise TypeError("Initiator bus must be an instance of wishbone.Interface, not {!r}"
-                            .format(intr_bus))
+            raise TypeError(f"Initiator bus must be an instance of wishbone.Interface, not "
+                            f"{intr_bus!r}")
         if intr_bus.addr_width != self.bus.addr_width:
-            raise ValueError("Initiator bus has address width {}, which is not the same as "
-                             "arbiter address width {}"
-                             .format(intr_bus.addr_width, self.bus.addr_width))
+            raise ValueError(f"Initiator bus has address width {intr_bus.addr_width}, which is "
+                             f"not the same as arbiter address width {self.bus.addr_width}")
         if intr_bus.granularity < self.bus.granularity:
-            raise ValueError("Initiator bus has granularity {}, which is lesser than the "
-                             "arbiter granularity {}"
-                             .format(intr_bus.granularity, self.bus.granularity))
+            raise ValueError(f"Initiator bus has granularity {intr_bus.granularity}, which is "
+                             f"lesser than the arbiter granularity {self.bus.granularity}")
         if intr_bus.data_width != self.bus.data_width:
-            raise ValueError("Initiator bus has data width {}, which is not the same as "
-                             "arbiter data width {}"
-                             .format(intr_bus.data_width, self.bus.data_width))
+            raise ValueError(f"Initiator bus has data width {intr_bus.data_width}, which is not "
+                             f"the same as arbiter data width {self.bus.data_width}")
         for opt_output in {"err", "rty"}:
             if hasattr(self.bus, opt_output) and not hasattr(intr_bus, opt_output):
-                raise ValueError("Arbiter has optional output {!r}, but the initiator bus "
-                                 "does not have a corresponding input"
-                                 .format(opt_output))
+                raise ValueError(f"Arbiter has optional output {opt_output!r}, but the initiator "
+                                 f"bus does not have a corresponding input")
 
         self._intrs.append(intr_bus)
 
