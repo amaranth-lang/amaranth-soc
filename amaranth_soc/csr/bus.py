@@ -1,7 +1,7 @@
 from collections import defaultdict
-from math import ceil, log2
 import enum
 from amaranth import *
+from amaranth.utils import log2_int
 
 from ..memory import MemoryMap
 
@@ -233,7 +233,7 @@ class Multiplexer(Elaboratable):
             """
             assert isinstance(elem_range, range)
             self._ranges.add(elem_range)
-            elem_size  = 2 ** ceil(log2(elem_range.stop - elem_range.start))
+            elem_size  = 2 ** log2_int(elem_range.stop - elem_range.start, need_pow2=False)
             self._size = max(self._size, elem_size)
 
         def decode_address(self, addr, elem_range):
@@ -271,11 +271,10 @@ class Multiplexer(Elaboratable):
                          │  └──── ceil(log2(elem_range.stop - elem_range.start))
                          └─────── log2(self.size)
 
-
                 The decoded offset would therefore be ``8`` (i.e. ``0b1000``).
             """
             assert elem_range in self._ranges and addr in elem_range
-            elem_size = 2 ** ceil(log2(elem_range.stop - elem_range.start))
+            elem_size = 2 ** log2_int(elem_range.stop - elem_range.start, need_pow2=False)
             self_mask = self.size - 1
             elem_mask = elem_size - 1
             return elem_range.start & self_mask & ~elem_mask | addr & elem_mask
@@ -290,7 +289,7 @@ class Multiplexer(Elaboratable):
                 located at ``offset``. See :meth:`~Multiplexer._Shadow.decode_address` for details.
             """
             assert elem_range in self._ranges and isinstance(offset, int)
-            elem_size = 2 ** ceil(log2(elem_range.stop - elem_range.start))
+            elem_size = 2 ** log2_int(elem_range.stop - elem_range.start, need_pow2=False)
             return elem_range.start + ((offset - elem_range.start) % elem_size)
 
         def prepare(self):
