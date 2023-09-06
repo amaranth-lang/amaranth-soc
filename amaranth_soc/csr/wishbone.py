@@ -25,8 +25,8 @@ class WishboneCSRBridge(Elaboratable):
     ----------
     csr_bus : :class:`..csr.Interface`
         CSR bus driven by the bridge.
-    data_width : int or None
-        Wishbone bus data width. If not specified, defaults to ``csr_bus.data_width``.
+    data_width : int
+        Wishbone bus data width. Optional. If ``None``, defaults to ``csr_bus.data_width``.
     name : str
         Window name. Optional.
 

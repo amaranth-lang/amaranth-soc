@@ -184,7 +184,7 @@ class Decoder(Elaboratable):
         Granularity. See :class:`Interface`
     features : iter(str)
         Optional signal set. See :class:`Interface`.
-    alignment : log2 of int
+    alignment : int, power-of-2 exponent
         Window alignment. See :class:`..memory.MemoryMap`
     name : str
         Window name. Optional.
