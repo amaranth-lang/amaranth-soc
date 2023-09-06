@@ -135,7 +135,7 @@ class MemoryMap:
         Address width.
     data_width : int
         Data width.
-    alignment : log2 of int
+    alignment : int, power-of-2 exponent
         Range alignment. Each added resource and window will be placed at an address that is
         a multiple of ``2 ** alignment``, and its size will be rounded up to be a multiple of
         ``2 ** alignment``.
@@ -217,7 +217,7 @@ class MemoryMap:
 
         Arguments
         ---------
-        alignment : log2 of int
+        alignment : int, power-of-2 exponent
             Address alignment. The start of the implicit next address will be a multiple of
             ``2 ** max(alignment, self.alignment)``.
 
@@ -287,15 +287,15 @@ class MemoryMap:
         name : str
             Name of the resource. It must not collide with the name of other resources or windows
             present in this memory map.
-        addr : int or None
-            Address of the resource. If ``None``, the implicit next address will be used.
+        addr : int
+            Address of the resource. Optional. If ``None``, the implicit next address will be used.
             Otherwise, the exact specified address (which must be a multiple of
             ``2 ** max(alignment, self.alignment)``) will be used.
         size : int
             Size of the resource, in minimal addressable units. Rounded up to a multiple of
             ``2 ** max(alignment, self.alignment)``.
-        alignment : log2 of int or None
-            Alignment of the resource. If not specified, the memory map alignment is used.
+        alignment : int, power-of-2 exponent
+            Alignment of the resource. Optional. If ``None``, the memory map alignment is used.
         extend: bool
             Allow memory map extension. If ``True``, the upper bound of the address space is
             raised as needed, in order to fit a resource that would otherwise be out of bounds.
@@ -379,13 +379,13 @@ class MemoryMap:
         window : :class:`MemoryMap`
             A memory map describing the layout of the window. It is frozen as a side-effect of
             being added to this memory map.
-        addr : int or None
-            Address of the window. If ``None``, the implicit next address will be used after
-            aligning it to ``2 ** window.addr_width``. Otherwise, the exact specified address
+        addr : int
+            Address of the window. Optional. If ``None``, the implicit next address will be used
+            after aligning it to ``2 ** window.addr_width``. Otherwise, the exact specified address
             (which must be a multiple of ``2 ** window.addr_width``) will be used.
-        sparse : bool or None
-            Address translation type. Ignored if the datapath widths of both memory maps are
-            equal; must be specified otherwise.
+        sparse : bool
+            Address translation type. Optional. Ignored if the datapath widths of both memory maps
+            are equal; must be specified otherwise.
         extend : bool
             Allow memory map extension. If ``True``, the upper bound of the address space is
             raised as needed, in order to fit a window that would otherwise be out of bounds.

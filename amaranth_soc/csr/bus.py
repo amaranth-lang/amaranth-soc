@@ -383,7 +383,7 @@ class Multiplexer(Elaboratable):
         Address width. See :class:`Interface`.
     data_width : int
         Data width. See :class:`Interface`.
-    alignment : log2 of int
+    alignment : int, power-of-2 exponent
         Register alignment. See :class:`..memory.MemoryMap`.
     name : str
         Window name. Optional.
@@ -534,7 +534,7 @@ class Decoder(Elaboratable):
         Address width. See :class:`Interface`.
     data_width : int
         Data width. See :class:`Interface`.
-    alignment : log2 of int
+    alignment : int, power-of-2 exponent
         Window alignment. See :class:`..memory.MemoryMap`.
     name : str
         Window name. Optional.
