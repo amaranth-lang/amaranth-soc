@@ -2,7 +2,7 @@ from amaranth import *
 from amaranth.utils import log2_int
 
 from . import Interface as CSRInterface
-from ..wishbone import Interface as WishboneInterface
+from .. import wishbone
 from ..memory import MemoryMap
 
 
@@ -28,7 +28,7 @@ class WishboneCSRBridge(Elaboratable):
     data_width : int
         Wishbone bus data width. Optional. If ``None``, defaults to ``csr_bus.data_width``.
     name : str
-        Window name. Optional.
+        Window name. Optional. See :class:`..memory.MemoryMap`.
 
     Attributes
     ----------
@@ -46,11 +46,11 @@ class WishboneCSRBridge(Elaboratable):
             data_width = csr_bus.data_width
 
         self.csr_bus = csr_bus
-        self.wb_bus  = WishboneInterface(
+        self.wb_bus  = wishbone.Interface(
             addr_width=max(0, csr_bus.addr_width - log2_int(data_width // csr_bus.data_width)),
             data_width=data_width,
             granularity=csr_bus.data_width,
-            name="wb")
+            path=("wb",))
 
         wb_map = MemoryMap(addr_width=csr_bus.addr_width, data_width=csr_bus.data_width,
                            name=name)
