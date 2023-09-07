@@ -2,97 +2,154 @@
 
 import unittest
 from amaranth import *
-from amaranth.hdl.rec import Layout
+from amaranth.lib.wiring import *
 from amaranth.sim import *
 
-from amaranth_soc.csr.bus import *
+from amaranth_soc import csr
 from amaranth_soc.memory import MemoryMap
 
 
-class ElementTestCase(unittest.TestCase):
-    def test_layout_1_ro(self):
-        elem = Element(1, "r")
-        self.assertEqual(elem.width, 1)
-        self.assertEqual(elem.access, Element.Access.R)
-        self.assertEqual(elem.layout, Layout.cast([
-            ("r_data", 1),
-            ("r_stb", 1),
-        ]))
+class ElementSignatureTestCase(unittest.TestCase):
+    def test_members_1_ro(self):
+        sig = csr.Element.Signature(1, "r")
+        self.assertEqual(sig.width, 1)
+        self.assertEqual(sig.access, csr.Element.Access.R)
+        self.assertEqual(sig.members, Signature({
+            "r_data": In(1),
+            "r_stb":  Out(1),
+        }).members)
 
-    def test_layout_8_rw(self):
-        elem = Element(8, access="rw")
+    def test_members_8_rw(self):
+        sig = csr.Element.Signature(8, access="rw")
+        self.assertEqual(sig.width, 8)
+        self.assertEqual(sig.access, csr.Element.Access.RW)
+        self.assertEqual(sig.members, Signature({
+            "r_data": In(8),
+            "r_stb":  Out(1),
+            "w_data": Out(8),
+            "w_stb":  Out(1),
+        }).members)
+
+    def test_members_10_wo(self):
+        sig = csr.Element.Signature(10, "w")
+        self.assertEqual(sig.width, 10)
+        self.assertEqual(sig.access, csr.Element.Access.W)
+        self.assertEqual(sig.members, Signature({
+            "w_data": Out(10),
+            "w_stb":  Out(1),
+        }).members)
+
+    def test_members_0_rw(self): # degenerate but legal case
+        sig = csr.Element.Signature(0, access=csr.Element.Access.RW)
+        self.assertEqual(sig.width, 0)
+        self.assertEqual(sig.access, csr.Element.Access.RW)
+        self.assertEqual(sig.members, Signature({
+            "r_data": In(0),
+            "r_stb":  Out(1),
+            "w_data": Out(0),
+            "w_stb":  Out(1),
+        }).members)
+
+    def test_create(self):
+        sig  = csr.Element.Signature(8, "rw")
+        elem = sig.create(path=("foo", "bar"))
+        self.assertIsInstance(elem, csr.Element)
         self.assertEqual(elem.width, 8)
-        self.assertEqual(elem.access, Element.Access.RW)
-        self.assertEqual(elem.layout, Layout.cast([
-            ("r_data", 8),
-            ("r_stb", 1),
-            ("w_data", 8),
-            ("w_stb", 1),
-        ]))
+        self.assertEqual(elem.access, csr.Element.Access.RW)
+        self.assertEqual(elem.r_stb.name, "foo__bar__r_stb")
+        self.assertEqual(elem.signature, sig)
 
-    def test_layout_10_wo(self):
-        elem = Element(10, "w")
-        self.assertEqual(elem.width, 10)
-        self.assertEqual(elem.access, Element.Access.W)
-        self.assertEqual(elem.layout, Layout.cast([
-            ("w_data", 10),
-            ("w_stb", 1),
-        ]))
+    def test_eq(self):
+        self.assertEqual(csr.Element.Signature(8, "r"), csr.Element.Signature(8, "r"))
+        self.assertEqual(csr.Element.Signature(8, "r"),
+                         csr.Element.Signature(8, csr.Element.Access.R))
+        # different width
+        self.assertNotEqual(csr.Element.Signature(8, "r"), csr.Element.Signature(1, "r"))
+        # different access mode
+        self.assertNotEqual(csr.Element.Signature(8, "r"), csr.Element.Signature(8, "w"))
+        self.assertNotEqual(csr.Element.Signature(8, "r"), csr.Element.Signature(8, "rw"))
+        self.assertNotEqual(csr.Element.Signature(8, "w"), csr.Element.Signature(8, "rw"))
 
-    def test_layout_0_rw(self): # degenerate but legal case
-        elem = Element(0, access=Element.Access.RW)
-        self.assertEqual(elem.width, 0)
-        self.assertEqual(elem.access, Element.Access.RW)
-        self.assertEqual(elem.layout, Layout.cast([
-            ("r_data", 0),
-            ("r_stb", 1),
-            ("w_data", 0),
-            ("w_stb", 1),
-        ]))
-
-    def test_width_wrong(self):
-        with self.assertRaisesRegex(ValueError,
+    def test_wrong_width(self):
+        with self.assertRaisesRegex(TypeError,
                 r"Width must be a non-negative integer, not -1"):
-            Element(-1, "rw")
+            csr.Element.Signature(-1, "rw")
 
-    def test_access_wrong(self):
+    def test_wrong_access(self):
         with self.assertRaisesRegex(ValueError,
-                r"Access mode must be one of \"r\", \"w\", or \"rw\", not 'wo'"):
-            Element(width=1, access="wo")
+                r"'wo' is not a valid Element.Access"):
+            csr.Element.Signature(width=1, access="wo")
+
+
+class ElementTestCase(unittest.TestCase):
+    def test_simple(self):
+        elem = csr.Element(8, "rw", path=("foo", "bar"))
+        self.assertEqual(elem.width, 8)
+        self.assertEqual(elem.access, csr.Element.Access.RW)
+        self.assertEqual(elem.r_stb.name, "foo__bar__r_stb")
+
+
+class SignatureTestCase(unittest.TestCase):
+    def test_simple(self):
+        sig = csr.Signature(addr_width=16, data_width=8)
+        self.assertEqual(sig.addr_width, 16)
+        self.assertEqual(sig.data_width, 8)
+        self.assertEqual(sig.members, Signature({
+            "addr":   Out(16),
+            "r_data": In(8),
+            "r_stb":  Out(1),
+            "w_data": Out(8),
+            "w_stb":  Out(1)
+        }).members)
+
+    def test_create(self):
+        sig   = csr.Signature(addr_width=16, data_width=8)
+        iface = sig.create(path=("foo", "bar"))
+        self.assertIsInstance(iface, csr.Interface)
+        self.assertEqual(iface.addr_width, 16)
+        self.assertEqual(iface.data_width, 8)
+        self.assertEqual(iface.r_stb.name, "foo__bar__r_stb")
+        self.assertEqual(iface.signature, sig)
+
+    def test_eq(self):
+        self.assertEqual(csr.Signature(addr_width=32, data_width=8),
+                         csr.Signature(addr_width=32, data_width=8))
+        # different addr_width
+        self.assertNotEqual(csr.Signature(addr_width=16, data_width=16),
+                            csr.Signature(addr_width=32, data_width=16))
+        # different data_width
+        self.assertNotEqual(csr.Signature(addr_width=32, data_width=8),
+                            csr.Signature(addr_width=32, data_width=16))
+
+    def test_wrong_addr_width(self):
+        with self.assertRaisesRegex(TypeError,
+                r"Address width must be a positive integer, not -1"):
+            csr.Signature(addr_width=-1, data_width=8)
+        with self.assertRaisesRegex(TypeError,
+                r"Address width must be a positive integer, not -1"):
+            csr.Signature.check_parameters(addr_width=-1, data_width=8)
+
+    def test_wrong_data_width(self):
+        with self.assertRaisesRegex(TypeError,
+                r"Data width must be a positive integer, not -1"):
+            csr.Signature.check_parameters(addr_width=16, data_width=-1)
 
 
 class InterfaceTestCase(unittest.TestCase):
-    def test_layout(self):
-        iface = Interface(addr_width=12, data_width=8)
+    def test_simple(self):
+        iface = csr.Interface(addr_width=12, data_width=8, path=("foo", "bar"))
         self.assertEqual(iface.addr_width, 12)
         self.assertEqual(iface.data_width, 8)
-        self.assertEqual(iface.layout, Layout.cast([
-            ("addr",    12),
-            ("r_data",  8),
-            ("r_stb",   1),
-            ("w_data",  8),
-            ("w_stb",   1),
-        ]))
-
-    def test_wrong_addr_width(self):
-        with self.assertRaisesRegex(ValueError,
-                r"Address width must be a positive integer, not -1"):
-            Interface(addr_width=-1, data_width=8)
-
-    def test_wrong_data_width(self):
-        with self.assertRaisesRegex(ValueError,
-                r"Data width must be a positive integer, not -1"):
-            Interface(addr_width=16, data_width=-1)
+        self.assertEqual(iface.r_stb.name, "foo__bar__r_stb")
 
     def test_get_map_wrong(self):
-        iface = Interface(addr_width=16, data_width=8)
+        iface = csr.Interface(addr_width=16, data_width=8)
         with self.assertRaisesRegex(NotImplementedError,
-                r"Bus interface \(rec iface addr r_data r_stb w_data w_stb\) does not "
-                r"have a memory map"):
+                r"csr.Interface\(.*\) does not have a memory map"):
             iface.memory_map
 
     def test_get_map_frozen(self):
-        iface = Interface(addr_width=16, data_width=8)
+        iface = csr.Interface(addr_width=16, data_width=8)
         iface.memory_map = MemoryMap(addr_width=16, data_width=8)
         with self.assertRaisesRegex(ValueError,
                 r"Memory map has been frozen. Address width cannot be extended "
@@ -100,20 +157,20 @@ class InterfaceTestCase(unittest.TestCase):
             iface.memory_map.addr_width = 24
 
     def test_set_map_wrong(self):
-        iface = Interface(addr_width=16, data_width=8)
+        iface = csr.Interface(addr_width=16, data_width=8)
         with self.assertRaisesRegex(TypeError,
                 r"Memory map must be an instance of MemoryMap, not 'foo'"):
             iface.memory_map = "foo"
 
     def test_set_map_wrong_addr_width(self):
-        iface = Interface(addr_width=16, data_width=8)
+        iface = csr.Interface(addr_width=16, data_width=8)
         with self.assertRaisesRegex(ValueError,
                 r"Memory map has address width 8, which is not the same as "
                 r"bus interface address width 16"):
             iface.memory_map = MemoryMap(addr_width=8, data_width=8)
 
     def test_set_map_wrong_data_width(self):
-        iface = Interface(addr_width=16, data_width=8)
+        iface = csr.Interface(addr_width=16, data_width=8)
         with self.assertRaisesRegex(ValueError,
                 r"Memory map has data width 16, which is not the same as "
                 r"bus interface data width 8"):
@@ -122,66 +179,66 @@ class InterfaceTestCase(unittest.TestCase):
 
 class MultiplexerTestCase(unittest.TestCase):
     def setUp(self):
-        self.dut = Multiplexer(addr_width=16, data_width=8)
+        self.dut = csr.Multiplexer(addr_width=16, data_width=8)
 
     def test_add_4b(self):
-        elem_4b = Element(4, "rw")
-        self.assertEqual(self.dut.add(elem_4b), (0, 1))
+        elem_4b = csr.Element(4, "rw", path=("elem_4b",))
+        self.assertEqual(self.dut.add(elem_4b, name="elem_4b"), (0, 1))
 
     def test_add_8b(self):
-        elem_8b = Element(8, "rw")
-        self.assertEqual(self.dut.add(elem_8b), (0, 1))
+        elem_8b = csr.Element(8, "rw", path=("elem_8b",))
+        self.assertEqual(self.dut.add(elem_8b, name="elem_8b"), (0, 1))
 
     def test_add_12b(self):
-        elem_12b = Element(12, "rw")
-        self.assertEqual(self.dut.add(elem_12b), (0, 2))
+        elem_12b = csr.Element(12, "rw", path=("elem_12b",))
+        self.assertEqual(self.dut.add(elem_12b, name="elem_8b"), (0, 2))
 
     def test_add_16b(self):
-        elem_16b = Element(16, "rw")
-        self.assertEqual(self.dut.add(elem_16b), (0, 2))
+        elem_16b = csr.Element(16, "rw", path=("elem_16b",))
+        self.assertEqual(self.dut.add(elem_16b, name="elem_16b"), (0, 2))
 
     def test_add_two(self):
-        elem_8b  = Element( 8, "rw")
-        elem_16b = Element(16, "rw")
-        self.assertEqual(self.dut.add(elem_16b), (0, 2))
-        self.assertEqual(self.dut.add(elem_8b),  (2, 3))
+        elem_8b  = csr.Element( 8, "rw", path=("elem_8b",))
+        elem_16b = csr.Element(16, "rw", path=("elem_16b",))
+        self.assertEqual(self.dut.add(elem_16b, name="elem_16b"), (0, 2))
+        self.assertEqual(self.dut.add(elem_8b,  name="elem_8b"), (2, 3))
 
     def test_add_extend(self):
-        elem_8b  = Element(8, "rw")
-        self.assertEqual(self.dut.add(elem_8b, addr=0x10000, extend=True),
+        elem_8b = csr.Element(8, "rw", path=("elem_8b",))
+        self.assertEqual(self.dut.add(elem_8b, name="elem_8b", addr=0x10000, extend=True),
                          (0x10000, 0x10001))
         self.assertEqual(self.dut.bus.addr_width, 17)
 
     def test_add_wrong(self):
         with self.assertRaisesRegex(TypeError,
                 r"Element must be an instance of csr\.Element, not 'foo'"):
-            self.dut.add(element="foo")
+            self.dut.add(element="foo", name="elem_4b")
 
     def test_align_to(self):
-        elem_0  = Element( 8, "rw")
-        elem_1  = Element( 8, "rw")
-        self.assertEqual(self.dut.add(elem_0), (0, 1))
+        elem_0 = csr.Element(8, "rw", path=("elem_0",))
+        elem_1 = csr.Element(8, "rw", path=("elem_1",))
+        self.assertEqual(self.dut.add(elem_0, name="elem_0"), (0, 1))
         self.assertEqual(self.dut.align_to(2), 4)
-        self.assertEqual(self.dut.add(elem_1), (4, 5))
+        self.assertEqual(self.dut.add(elem_1, name="elem_1"), (4, 5))
 
     def test_add_wrong_out_of_bounds(self):
-        elem = Element(8, "rw")
+        elem = csr.Element.Signature(8, "rw").create()
         with self.assertRaisesRegex(ValueError,
                 r"Address range 0x10000\.\.0x10001 out of bounds for memory map spanning "
                 r"range 0x0\.\.0x10000 \(16 address bits\)"):
-            self.dut.add(elem, addr=0x10000)
+            self.dut.add(elem, name="elem", addr=0x10000)
 
     def test_sim(self):
         for shadow_overlaps in [None, 0, 1]:
             with self.subTest(shadow_overlaps=shadow_overlaps):
-                dut = Multiplexer(addr_width=16, data_width=8, shadow_overlaps=shadow_overlaps)
+                dut = csr.Multiplexer(addr_width=16, data_width=8, shadow_overlaps=shadow_overlaps)
 
-                elem_4_r = Element(4, "r")
-                dut.add(elem_4_r)
-                elem_8_w = Element(8, "w")
-                dut.add(elem_8_w)
-                elem_16_rw = Element(16, "rw")
-                dut.add(elem_16_rw)
+                elem_4_r = csr.Element(4, "r", path=("elem_4_r",))
+                dut.add(elem_4_r, name="elem_4_r")
+                elem_8_w = csr.Element(8, "w", path=("elem_8_w",))
+                dut.add(elem_8_w, name="elem_8_w")
+                elem_16_rw = csr.Element(16, "rw", path=("elem_16_rw",))
+                dut.add(elem_16_rw, name="elem_16_rw")
 
                 bus = dut.bus
 
@@ -273,36 +330,36 @@ class MultiplexerTestCase(unittest.TestCase):
 
 class MultiplexerAlignedTestCase(unittest.TestCase):
     def setUp(self):
-        self.dut = Multiplexer(addr_width=16, data_width=8, alignment=2)
+        self.dut = csr.Multiplexer(addr_width=16, data_width=8, alignment=2)
 
     def test_add_two(self):
-        elem_0 = Element( 8, "rw")
-        elem_1 = Element(16, "rw")
-        self.assertEqual(self.dut.add(elem_0), (0, 4))
-        self.assertEqual(self.dut.add(elem_1), (4, 8))
+        elem_0 = csr.Element( 8, "rw", path=("elem_0",))
+        elem_1 = csr.Element(16, "rw", path=("elem_1",))
+        self.assertEqual(self.dut.add(elem_0, name="elem_0"), (0, 4))
+        self.assertEqual(self.dut.add(elem_1, name="elem_1"), (4, 8))
 
     def test_over_align_to(self):
-        elem_0 = Element(8, "rw")
-        elem_1 = Element(8, "rw")
-        self.assertEqual(self.dut.add(elem_0), (0, 4))
+        elem_0 = csr.Element(8, "rw", path=("elem_0",))
+        elem_1 = csr.Element(8, "rw", path=("elem_1",))
+        self.assertEqual(self.dut.add(elem_0, name="elem_0"), (0, 4))
         self.assertEqual(self.dut.align_to(3), 8)
-        self.assertEqual(self.dut.add(elem_1), (8, 12))
+        self.assertEqual(self.dut.add(elem_1, name="elem_1"), (8, 12))
 
     def test_under_align_to(self):
-        elem_0 = Element(8, "rw")
-        elem_1 = Element(8, "rw")
-        self.assertEqual(self.dut.add(elem_0), (0, 4))
+        elem_0 = csr.Element(8, "rw", path=("elem_0",))
+        elem_1 = csr.Element(8, "rw", path=("elem_1",))
+        self.assertEqual(self.dut.add(elem_0, name="elem_0"), (0, 4))
         self.assertEqual(self.dut.align_to(alignment=1), 4)
-        self.assertEqual(self.dut.add(elem_1), (4, 8))
+        self.assertEqual(self.dut.add(elem_1, name="elem_1"), (4, 8))
 
     def test_sim(self):
         for shadow_overlaps in [None, 0, 1]:
             with self.subTest(shadow_overlaps=shadow_overlaps):
-                dut = Multiplexer(addr_width=16, data_width=8, alignment=2,
-                                  shadow_overlaps=shadow_overlaps)
+                dut = csr.Multiplexer(addr_width=16, data_width=8, alignment=2,
+                                      shadow_overlaps=shadow_overlaps)
 
-                elem_20_rw = Element(20, "rw")
-                dut.add(elem_20_rw)
+                elem_20_rw = csr.Element(20, "rw", path=("elem_20_rw",))
+                dut.add(elem_20_rw, name="elem_20_rw")
 
                 bus = dut.bus
 
@@ -338,22 +395,22 @@ class MultiplexerAlignedTestCase(unittest.TestCase):
 
 class DecoderTestCase(unittest.TestCase):
     def setUp(self):
-        self.dut = Decoder(addr_width=16, data_width=8)
+        self.dut = csr.Decoder(addr_width=16, data_width=8)
 
     def test_align_to(self):
-        sub_1 = Interface(addr_width=10, data_width=8)
+        sub_1 = csr.Interface(addr_width=10, data_width=8, path=("sub_1",))
         sub_1.memory_map = MemoryMap(addr_width=10, data_width=8)
         self.assertEqual(self.dut.add(sub_1), (0, 0x400, 1))
 
         self.assertEqual(self.dut.align_to(12), 0x1000)
         self.assertEqual(self.dut.align_to(alignment=12), 0x1000)
 
-        sub_2 = Interface(addr_width=10, data_width=8)
+        sub_2 = csr.Interface(addr_width=10, data_width=8, path=("sub_2",))
         sub_2.memory_map = MemoryMap(addr_width=10, data_width=8)
         self.assertEqual(self.dut.add(sub_2), (0x1000, 0x1400, 1))
 
     def test_add_extend(self):
-        iface = Interface(addr_width=17, data_width=8)
+        iface = csr.Interface(addr_width=17, data_width=8, path=("iface",))
         iface.memory_map = MemoryMap(addr_width=17, data_width=8)
         self.assertEqual(self.dut.add(iface, extend=True), (0, 0x20000, 1))
         self.assertEqual(self.dut.bus.addr_width, 18)
@@ -364,7 +421,7 @@ class DecoderTestCase(unittest.TestCase):
             self.dut.add(sub_bus=1)
 
     def test_add_wrong_data_width(self):
-        mux = Multiplexer(addr_width=10, data_width=16)
+        mux = csr.Multiplexer(addr_width=10, data_width=16)
         Fragment.get(mux, platform=None) # silence UnusedElaboratable
 
         with self.assertRaisesRegex(ValueError,
@@ -373,7 +430,7 @@ class DecoderTestCase(unittest.TestCase):
             self.dut.add(mux.bus)
 
     def test_add_wrong_out_of_bounds(self):
-        iface = Interface(addr_width=17, data_width=8)
+        iface = csr.Interface(addr_width=17, data_width=8, path=("iface",))
         iface.memory_map = MemoryMap(addr_width=17, data_width=8)
         with self.assertRaisesRegex(ValueError,
                 r"Address range 0x0\.\.0x20000 out of bounds for memory map spanning "
@@ -381,14 +438,14 @@ class DecoderTestCase(unittest.TestCase):
             self.dut.add(iface)
 
     def test_sim(self):
-        mux_1  = Multiplexer(addr_width=10, data_width=8)
-        elem_1 = Element(8, "rw")
-        mux_1.add(elem_1)
+        mux_1  = csr.Multiplexer(addr_width=10, data_width=8)
+        elem_1 = csr.Element(8, "rw", path=("elem_1",))
+        mux_1.add(elem_1, name="elem_1")
         self.dut.add(mux_1.bus)
 
-        mux_2  = Multiplexer(addr_width=10, data_width=8)
-        elem_2 = Element(8, "rw")
-        mux_2.add(elem_2, addr=2)
+        mux_2  = csr.Multiplexer(addr_width=10, data_width=8)
+        elem_2 = csr.Element(8, "rw", path=("elem_2",))
+        mux_2.add(elem_2, name="elem_2", addr=2)
         self.dut.add(mux_2.bus)
 
         elem_1_info = self.dut.bus.memory_map.find_resource(elem_1)
