@@ -29,8 +29,10 @@ class EventMonitor(Elaboratable):
         CSR address alignment. See :class:`..memory.MemoryMap`.
     trigger : :class:`..event.Source.Trigger`
         Trigger mode. See :class:`..event.Source`.
+    name : str
+        Window name. Optional. See :class:`..memory.MemoryMap`.
     """
-    def __init__(self, *, data_width, alignment=0, trigger="level"):
+    def __init__(self, *, data_width, alignment=0, trigger="level", name=None):
         choices = ("level", "rise", "fall")
         if not isinstance(trigger, event.Source.Trigger) and trigger not in choices:
             raise ValueError("Invalid trigger mode {!r}; must be one of {}"
@@ -41,7 +43,8 @@ class EventMonitor(Elaboratable):
         self._monitor = None
         self._enable  = None
         self._pending = None
-        self._mux     = Multiplexer(addr_width=1, data_width=data_width, alignment=alignment)
+        self._mux     = Multiplexer(addr_width=1, data_width=data_width, alignment=alignment,
+                                    name=name)
         self._frozen  = False
 
     def freeze(self):
@@ -52,10 +55,10 @@ class EventMonitor(Elaboratable):
         if self._frozen:
             return
         self._monitor = event.Monitor(self._map, trigger=self._trigger)
-        self._enable  = Element(self._map.size, "rw")
-        self._pending = Element(self._map.size, "rw")
-        self._mux.add(self._enable,  extend=True)
-        self._mux.add(self._pending, extend=True)
+        self._enable  = Element(self._map.size, "rw", path=("enable",))
+        self._pending = Element(self._map.size, "rw", path=("pending",))
+        self._mux.add(self._enable,  name="enable",  extend=True)
+        self._mux.add(self._pending, name="pending", extend=True)
         self._frozen  = True
 
     @property

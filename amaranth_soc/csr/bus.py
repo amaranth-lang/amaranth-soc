@@ -1,15 +1,16 @@
 from collections import defaultdict
-import enum
 from amaranth import *
+from amaranth.lib import enum, wiring
+from amaranth.lib.wiring import In, Out
 from amaranth.utils import log2_int
 
 from ..memory import MemoryMap
 
 
-__all__ = ["Element", "Interface", "Decoder", "Multiplexer"]
+__all__ = ["Element", "Signature", "Interface", "Decoder", "Multiplexer"]
 
 
-class Element(Record):
+class Element(wiring.Interface):
     class Access(enum.Enum):
         """Register access mode.
 
@@ -26,6 +27,104 @@ class Element(Record):
         def writable(self):
             return self == self.W or self == self.RW
 
+    class Signature(wiring.Signature):
+        """Peripheral-side CSR signature.
+
+        Parameters
+        ----------
+        width : int
+            Width of the register.
+        access : :class:`Access`
+            Register access mode.
+
+        Interface attributes
+        --------------------
+        r_data : Signal(width)
+            Read data. Must be always valid, and is sampled when ``r_stb`` is asserted.
+        r_stb : Signal()
+            Read strobe. Registers with read side effects should perform the read side effect when this
+            strobe is asserted.
+        w_data : Signal(width)
+            Write data. Valid only when ``w_stb`` is asserted.
+        w_stb : Signal()
+            Write strobe. Registers should update their value or perform the write side effect when
+            this strobe is asserted.
+
+        Raises
+        ------
+        See :meth:`Element.Signature.check_parameters`.
+        """
+        def __init__(self, width, access):
+            self.check_parameters(width, access)
+
+            self._width  = width
+            self._access = Element.Access(access)
+
+            members = {}
+            if self.access.readable():
+                members.update({
+                    "r_data": In(self.width),
+                    "r_stb":  Out(1)
+                })
+            if self.access.writable():
+                members.update({
+                    "w_data": Out(self.width),
+                    "w_stb":  Out(1)
+                })
+            super().__init__(members)
+
+        @property
+        def width(self):
+            return self._width
+
+        @property
+        def access(self):
+            return self._access
+
+        @classmethod
+        def check_parameters(cls, width, access):
+            """Validate signature parameters.
+
+            Raises
+            ------
+            :exc:`TypeError`
+                If ``width`` is not an integer greater than or equal to 0.
+            :exc:`ValueError`
+                If ``access`` is not a member of :class:`Element.Access`.
+            """
+            if not isinstance(width, int) or width < 0:
+                raise TypeError(f"Width must be a non-negative integer, not {width!r}")
+            # TODO(py3.9): Remove this. Python 3.8 and below use cls.__name__ in the error message
+            # instead of cls.__qualname__.
+            # Element.Access(access)
+            try:
+                Element.Access(access)
+            except ValueError as e:
+                raise ValueError(f"{access!r} is not a valid Element.Access") from e
+
+        def create(self, *, path=()):
+            """Create a compatible interface.
+
+            See :meth:`wiring.Signature.create` for details.
+
+            Returns
+            -------
+            An :class:`Element` object using this signature.
+            """
+            return Element(self.width, self.access, path=path)
+
+        def __eq__(self, other):
+            """Compare signatures.
+
+            Two signatures are equal if they have the same width and register access mode.
+            """
+            return (isinstance(other, Element.Signature) and
+                    self.width == other.width and
+                    self.access == other.access)
+
+        def __repr__(self):
+            return f"csr.Element.Signature({self.members!r})"
+
     """Peripheral-side CSR interface.
 
     A low-level interface to a single atomically readable and writable register in a peripheral.
@@ -34,51 +133,130 @@ class Element(Record):
 
     Parameters
     ----------
-    width : int
+    width : :class:`int`
         Width of the register.
-    access : :class:`Access`
+    access : :class:`Element.Access`
         Register access mode.
-    name : str
-        Name of the underlying record.
+    path : iter(:class:`str`)
+        Path to this CSR interface. Optional. See :class:`wiring.Interface`.
 
-    Attributes
-    ----------
-    r_data : Signal(width)
-        Read data. Must be always valid, and is sampled when ``r_stb`` is asserted.
-    r_stb : Signal()
-        Read strobe. Registers with read side effects should perform the read side effect when this
-        strobe is asserted.
-    w_data : Signal(width)
-        Write data. Valid only when ``w_stb`` is asserted.
-    w_stb : Signal()
-        Write strobe. Registers should update their value or perform the write side effect when
-        this strobe is asserted.
+    Raises
+    ------
+    See :meth:`Element.Signature.check_parameters`
     """
-    def __init__(self, width, access, *, name=None, src_loc_at=0):
-        if not isinstance(width, int) or width < 0:
-            raise ValueError("Width must be a non-negative integer, not {!r}"
-                             .format(width))
-        if not isinstance(access, Element.Access) and access not in ("r", "w", "rw"):
-            raise ValueError("Access mode must be one of \"r\", \"w\", or \"rw\", not {!r}"
-                             .format(access))
-        self.width  = width
-        self.access = Element.Access(access)
+    def __init__(self, width, access, *, path=()):
+        super().__init__(Element.Signature(width=width, access=access), path=path)
 
-        layout = []
-        if self.access.readable():
-            layout += [
-                ("r_data", width),
-                ("r_stb",  1),
-            ]
-        if self.access.writable():
-            layout += [
-                ("w_data", width),
-                ("w_stb",  1),
-            ]
-        super().__init__(layout, name=name, src_loc_at=1 + src_loc_at)
+    @property
+    def width(self):
+        return self.signature.width
+
+    @property
+    def access(self):
+        return self.signature.access
+
+    def __repr__(self):
+        return f"csr.Element({self.signature!r})"
 
 
-class Interface(Record):
+class Signature(wiring.Signature):
+    """CPU-side CSR signature.
+
+    Parameters
+    ----------
+    addr_width : :class:`int`
+        Address width. At most ``(2 ** addr_width) * data_width`` register bits will be available.
+    data_width : :class:`int`
+        Data width. Registers are accessed in ``data_width`` sized chunks.
+
+    Interface attributes
+    --------------------
+    addr : Signal(addr_width)
+        Address for reads and writes.
+    r_data : Signal(data_width)
+        Read data. Valid on the next cycle after ``r_stb`` is asserted. Otherwise, zero. (Keeping
+        read data of an unused interface at zero simplifies multiplexers.)
+    r_stb : Signal()
+        Read strobe. If ``addr`` points to the first chunk of a register, captures register value
+        and causes read side effects to be performed (if any). If ``addr`` points to any chunk
+        of a register, latches the captured value to ``r_data``. Otherwise, latches zero
+        to ``r_data``.
+    w_data : Signal(data_width)
+        Write data. Must be valid when ``w_stb`` is asserted.
+    w_stb : Signal()
+        Write strobe. If ``addr`` points to the last chunk of a register, writes captured value
+        to the register and causes write side effects to be performed (if any). If ``addr`` points
+        to any chunk of a register, latches ``w_data`` to the captured value. Otherwise, does
+        nothing.
+
+    Raises
+    ------
+    See :meth:`Signature.check_parameters`.
+    """
+    def __init__(self, *, addr_width, data_width):
+        self.check_parameters(addr_width=addr_width, data_width=data_width)
+
+        self._addr_width = addr_width
+        self._data_width = data_width
+
+        members = {
+            "addr":   Out(self.addr_width),
+            "r_data": In(self.data_width),
+            "r_stb":  Out(1),
+            "w_data": Out(self.data_width),
+            "w_stb":  Out(1),
+        }
+        super().__init__(members)
+
+    @property
+    def addr_width(self):
+        return self._addr_width
+
+    @property
+    def data_width(self):
+        return self._data_width
+
+    @classmethod
+    def check_parameters(cls, *, addr_width, data_width):
+        """Validate signature parameters.
+
+        Raises
+        ------
+        :exc:`TypeError`
+            If ``addr_width`` is not an integer greater than 0.
+        :exc:`TypeError`
+            If ``data_width`` is not an integer greater than 0.
+        """
+        if not isinstance(addr_width, int) or addr_width <= 0:
+            raise TypeError(f"Address width must be a positive integer, not {addr_width!r}")
+        if not isinstance(data_width, int) or data_width <= 0:
+            raise TypeError(f"Data width must be a positive integer, not {data_width!r}")
+
+    def create(self, *, path=()):
+        """Create a compatible interface.
+
+        See :meth:`wiring.Signature.create` for details.
+
+        Returns
+        -------
+        An :class:`Interface` object using this signature.
+        """
+        return Interface(addr_width=self.addr_width, data_width=self.data_width, path=path)
+
+    def __eq__(self, other):
+        """Compare signatures.
+
+        Two signatures are equal if they have the same address width and data width.
+        """
+        return (isinstance(other, Signature) and
+                self.addr_width == other.addr_width and
+                self.data_width == other.data_width)
+
+    def __repr__(self):
+        return f"csr.Signature({self.members!r})"
+
+
+class Interface(wiring.Interface):
     """CPU-side CSR interface.
 
     A low-level interface to a set of atomically readable and writable peripheral CSR registers.
@@ -98,77 +276,56 @@ class Interface(Record):
 
     Parameters
     ----------
-    addr_width : int
-        Address width. At most ``(2 ** addr_width) * data_width`` register bits will be available.
-    data_width : int
-        Data width. Registers are accessed in ``data_width`` sized chunks.
-    name : str
-        Name of the underlying record.
+    addr_width : :class:`int`
+        Address width. See :class:`Signature`.
+    data_width : :class:`int`
+        Data width. See :class:`Signature`.
+    path : iter(:class:`str`)
+        Path to this CSR interface. Optional. See :class:`wiring.Interface`.
 
     Attributes
     ----------
-    memory_map : MemoryMap
+    memory_map : :class:`MemoryMap`
         Map of the bus.
-    addr : Signal(addr_width)
-        Address for reads and writes.
-    r_data : Signal(data_width)
-        Read data. Valid on the next cycle after ``r_stb`` is asserted. Otherwise, zero. (Keeping
-        read data of an unused interface at zero simplifies multiplexers.)
-    r_stb : Signal()
-        Read strobe. If ``addr`` points to the first chunk of a register, captures register value
-        and causes read side effects to be performed (if any). If ``addr`` points to any chunk
-        of a register, latches the captured value to ``r_data``. Otherwise, latches zero
-        to ``r_data``.
-    w_data : Signal(data_width)
-        Write data. Must be valid when ``w_stb`` is asserted.
-    w_stb : Signal()
-        Write strobe. If ``addr`` points to the last chunk of a register, writes captured value
-        to the register and causes write side effects to be performed (if any). If ``addr`` points
-        to any chunk of a register, latches ``w_data`` to the captured value. Otherwise, does
-        nothing.
+
+    Raises
+    ------
+    See :meth:`Signature.check_parameters`.
     """
+    def __init__(self, *, addr_width, data_width, path=()):
+        super().__init__(Signature(addr_width=addr_width, data_width=data_width), path=path)
 
-    def __init__(self, *, addr_width, data_width, name=None):
-        if not isinstance(addr_width, int) or addr_width <= 0:
-            raise ValueError("Address width must be a positive integer, not {!r}"
-                             .format(addr_width))
-        if not isinstance(data_width, int) or data_width <= 0:
-            raise ValueError("Data width must be a positive integer, not {!r}"
-                             .format(data_width))
-        self.addr_width = addr_width
-        self.data_width = data_width
-        self._map       = None
+        self._map = None
 
-        super().__init__([
-            ("addr",    addr_width),
-            ("r_data",  data_width),
-            ("r_stb",   1),
-            ("w_data",  data_width),
-            ("w_stb",   1),
-        ], name=name, src_loc_at=1)
+    @property
+    def addr_width(self):
+        return self.signature.addr_width
+
+    @property
+    def data_width(self):
+        return self.signature.data_width
 
     @property
     def memory_map(self):
         if self._map is None:
-            raise NotImplementedError("Bus interface {!r} does not have a memory map"
-                                      .format(self))
+            raise NotImplementedError(f"{self!r} does not have a memory map")
         return self._map
 
     @memory_map.setter
     def memory_map(self, memory_map):
         if not isinstance(memory_map, MemoryMap):
-            raise TypeError("Memory map must be an instance of MemoryMap, not {!r}"
-                            .format(memory_map))
+            raise TypeError(f"Memory map must be an instance of MemoryMap, not {memory_map!r}")
         if memory_map.addr_width != self.addr_width:
-            raise ValueError("Memory map has address width {}, which is not the same as "
-                             "bus interface address width {}"
-                             .format(memory_map.addr_width, self.addr_width))
+            raise ValueError(f"Memory map has address width {memory_map.addr_width}, which is not "
+                             f"the same as bus interface address width {self.addr_width}")
         if memory_map.data_width != self.data_width:
-            raise ValueError("Memory map has data width {}, which is not the same as "
-                             "bus interface data width {}"
-                             .format(memory_map.data_width, self.data_width))
+            raise ValueError(f"Memory map has data width {memory_map.data_width}, which is not the "
+                             f"same as bus interface data width {self.data_width}")
         memory_map.freeze()
         self._map = memory_map
+
+    def __repr__(self):
+        return f"csr.Interface({self.signature!r})"
 
 
 class Multiplexer(Elaboratable):
@@ -385,8 +542,8 @@ class Multiplexer(Elaboratable):
         Data width. See :class:`Interface`.
     alignment : int, power-of-2 exponent
         Register alignment. See :class:`..memory.MemoryMap`.
-    name : str
-        Window name. Optional.
+    name : :class:`str`
+        Window name. Optional. See :class:`..memory.MemoryMap`.
     shadow_overlaps : int
         Maximum number of CSR registers that can share a chunk of a shadow register.
         Optional. If ``None``, any number of CSR registers can share a shadow chunk.
@@ -408,9 +565,8 @@ class Multiplexer(Elaboratable):
     def bus(self):
         if self._bus is None:
             self._map.freeze()
-            self._bus = Interface(addr_width=self._map.addr_width,
-                                  data_width=self._map.data_width,
-                                  name="csr")
+            self._bus = Interface(addr_width=self._map.addr_width, data_width=self._map.data_width,
+                                  path=("csr",))
             self._bus.memory_map = self._map
         return self._bus
 
@@ -421,18 +577,17 @@ class Multiplexer(Elaboratable):
         """
         return self._map.align_to(alignment)
 
-    def add(self, element, *, addr=None, alignment=None, extend=False):
+    def add(self, element, *, name, addr=None, alignment=None, extend=False):
         """Add a register.
 
         See :meth:`MemoryMap.add_resource` for details.
         """
         if not isinstance(element, Element):
-            raise TypeError("Element must be an instance of csr.Element, not {!r}"
-                            .format(element))
+            raise TypeError(f"Element must be an instance of csr.Element, not {element!r}")
 
         size = (element.width + self._map.data_width - 1) // self._map.data_width
         return self._map.add_resource(element, size=size, addr=addr, alignment=alignment,
-                                      extend=extend, name=element.name)
+                                      extend=extend, name=name)
 
     def elaborate(self, platform):
         m = Module()
@@ -536,8 +691,8 @@ class Decoder(Elaboratable):
         Data width. See :class:`Interface`.
     alignment : int, power-of-2 exponent
         Window alignment. See :class:`..memory.MemoryMap`.
-    name : str
-        Window name. Optional.
+    name : :class:`str`
+        Window name. Optional. See :class:`..memory.MemoryMap`.
 
     Attributes
     ----------
@@ -554,9 +709,8 @@ class Decoder(Elaboratable):
     def bus(self):
         if self._bus is None:
             self._map.freeze()
-            self._bus = Interface(addr_width=self._map.addr_width,
-                                  data_width=self._map.data_width,
-                                  name="csr")
+            self._bus = Interface(addr_width=self._map.addr_width, data_width=self._map.data_width,
+                                  path=("csr",))
             self._bus.memory_map = self._map
         return self._bus
 
@@ -573,12 +727,10 @@ class Decoder(Elaboratable):
         See :meth:`MemoryMap.add_resource` for details.
         """
         if not isinstance(sub_bus, Interface):
-            raise TypeError("Subordinate bus must be an instance of csr.Interface, not {!r}"
-                            .format(sub_bus))
+            raise TypeError(f"Subordinate bus must be an instance of csr.Interface, not {sub_bus!r}")
         if sub_bus.data_width != self._map.data_width:
-            raise ValueError("Subordinate bus has data width {}, which is not the same as "
-                             "decoder data width {}"
-                             .format(sub_bus.data_width, self._map.data_width))
+            raise ValueError(f"Subordinate bus has data width {sub_bus.data_width}, which is not "
+                             f"the same as decoder data width {self._map.data_width}")
         self._subs[sub_bus.memory_map] = sub_bus
         return self._map.add_window(sub_bus.memory_map, addr=addr, extend=extend)
 

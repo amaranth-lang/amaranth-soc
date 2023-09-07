@@ -10,7 +10,7 @@ from amaranth_soc.csr.wishbone import *
 
 class MockRegister(Elaboratable):
     def __init__(self, width, name):
-        self.element = csr.Element(width, "rw", name=name)
+        self.element = csr.Element.Signature(width, "rw").create(path=(name,))
         self.r_count = Signal(8)
         self.w_count = Signal(8)
         self.data    = Signal(width)
@@ -36,16 +36,17 @@ class WishboneCSRBridgeTestCase(unittest.TestCase):
             WishboneCSRBridge("foo")
 
     def test_wrong_csr_bus_data_width(self):
+        csr_bus = csr.Signature(addr_width=10, data_width=7).create()
         with self.assertRaisesRegex(ValueError,
                 r"CSR bus data width must be one of 8, 16, 32, 64, not 7"):
-            WishboneCSRBridge(csr_bus=csr.Interface(addr_width=10, data_width=7))
+            WishboneCSRBridge(csr_bus)
 
     def test_narrow(self):
         mux   = csr.Multiplexer(addr_width=10, data_width=8)
         reg_1 = MockRegister(8, name="reg_1")
-        mux.add(reg_1.element)
+        mux.add(reg_1.element, name="reg_1")
         reg_2 = MockRegister(16, name="reg_2")
-        mux.add(reg_2.element)
+        mux.add(reg_2.element, name="reg_2")
         dut   = WishboneCSRBridge(mux.bus)
 
         def sim_test():
@@ -150,7 +151,7 @@ class WishboneCSRBridgeTestCase(unittest.TestCase):
     def test_wide(self):
         mux = csr.Multiplexer(addr_width=10, data_width=8)
         reg = MockRegister(32, name="reg")
-        mux.add(reg.element)
+        mux.add(reg.element, name="reg")
         dut = WishboneCSRBridge(mux.bus, data_width=32)
 
         def sim_test():
