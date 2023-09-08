@@ -2,9 +2,10 @@
 
 import unittest
 from amaranth import *
+from amaranth.lib.wiring import *
 from amaranth.sim import *
 
-from amaranth_soc.event import *
+from amaranth_soc import event
 
 
 def simulation_test(dut, process):
@@ -15,39 +16,66 @@ def simulation_test(dut, process):
         sim.run()
 
 
-class SourceTestCase(unittest.TestCase):
+class SourceSignatureTestCase(unittest.TestCase):
     def test_level(self):
-        src = Source(trigger="level")
-        self.assertEqual(src.trigger, Source.Trigger.LEVEL)
+        sig = event.Source.Signature(trigger="level")
+        self.assertEqual(sig.trigger, event.Source.Trigger.LEVEL)
 
     def test_rise(self):
-        src = Source(trigger="rise")
-        self.assertEqual(src.trigger, Source.Trigger.RISE)
+        sig = event.Source.Signature(trigger="rise")
+        self.assertEqual(sig.trigger, event.Source.Trigger.RISE)
 
     def test_fall(self):
-        src = Source(trigger="fall")
-        self.assertEqual(src.trigger, Source.Trigger.FALL)
+        sig = event.Source.Signature(trigger="fall")
+        self.assertEqual(sig.trigger, event.Source.Trigger.FALL)
+
+    def test_create(self):
+        sig = event.Source.Signature(trigger="level")
+        src = sig.create(path=("foo", "bar"))
+        self.assertIsInstance(src, event.Source)
+        self.assertEqual(src.trigger, event.Source.Trigger.LEVEL)
+        self.assertEqual(src.trg.name, "foo__bar__trg")
+        self.assertEqual(src.signature, sig)
+
+    def test_eq(self):
+        self.assertEqual(event.Source.Signature(trigger="level"), event.Source.Signature())
+        self.assertEqual(event.Source.Signature(trigger="level"),
+                         event.Source.Signature(trigger=event.Source.Trigger.LEVEL))
+        # different trigger mode
+        self.assertNotEqual(event.Source.Signature(trigger="level"),
+                            event.Source.Signature(trigger="rise"))
+        self.assertNotEqual(event.Source.Signature(trigger="level"),
+                            event.Source.Signature(trigger="fall"))
+        self.assertNotEqual(event.Source.Signature(trigger="rise"),
+                            event.Source.Signature(trigger="fall"))
 
     def test_trigger_wrong(self):
-        with self.assertRaisesRegex(ValueError,
-                r"Invalid trigger mode 'foo'; must be one of level, rise, fall"):
-            src = Source(trigger="foo")
+        with self.assertRaisesRegex(ValueError, r"'foo' is not a valid Source.Trigger"):
+            src = event.Source.Signature(trigger="foo")
+
+
+class SourceTestCase(unittest.TestCase):
+    def test_simple(self):
+        src = event.Source(trigger="level", path=("foo", "bar"))
+        self.assertIsInstance(src, event.Source)
+        self.assertEqual(src.trigger, event.Source.Trigger.LEVEL)
+        self.assertEqual(src.trg.name, "foo__bar__trg")
 
     def test_get_map_wrong(self):
-        src = Source()
+        src = event.Source()
         with self.assertRaisesRegex(NotImplementedError,
-                r"Event source \(rec src i trg\) does not have an event map"):
+                r"event.Source\(.*\) does not have an event map"):
             src.event_map
 
     def test_get_map_frozen(self):
-        src = Source()
-        src.event_map = EventMap()
+        src = event.Source()
+        src.event_map = event.EventMap()
         with self.assertRaisesRegex(ValueError,
                 r"Event map has been frozen. Cannot add source."):
-            src.event_map.add(Source())
+            src.event_map.add(event.Source.Signature().create())
 
     def test_set_map_wrong(self):
-        src = Source()
+        src = event.Source()
         with self.assertRaisesRegex(TypeError,
                 r"Event map must be an instance of EventMap, not 'foo'"):
             src.event_map = "foo"
@@ -55,66 +83,66 @@ class SourceTestCase(unittest.TestCase):
 
 class EventMapTestCase(unittest.TestCase):
     def test_add(self):
-        src_0 = Source()
-        src_1 = Source()
-        event_map = EventMap()
+        src_0 = event.Source(path=("src_0",))
+        src_1 = event.Source(path=("src_1",))
+        event_map = event.EventMap()
         event_map.add(src_0)
         event_map.add(src=src_1)
-        self.assertTrue(src_0 in event_map._sources)
-        self.assertTrue(src_1 in event_map._sources)
+        self.assertTrue(id(src_0) in event_map._sources)
+        self.assertTrue(id(src_1) in event_map._sources)
 
     def test_add_wrong(self):
-        event_map = EventMap()
+        event_map = event.EventMap()
         with self.assertRaisesRegex(TypeError,
                 r"Event source must be an instance of event.Source, not 'foo'"):
             event_map.add("foo")
 
     def test_add_wrong_frozen(self):
-        event_map = EventMap()
+        event_map = event.EventMap()
         event_map.freeze()
         with self.assertRaisesRegex(ValueError,
                 r"Event map has been frozen. Cannot add source."):
-            event_map.add(Source())
+            event_map.add(event.Source.Signature().create())
 
     def test_size(self):
-        event_map = EventMap()
-        event_map.add(Source())
-        event_map.add(Source())
+        event_map = event.EventMap()
+        event_map.add(event.Source())
+        event_map.add(event.Source())
         self.assertEqual(event_map.size, 2)
 
     def test_index(self):
-        src_0 = Source()
-        src_1 = Source()
-        event_map = EventMap()
+        src_0 = event.Source(path=("src_0",))
+        src_1 = event.Source(path=("src_1",))
+        event_map = event.EventMap()
         event_map.add(src_0)
         event_map.add(src_1)
         self.assertEqual(event_map.index(src_0), 0)
         self.assertEqual(event_map.index(src=src_1), 1)
 
     def test_index_add_twice(self):
-        src = Source()
-        event_map = EventMap()
+        src = event.Source(path=("src",))
+        event_map = event.EventMap()
         event_map.add(src)
         event_map.add(src)
         self.assertEqual(event_map.index(src), 0)
         self.assertEqual(event_map.size, 1)
 
     def test_index_wrong(self):
-        event_map = EventMap()
+        event_map = event.EventMap()
         with self.assertRaisesRegex(TypeError,
                 r"Event source must be an instance of event.Source, not 'foo'"):
             event_map.index("foo")
 
     def test_index_not_found(self):
-        src = Source()
-        event_map = EventMap()
+        src = event.Source(path=("src",))
+        event_map = event.EventMap()
         with self.assertRaises(KeyError):
             event_map.index(src)
 
     def test_iter_sources(self):
-        src_0 = Source()
-        src_1 = Source()
-        event_map = EventMap()
+        src_0 = event.Source(path=("src_0",))
+        src_1 = event.Source(path=("src_1",))
+        event_map = event.EventMap()
         event_map.add(src_0)
         event_map.add(src_1)
         self.assertEqual(list(event_map.sources()), [
@@ -125,14 +153,14 @@ class EventMapTestCase(unittest.TestCase):
 
 class MonitorTestCase(unittest.TestCase):
     def test_simple(self):
-        sub_0 = Source()
-        sub_1 = Source()
-        event_map = EventMap()
+        sub_0 = event.Source(path=("sub_0",))
+        sub_1 = event.Source(path=("sub_1",))
+        event_map = event.EventMap()
         event_map.add(sub_0)
         event_map.add(sub_1)
-        dut = Monitor(event_map, trigger="rise")
+        dut = event.Monitor(event_map, trigger="rise")
         self.assertIs(dut.src.event_map, event_map)
-        self.assertEqual(dut.src.trigger, Source.Trigger.RISE)
+        self.assertEqual(dut.src.trigger, event.Source.Trigger.RISE)
         self.assertEqual(dut.enable.width, 2)
         self.assertEqual(dut.pending.width, 2)
         self.assertEqual(dut.clear.width, 2)
@@ -140,17 +168,17 @@ class MonitorTestCase(unittest.TestCase):
     def test_event_map_wrong(self):
         with self.assertRaisesRegex(TypeError,
                 r"Event map must be an instance of EventMap, not 'foo'"):
-            dut = Monitor(event_map="foo")
+            dut = event.Monitor(event_map="foo")
 
     def test_events(self):
-        sub_0 = Source(trigger="level")
-        sub_1 = Source(trigger="rise")
-        sub_2 = Source(trigger="fall")
-        event_map = EventMap()
+        sub_0 = event.Source(trigger="level", path=("sub_0",))
+        sub_1 = event.Source(trigger="rise",  path=("sub_1",))
+        sub_2 = event.Source(trigger="fall",  path=("sub_2",))
+        event_map = event.EventMap()
         event_map.add(sub_0)
         event_map.add(sub_1)
         event_map.add(sub_2)
-        dut = Monitor(event_map)
+        dut = event.Monitor(event_map)
 
         def process():
             yield sub_0.i.eq(1)
