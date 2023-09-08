@@ -30,7 +30,7 @@ class EventMonitorTestCase(unittest.TestCase):
 
     def test_add(self):
         monitor = EventMonitor(data_width=8)
-        sub = event.Source()
+        sub = event.Source.Signature().create()
         monitor.add(sub)
         self.assertEqual(monitor.src.event_map.size, 1)
         self.assertEqual(monitor.src.event_map.index(sub), 0)
@@ -38,7 +38,7 @@ class EventMonitorTestCase(unittest.TestCase):
     def test_freeze(self):
         monitor = EventMonitor(data_width=8)
         monitor.freeze()
-        sub = event.Source()
+        sub = event.Source.Signature().create()
         with self.assertRaisesRegex(ValueError,
                 r"Event map has been frozen. Cannot add source."):
             monitor.add(sub)
@@ -46,7 +46,7 @@ class EventMonitorTestCase(unittest.TestCase):
     def test_src_freeze(self):
         monitor = EventMonitor(data_width=8)
         monitor.src
-        sub = event.Source()
+        sub = event.Source.Signature().create()
         with self.assertRaisesRegex(ValueError,
                 r"Event map has been frozen. Cannot add source."):
             monitor.add(sub)
@@ -54,15 +54,15 @@ class EventMonitorTestCase(unittest.TestCase):
     def test_bus_freeze(self):
         monitor = EventMonitor(data_width=8)
         monitor.bus
-        sub = event.Source()
+        sub = event.Source.Signature().create()
         with self.assertRaisesRegex(ValueError,
                 r"Event map has been frozen. Cannot add source."):
             monitor.add(sub)
 
     def test_csr_regs(self):
         monitor = EventMonitor(data_width=8)
-        sub_0 = event.Source()
-        sub_1 = event.Source()
+        sub_0 = event.Source.Signature().create()
+        sub_1 = event.Source.Signature().create()
         monitor.add(sub_0)
         monitor.add(sub_1)
         resources = list(monitor.bus.memory_map.resources())
@@ -90,7 +90,7 @@ class EventMonitorTestCase(unittest.TestCase):
 class EventMonitorSimulationTestCase(unittest.TestCase):
     def test_simple(self):
         dut = EventMonitor(data_width=8)
-        sub = event.Source()
+        sub = event.Source.Signature().create(path=("sub",))
         dut.add(sub)
 
         addr_enable  = 0x0

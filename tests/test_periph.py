@@ -115,7 +115,7 @@ class PeripheralInfoTestCase(unittest.TestCase):
 
     def test_irq(self):
         memory_map = MemoryMap(addr_width=1, data_width=8)
-        irq = event.Source()
+        irq = event.Source.Signature().create(path=("irq",))
         info = PeripheralInfo(memory_map=memory_map, irq=irq)
         self.assertIs(info.irq, irq)
 
