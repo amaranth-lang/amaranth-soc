@@ -1,6 +1,7 @@
 from collections.abc import Mapping, Sequence
-import enum
 from amaranth import *
+from amaranth.lib import enum, wiring
+from amaranth.lib.wiring import In, Out
 
 from ..memory import MemoryMap
 from .bus import Element, Multiplexer
@@ -9,7 +10,7 @@ from .bus import Element, Multiplexer
 __all__ = ["FieldPort", "Field", "FieldMap", "FieldArray", "Register", "RegisterMap", "Bridge"]
 
 
-class FieldPort:
+class FieldPort(wiring.Interface):
     class Access(enum.Enum):
         """Field access mode."""
         R  = "r"
@@ -22,64 +23,135 @@ class FieldPort:
         def writable(self):
             return self == self.W or self == self.RW
 
+    class Signature(wiring.Signature):
+        """CSR register field port signature.
+
+        Parameters
+        ----------
+        shape : :ref:`shape-castable <lang-shapecasting>`
+            Shape of the field.
+        access : :class:`FieldPort.Access`
+            Field access mode.
+
+        Interface attributes
+        --------------------
+        r_data : Signal(shape)
+            Read data. Must always be valid, and is sampled when ``r_stb`` is asserted.
+        r_stb : Signal()
+            Read strobe. Fields with read side effects should perform them when this strobe is
+            asserted.
+        w_data : Signal(shape)
+            Write data. Valid only when ``w_stb`` is asserted.
+        w_stb : Signal()
+            Write strobe. Fields should update their value or perform the write side effect when
+            this strobe is asserted.
+
+        Raises
+        ------
+        See :meth:`FieldPort.Signature.check_parameters`.
+        """
+        def __init__(self, shape, access):
+            self.check_parameters(shape, access)
+
+            self._shape  = Shape.cast(shape)
+            self._access = FieldPort.Access(access)
+
+            members = {
+                "r_data": Out(self.shape),
+                "r_stb":  In(1),
+                "w_data": In(self.shape),
+                "w_stb":  In(1),
+            }
+            super().__init__(members)
+
+        @property
+        def shape(self):
+            return self._shape
+
+        @property
+        def access(self):
+            return self._access
+
+        @classmethod
+        def check_parameters(cls, shape, access):
+            """Validate signature parameters.
+
+            Raises
+            ------
+            :exc:`TypeError`
+                If ``shape`` is not a shape-castable object.
+            :exc:`ValueError`
+                If ``access`` is not a member of :class:`FieldPort.Access`.
+            """
+            try:
+                Shape.cast(shape)
+            except TypeError as e:
+                raise TypeError(f"Field shape must be a shape-castable object, not {shape!r}") from e
+            # TODO(py3.9): Remove this. Python 3.8 and below use cls.__name__ in the error message
+            # instead of cls.__qualname__.
+            # FieldPort.Access(access)
+            try:
+                FieldPort.Access(access)
+            except ValueError as e:
+                raise ValueError(f"{access!r} is not a valid FieldPort.Access") from e
+
+        def create(self, *, path=()):
+            """Create a compatible interface.
+
+            See :meth:`wiring.Signature.create` for details.
+
+            Returns
+            -------
+            A :class:`FieldPort` object using this signature.
+            """
+            return FieldPort(self, path=path)
+
+        def __eq__(self, other):
+            """Compare signatures.
+
+            Two signatures are equal if they have the same shape and field access mode.
+            """
+            return (isinstance(other, FieldPort.Signature) and
+                    Shape.cast(self.shape) == Shape.cast(other.shape) and
+                    self.access == other.access)
+
+        def __repr__(self):
+            return f"csr.FieldPort.Signature({self.members!r})"
+
     """CSR register field port.
 
     An interface between a CSR register and one of its fields.
 
     Parameters
     ----------
-    shape : :ref:`shape-castable <lang-shapecasting>`
-        Shape of the field.
-    access : :class:`FieldPort.Access`
-        Field access mode.
-
-    Attributes
-    ----------
-    r_data : Signal(shape)
-        Read data. Must always be valid, and is sampled when ``r_stb`` is asserted.
-    r_stb : Signal()
-        Read strobe. Fields with read side effects should perform them when this strobe is
-        asserted.
-    w_data : Signal(shape)
-        Write data. Valid only when ``w_stb`` is asserted.
-    w_stb : Signal()
-        Write strobe. Fields should update their value or perform the write side effect when
-        this strobe is asserted.
+    signature : :class:`FieldPort.Signature`
+        Field port signature.
+    path : iter(:class:`str`)
+        Path to the field port. Optional. See :class:`wiring.Interface`.
 
     Raises
     ------
     :exc:`TypeError`
         If ``shape`` is not a shape-castable object.
-    :exc:`ValueError`
+    :exc:`TypeError`
         If ``access`` is not a member of :class:`FieldPort.Access`.
     """
-    def __init__(self, shape, access):
-        try:
-            shape = Shape.cast(shape)
-        except TypeError as e:
-            raise TypeError("Field shape must be a shape-castable object, not {!r}"
-                            .format(shape)) from e
-        if not isinstance(access, FieldPort.Access) and access not in ("r", "w", "rw"):
-            raise ValueError("Access mode must be one of \"r\", \"w\", or \"rw\", not {!r}"
-                             .format(access))
-        self._shape  = shape
-        self._access = FieldPort.Access(access)
-
-        self.r_data  = Signal(shape)
-        self.r_stb   = Signal()
-        self.w_data  = Signal(shape)
-        self.w_stb   = Signal()
+    def __init__(self, signature, *, path=()):
+        if not isinstance(signature, FieldPort.Signature):
+            raise TypeError(f"This interface requires a csr.FieldPort.Signature, not "
+                            f"{signature!r}")
+        super().__init__(signature, path=path)
 
     @property
     def shape(self):
-        return self._shape
+        return self.signature.shape
 
     @property
     def access(self):
-        return self._access
+        return self.signature.access
 
     def __repr__(self):
-        return "FieldPort({}, {})".format(self.shape, self.access)
+        return f"csr.FieldPort({self.signature!r})"
 
 
 class Field(Elaboratable):
@@ -109,7 +181,7 @@ class Field(Elaboratable):
     attributes="")
 
     def __init__(self, shape, access):
-        self.port = FieldPort(shape, access)
+        self.port = FieldPort.Signature(shape, access).create(path=("port",))
 
     @property
     def shape(self):
@@ -296,7 +368,7 @@ class Register(Elaboratable):
 
     Raises
     ------
-    :exc:`ValueError`
+    :exc:`TypeError`
         If ``access`` is not a member of :class:`Element.Access`.
     :exc:`TypeError`
         If ``fields`` is not ``None`` or a :class:`FieldMap` or a :class:`FieldArray`.
@@ -305,39 +377,37 @@ class Register(Elaboratable):
     :exc:`ValueError`
         If ``access`` is not writable and at least one field is writable.
     """
-    def __init__(self, access, fields=None):
+    def __init__(self, access="rw", fields=None):
         if not isinstance(access, Element.Access) and access not in ("r", "w", "rw"):
-            raise ValueError("Access mode must be one of \"r\", \"w\", or \"rw\", not {!r}"
-                             .format(access))
+            raise TypeError(f"Access mode must be one of \"r\", \"w\", or \"rw\", not {access!r}")
         access = Element.Access(access)
 
         if hasattr(self, "__annotations__"):
-            annotation_fields = {}
+            annot_fields = {}
             for key, value in self.__annotations__.items():
                 if isinstance(value, (Field, FieldMap, FieldArray)):
-                    annotation_fields[key] = value
+                    annot_fields[key] = value
 
             if fields is None:
-                fields = FieldMap(annotation_fields)
-            elif annotation_fields:
-                raise ValueError("Field collection {} cannot be provided in addition to field annotations: {}"
-                                 .format(fields, ", ".join(annotation_fields.keys())))
+                fields = FieldMap(annot_fields)
+            elif annot_fields:
+                raise ValueError(f"Field collection {fields} cannot be provided in addition to "
+                                 f"field annotations: {', '.join(annot_fields)}")
 
         if not isinstance(fields, (FieldMap, FieldArray)):
-            raise TypeError("Field collection must be a FieldMap or a FieldArray, not {!r}"
-                            .format(fields))
+            raise TypeError(f"Field collection must be a FieldMap or a FieldArray, not {fields!r}")
 
         width = 0
         for field_name, field in fields.flatten():
             width += Shape.cast(field.shape).width
             if field.access.readable() and not access.readable():
-                raise ValueError("Field {} is readable, but register access mode is '{}'"
-                                 .format("__".join(field_name), access))
+                raise ValueError(f"Field {'__'.join(field_name)} is readable, but register access "
+                                 f"mode is {access!r}")
             if field.access.writable() and not access.writable():
-                raise ValueError("Field {} is writable, but register access mode is '{}'"
-                                 .format("__".join(field_name), access))
+                raise ValueError(f"Field {'__'.join(field_name)} is writable, but register access "
+                                 f"mode is {access!r}")
 
-        self.element = Element(width, access)
+        self.element = Element.Signature(width, access).create(path=("element",))
         self._fields = fields
 
     @property
