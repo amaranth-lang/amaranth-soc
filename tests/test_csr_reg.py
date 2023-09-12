@@ -2,62 +2,100 @@
 
 import unittest
 from amaranth import *
+from amaranth.lib.wiring import *
 from amaranth.sim import *
 
 from amaranth_soc.csr.reg import *
 from amaranth_soc.csr import field
 
 
-class FieldPortTestCase(unittest.TestCase):
+class FieldPortSignatureTestCase(unittest.TestCase):
     def test_shape_1_ro(self):
-        port = FieldPort(1, "r")
-        self.assertEqual(port.shape, unsigned(1))
-        self.assertEqual(port.access, FieldPort.Access.R)
-        self.assertEqual(port.r_data.shape(), unsigned(1))
-        self.assertEqual(port.r_stb .shape(), unsigned(1))
-        self.assertEqual(port.w_data.shape(), unsigned(1))
-        self.assertEqual(port.w_stb .shape(), unsigned(1))
-        self.assertEqual(repr(port), "FieldPort(unsigned(1), Access.R)")
+        sig = FieldPort.Signature(1, "r")
+        self.assertEqual(sig.shape, unsigned(1))
+        self.assertEqual(sig.access, FieldPort.Access.R)
+        self.assertEqual(sig.members, Signature({
+            "r_data": Out(unsigned(1)),
+            "r_stb":  In(1),
+            "w_data": In(unsigned(1)),
+            "w_stb":  In(1),
+        }).members)
 
     def test_shape_8_rw(self):
-        port = FieldPort(8, "rw")
-        self.assertEqual(port.shape, unsigned(8))
-        self.assertEqual(port.access, FieldPort.Access.RW)
-        self.assertEqual(port.r_data.shape(), unsigned(8))
-        self.assertEqual(port.r_stb .shape(), unsigned(1))
-        self.assertEqual(port.w_data.shape(), unsigned(8))
-        self.assertEqual(port.w_stb .shape(), unsigned(1))
-        self.assertEqual(repr(port), "FieldPort(unsigned(8), Access.RW)")
+        sig = FieldPort.Signature(8, "rw")
+        self.assertEqual(sig.shape, unsigned(8))
+        self.assertEqual(sig.access, FieldPort.Access.RW)
+        self.assertEqual(sig.members, Signature({
+            "r_data": Out(unsigned(8)),
+            "r_stb":  In(1),
+            "w_data": In(unsigned(8)),
+            "w_stb":  In(1),
+        }).members)
 
     def test_shape_10_wo(self):
-        port = FieldPort(10, "w")
-        self.assertEqual(port.shape, unsigned(10))
-        self.assertEqual(port.access, FieldPort.Access.W)
-        self.assertEqual(port.r_data.shape(), unsigned(10))
-        self.assertEqual(port.r_stb .shape(), unsigned(1))
-        self.assertEqual(port.w_data.shape(), unsigned(10))
-        self.assertEqual(port.w_stb .shape(), unsigned(1))
-        self.assertEqual(repr(port), "FieldPort(unsigned(10), Access.W)")
+        sig = FieldPort.Signature(10, "w")
+        self.assertEqual(sig.shape, unsigned(10))
+        self.assertEqual(sig.access, FieldPort.Access.W)
+        self.assertEqual(sig.members, Signature({
+            "r_data": Out(unsigned(10)),
+            "r_stb":  In(1),
+            "w_data": In(unsigned(10)),
+            "w_stb":  In(1),
+        }).members)
 
     def test_shape_0_rw(self):
-        port = FieldPort(0, "rw")
-        self.assertEqual(port.shape, unsigned(0))
-        self.assertEqual(port.access, FieldPort.Access.RW)
-        self.assertEqual(port.r_data.shape(), unsigned(0))
-        self.assertEqual(port.r_stb .shape(), unsigned(1))
-        self.assertEqual(port.w_data.shape(), unsigned(0))
-        self.assertEqual(port.w_stb .shape(), unsigned(1))
-        self.assertEqual(repr(port), "FieldPort(unsigned(0), Access.RW)")
+        sig = FieldPort.Signature(0, "w")
+        self.assertEqual(sig.shape, unsigned(0))
+        self.assertEqual(sig.access, FieldPort.Access.W)
+        self.assertEqual(sig.members, Signature({
+            "r_data": Out(unsigned(0)),
+            "r_stb":  In(1),
+            "w_data": In(unsigned(0)),
+            "w_stb":  In(1),
+        }).members)
 
-    def test_shape_wrong(self):
+    def test_create(self):
+        sig  = FieldPort.Signature(unsigned(8), "rw")
+        port = sig.create(path=("foo", "bar"))
+        self.assertIsInstance(port, FieldPort)
+        self.assertEqual(port.shape, unsigned(8))
+        self.assertEqual(port.access, FieldPort.Access.RW)
+        self.assertEqual(port.r_stb.name, "foo__bar__r_stb")
+        self.assertIs(port.signature, sig)
+
+    def test_eq(self):
+        self.assertEqual(FieldPort.Signature(8, "r"), FieldPort.Signature(8, "r"))
+        self.assertEqual(FieldPort.Signature(8, "r"), FieldPort.Signature(8, FieldPort.Access.R))
+        # different shape
+        self.assertNotEqual(FieldPort.Signature(8, "r"), FieldPort.Signature(1, "r"))
+        # different access mode
+        self.assertNotEqual(FieldPort.Signature(8, "r"), FieldPort.Signature(8, "w"))
+        self.assertNotEqual(FieldPort.Signature(8, "r"), FieldPort.Signature(8, "rw"))
+        self.assertNotEqual(FieldPort.Signature(8, "w"), FieldPort.Signature(8, "rw"))
+
+    def test_wrong_shape(self):
         with self.assertRaisesRegex(TypeError,
                 r"Field shape must be a shape-castable object, not 'foo'"):
-            port = FieldPort("foo", "rw")
+            port = FieldPort.Signature("foo", "rw")
 
-    def test_access_wrong(self):
-        with self.assertRaisesRegex(ValueError,
-                r"Access mode must be one of \"r\", \"w\", or \"rw\", not 'wo'"):
-            port = FieldPort(8, "wo")
+    def test_wrong_access(self):
+        with self.assertRaisesRegex(ValueError, r"'wo' is not a valid FieldPort.Access"):
+            port = FieldPort.Signature(8, "wo")
+
+
+class FieldPortTestCase(unittest.TestCase):
+    def test_simple(self):
+        sig  = FieldPort.Signature(unsigned(8), "rw")
+        port = FieldPort(sig, path=("foo", "bar"))
+        self.assertEqual(port.shape, unsigned(8))
+        self.assertEqual(port.access, FieldPort.Access.RW)
+        self.assertEqual(port.r_stb.name, "foo__bar__r_stb")
+        self.assertIs(port.signature, sig)
+
+    def test_wrong_signature(self):
+        with self.assertRaisesRegex(TypeError,
+                r"This interface requires a csr\.FieldPort\.Signature, not 'foo'"):
+            FieldPort("foo")
 
 
 def _compatible_fields(a, b):
@@ -70,7 +108,6 @@ class FieldTestCase(unittest.TestCase):
         field = Field(unsigned(4), "rw")
         self.assertEqual(field.shape, unsigned(4))
         self.assertEqual(field.access, FieldPort.Access.RW)
-        self.assertEqual(repr(field.port), "FieldPort(unsigned(4), Access.RW)")
 
     def test_compatible(self):
         self.assertTrue(_compatible_fields(Field(unsigned(4), "rw"),
@@ -86,8 +123,7 @@ class FieldTestCase(unittest.TestCase):
             Field("foo", "rw")
 
     def test_wrong_access(self):
-        with self.assertRaisesRegex(ValueError,
-                r"Access mode must be one of \"r\", \"w\", or \"rw\", not 'wo'"):
+        with self.assertRaisesRegex(ValueError, r"'wo' is not a valid FieldPort.Access"):
             Field(8, "wo")
 
 
@@ -614,6 +650,8 @@ class BridgeTestCase(unittest.TestCase):
         self.assertEqual(registers[3][1], "cluster_0__reg_rw_16")
         self.assertEqual(registers[3][2], (4, 6))
 
+        Fragment.get(dut, platform=None) # silence UnusedElaboratable
+
     def test_wrong_register_map(self):
         with self.assertRaisesRegex(TypeError,
                 r"Register map must be an instance of RegisterMap, not 'foo'"):
@@ -659,6 +697,8 @@ class BridgeTestCase(unittest.TestCase):
         self.assertEqual(registers[3][1], "cluster_0__reg_rw_16")
         self.assertEqual(registers[3][2], (0x22, 0x24))
 
+        Fragment.get(dut, platform=None) # silence UnusedElaboratable
+
     def test_register_alignment(self):
         reg_rw_4  = Register("rw", FieldMap({"a": field.RW( 4)}))
         reg_rw_8  = Register("rw", FieldMap({"a": field.RW( 8)}))
@@ -698,6 +738,8 @@ class BridgeTestCase(unittest.TestCase):
 
         self.assertEqual(registers[3][1], "cluster_0__reg_rw_16")
         self.assertEqual(registers[3][2], (16, 18))
+
+        Fragment.get(dut, platform=None) # silence UnusedElaboratable
 
     def test_register_out_of_bounds(self):
         reg_rw_24 = Register("rw", FieldMap({"a": field.RW(24)}))

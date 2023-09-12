@@ -10,7 +10,6 @@ from amaranth_soc.csr import field
 class RTestCase(unittest.TestCase):
     def test_simple(self):
         f = field.R(unsigned(4))
-        self.assertEqual(repr(f.port), "FieldPort(unsigned(4), Access.R)")
         self.assertEqual(f.r_data.shape(), unsigned(4))
 
     def test_sim(self):
@@ -30,7 +29,6 @@ class RTestCase(unittest.TestCase):
 class WTestCase(unittest.TestCase):
     def test_simple(self):
         f = field.W(unsigned(4))
-        self.assertEqual(repr(f.port), "FieldPort(unsigned(4), Access.W)")
         self.assertEqual(f.w_data.shape(), unsigned(4))
 
     def test_sim(self):
@@ -51,10 +49,8 @@ class RWTestCase(unittest.TestCase):
     def test_simple(self):
         f4 = field.RW(unsigned(4), reset=0x5)
         f8 = field.RW(signed(8))
-        self.assertEqual(repr(f4.port), "FieldPort(unsigned(4), Access.RW)")
         self.assertEqual(f4.data.shape(), unsigned(4))
         self.assertEqual(f4.reset, 0x5)
-        self.assertEqual(repr(f8.port), "FieldPort(signed(8), Access.RW)")
         self.assertEqual(f8.data.shape(), signed(8))
         self.assertEqual(f8.reset, 0)
 
@@ -82,11 +78,9 @@ class RW1CTestCase(unittest.TestCase):
     def test_simple(self):
         f4 = field.RW1C(unsigned(4), reset=0x5)
         f8 = field.RW1C(signed(8))
-        self.assertEqual(repr(f4.port), "FieldPort(unsigned(4), Access.RW)")
         self.assertEqual(f4.data.shape(), unsigned(4))
         self.assertEqual(f4.set .shape(), unsigned(4))
         self.assertEqual(f4.reset, 0x5)
-        self.assertEqual(repr(f8.port), "FieldPort(signed(8), Access.RW)")
         self.assertEqual(f8.data.shape(), signed(8))
         self.assertEqual(f8.set .shape(), signed(8))
         self.assertEqual(f8.reset, 0)
@@ -122,11 +116,9 @@ class RW1STestCase(unittest.TestCase):
     def test_simple(self):
         f4 = field.RW1S(unsigned(4), reset=0x5)
         f8 = field.RW1S(signed(8))
-        self.assertEqual(repr(f4.port), "FieldPort(unsigned(4), Access.RW)")
         self.assertEqual(f4.data .shape(), unsigned(4))
         self.assertEqual(f4.clear.shape(), unsigned(4))
         self.assertEqual(f4.reset, 0x5)
-        self.assertEqual(repr(f8.port), "FieldPort(signed(8), Access.RW)")
         self.assertEqual(f8.data .shape(), signed(8))
         self.assertEqual(f8.clear.shape(), signed(8))
         self.assertEqual(f8.reset, 0)
