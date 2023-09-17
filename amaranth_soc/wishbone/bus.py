@@ -451,14 +451,10 @@ class Arbiter(Elaboratable):
         Shared Wishbone bus.
     """
     def __init__(self, *, addr_width, data_width, granularity=None, features=frozenset()):
-        self._bus   = Interface(addr_width=addr_width, data_width=data_width,
-                                granularity=granularity, features=features,
-                                path=("bus",))
+        self.signature = wiring.Signature({"bus": Out(Signature(addr_width=addr_width, data_width=data_width,
+                                                                granularity=granularity, features=features))})
         self._intrs = []
-
-    @property
-    def bus(self):
-        return self._bus
+        self.__dict__.update(self.signature.members.create())
 
     def add(self, intr_bus):
         """Add an initiator bus to the arbiter.
