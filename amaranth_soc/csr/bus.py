@@ -577,7 +577,7 @@ class Multiplexer(Elaboratable):
         """
         return self._map.align_to(alignment)
 
-    def add(self, element, *, name, addr=None, alignment=None, extend=False):
+    def add(self, element, *, name, addr=None, alignment=None):
         """Add a register.
 
         See :meth:`MemoryMap.add_resource` for details.
@@ -587,7 +587,7 @@ class Multiplexer(Elaboratable):
 
         size = (element.width + self._map.data_width - 1) // self._map.data_width
         return self._map.add_resource(element, size=size, addr=addr, alignment=alignment,
-                                      extend=extend, name=name)
+                                      name=name)
 
     def elaborate(self, platform):
         m = Module()
@@ -721,7 +721,7 @@ class Decoder(Elaboratable):
         """
         return self._map.align_to(alignment)
 
-    def add(self, sub_bus, *, addr=None, extend=False):
+    def add(self, sub_bus, *, addr=None):
         """Add a window to a subordinate bus.
 
         See :meth:`MemoryMap.add_resource` for details.
@@ -732,7 +732,7 @@ class Decoder(Elaboratable):
             raise ValueError(f"Subordinate bus has data width {sub_bus.data_width}, which is not "
                              f"the same as decoder data width {self._map.data_width}")
         self._subs[sub_bus.memory_map] = sub_bus
-        return self._map.add_window(sub_bus.memory_map, addr=addr, extend=extend)
+        return self._map.add_window(sub_bus.memory_map, addr=addr)
 
     def elaborate(self, platform):
         m = Module()

@@ -342,7 +342,7 @@ class Decoder(Elaboratable):
         """
         return self._map.align_to(alignment)
 
-    def add(self, sub_bus, *, addr=None, sparse=False, extend=False):
+    def add(self, sub_bus, *, addr=None, sparse=False):
         """Add a window to a subordinate bus.
 
         The decoder can perform either sparse or dense address translation. If dense address
@@ -376,7 +376,7 @@ class Decoder(Elaboratable):
                                  f"decoder does not have a corresponding input")
 
         self._subs[sub_bus.memory_map] = sub_bus
-        return self._map.add_window(sub_bus.memory_map, addr=addr, sparse=sparse, extend=extend)
+        return self._map.add_window(sub_bus.memory_map, addr=addr, sparse=sparse)
 
     def elaborate(self, platform):
         m = Module()
