@@ -120,27 +120,6 @@ class MemoryMapTestCase(unittest.TestCase):
                 r"Alignment must be a non-negative integer, not -1"):
             MemoryMap(addr_width=16, data_width=8, alignment=-1)
 
-    def test_set_addr_width_wrong(self):
-        with self.assertRaisesRegex(ValueError,
-                r"Address width must be a positive integer, not -1"):
-            memory_map = MemoryMap(addr_width=1, data_width=8)
-            memory_map.addr_width = -1
-
-    def test_set_addr_width_wrong_shrink(self):
-        with self.assertRaisesRegex(ValueError,
-                r"Address width 1 must not be less than its previous value 2, "
-                r"because resources that were previously added may not fit anymore"):
-            memory_map = MemoryMap(addr_width=2, data_width=8)
-            memory_map.addr_width = 1
-
-    def test_set_addr_width_wrong_frozen(self):
-        with self.assertRaisesRegex(ValueError,
-                r"Memory map has been frozen. Address width cannot be extended "
-                r"further"):
-            memory_map = MemoryMap(addr_width=1, data_width=8)
-            memory_map.freeze()
-            memory_map.addr_width = 2
-
     def test_add_resource(self):
         memory_map = MemoryMap(addr_width=16, data_width=8)
         self.assertEqual(memory_map.add_resource("a", name="foo", size=1), (0, 1))
@@ -161,13 +140,6 @@ class MemoryMapTestCase(unittest.TestCase):
         memory_map = MemoryMap(addr_width=16, data_width=8)
         self.assertEqual(memory_map.add_resource("a", name="foo", size=1, addr=10), (10, 11))
         self.assertEqual(memory_map.add_resource("b", name="bar", size=2), (11, 13))
-
-    def test_add_resource_extend(self):
-        memory_map = MemoryMap(addr_width=16, data_width=8)
-        self.assertEqual(memory_map.add_resource("a", name="foo", size=1, addr=0x10000,
-                                                 extend=True),
-                         (0x10000, 0x10001))
-        self.assertEqual(memory_map.addr_width, 17)
 
     def test_add_resource_size_zero(self):
         memory_map = MemoryMap(addr_width=1, data_width=8)
@@ -270,13 +242,6 @@ class MemoryMapTestCase(unittest.TestCase):
         self.assertEqual(memory_map.add_window(MemoryMap(addr_width=10, data_width=8),
                                                sparse=False),
                          (0, 0x100, 4))
-
-    def test_add_window_extend(self):
-        memory_map = MemoryMap(addr_width=16, data_width=8)
-        self.assertEqual(memory_map.add_window(MemoryMap(addr_width=17, data_width=8),
-                                               extend=True),
-                         (0, 0x20000, 1))
-        self.assertEqual(memory_map.addr_width, 18)
 
     def test_add_window_wrong_frozen(self):
         memory_map = MemoryMap(addr_width=2, data_width=8)

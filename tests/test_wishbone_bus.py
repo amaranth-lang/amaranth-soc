@@ -167,9 +167,8 @@ class InterfaceTestCase(unittest.TestCase):
         iface = wishbone.Interface(addr_width=1, data_width=8, path=("iface",))
         iface.memory_map = MemoryMap(addr_width=1, data_width=8)
         with self.assertRaisesRegex(ValueError,
-                r"Memory map has been frozen\. Address width cannot be extended "
-                r"further"):
-            iface.memory_map.addr_width = 2
+                r"Memory map has been frozen\. Cannot add resource 'foo'"):
+            iface.memory_map.add_resource("foo", name="foo", size=1)
 
     def test_set_map_wrong(self):
         iface = wishbone.Interface(addr_width=0, data_width=8, path=("iface",))
@@ -206,12 +205,6 @@ class DecoderTestCase(unittest.TestCase):
         self.assertEqual(self.dut.align_to(18), 0x000040000)
         self.assertEqual(self.dut.align_to(alignment=18), 0x000040000)
         self.assertEqual(self.dut.add(sub_2), (0x00040000, 0x00050000, 1))
-
-    def test_add_extend(self):
-        sub = wishbone.Interface(addr_width=31, data_width=32, granularity=16, path=("sub",))
-        sub.memory_map = MemoryMap(addr_width=32, data_width=16)
-        self.assertEqual(self.dut.add(sub, addr=1, extend=True), (1, 0x100000001, 1))
-        self.assertEqual(self.dut.bus.addr_width, 32)
 
     def test_add_wrong(self):
         with self.assertRaisesRegex(TypeError,

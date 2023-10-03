@@ -172,20 +172,6 @@ class MemoryMap:
     def addr_width(self):
         return self._addr_width
 
-    @addr_width.setter
-    def addr_width(self, addr_width):
-        if self._frozen:
-            raise ValueError("Memory map has been frozen. Address width cannot be extended "
-                             "further")
-        if not isinstance(addr_width, int) or addr_width <= 0:
-            raise ValueError("Address width must be a positive integer, not {!r}"
-                             .format(addr_width))
-        if addr_width < self._addr_width:
-            raise ValueError("Address width {!r} must not be less than its previous value {!r}, "
-                             "because resources that were previously added may not fit anymore"
-                             .format(addr_width, self._addr_width))
-        self._addr_width = addr_width
-
     @property
     def data_width(self):
         return self._data_width
@@ -202,7 +188,7 @@ class MemoryMap:
         """Freeze the memory map.
 
         Once the memory map is frozen, its visible state becomes immutable. Resources and windows
-        cannot be added anymore, and its address width cannot be extended further.
+        cannot be added anymore.
         """
         self._frozen = True
 
@@ -231,7 +217,7 @@ class MemoryMap:
         self._next_addr = self._align_up(self._next_addr, max(alignment, self.alignment))
         return self._next_addr
 
-    def _compute_addr_range(self, addr, size, step=1, *, alignment, extend):
+    def _compute_addr_range(self, addr, size, step=1, *, alignment):
         if addr is not None:
             if not isinstance(addr, int) or addr < 0:
                 raise ValueError("Address must be a non-negative integer, not {!r}"
@@ -249,12 +235,9 @@ class MemoryMap:
         size = self._align_up(max(size, 1), alignment)
 
         if addr > (1 << self.addr_width) or addr + size > (1 << self.addr_width):
-            if extend:
-                self.addr_width = bits_for(addr + size)
-            else:
-                raise ValueError("Address range {:#x}..{:#x} out of bounds for memory map spanning "
-                                 "range {:#x}..{:#x} ({} address bits)"
-                                 .format(addr, addr + size, 0, 1 << self.addr_width, self.addr_width))
+            raise ValueError("Address range {:#x}..{:#x} out of bounds for memory map spanning "
+                             "range {:#x}..{:#x} ({} address bits)"
+                             .format(addr, addr + size, 0, 1 << self.addr_width, self.addr_width))
 
         addr_range = range(addr, addr + size, step)
         overlaps = self._ranges.overlaps(addr_range)
@@ -274,7 +257,7 @@ class MemoryMap:
 
         return addr_range
 
-    def add_resource(self, resource, *, name, size, addr=None, alignment=None, extend=False):
+    def add_resource(self, resource, *, name, size, addr=None, alignment=None):
         """Add a resource.
 
         A resource is any device on the bus that is a destination for bus transactions, e.g.
@@ -296,9 +279,6 @@ class MemoryMap:
             ``2 ** max(alignment, self.alignment)``.
         alignment : int, power-of-2 exponent
             Alignment of the resource. Optional. If ``None``, the memory map alignment is used.
-        extend: bool
-            Allow memory map extension. If ``True``, the upper bound of the address space is
-            raised as needed, in order to fit a resource that would otherwise be out of bounds.
 
         Return value
         ------------
@@ -336,7 +316,7 @@ class MemoryMap:
         else:
             alignment = self.alignment
 
-        addr_range = self._compute_addr_range(addr, size, alignment=alignment, extend=extend)
+        addr_range = self._compute_addr_range(addr, size, alignment=alignment)
         self._ranges.insert(addr_range, resource)
         self._resources[id(resource)] = resource, name, addr_range
         self._namespace[name] = resource
@@ -356,7 +336,7 @@ class MemoryMap:
         for resource, resource_name, resource_range in self._resources.values():
             yield resource, resource_name, (resource_range.start, resource_range.stop)
 
-    def add_window(self, window, *, addr=None, sparse=None, extend=False):
+    def add_window(self, window, *, addr=None, sparse=None):
         """Add a window.
 
         A window is a device on a bus that provides access to a different bus, i.e. a bus bridge.
@@ -386,9 +366,6 @@ class MemoryMap:
         sparse : bool
             Address translation type. Optional. Ignored if the datapath widths of both memory maps
             are equal; must be specified otherwise.
-        extend : bool
-            Allow memory map extension. If ``True``, the upper bound of the address space is
-            raised as needed, in order to fit a window that would otherwise be out of bounds.
 
         Return value
         ------------
@@ -464,8 +441,7 @@ class MemoryMap:
         # a window can still be aligned using align_to().
         alignment = max(self.alignment, window.addr_width // ratio)
 
-        addr_range = self._compute_addr_range(addr, size, ratio, alignment=alignment,
-                                              extend=extend)
+        addr_range = self._compute_addr_range(addr, size, ratio, alignment=alignment)
         window.freeze()
         self._ranges.insert(addr_range, window)
         self._windows[id(window)] = window, addr_range

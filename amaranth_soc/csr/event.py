@@ -1,6 +1,8 @@
 # amaranth: UnusedElaboratable=no
+from math import ceil
 
 from amaranth import *
+from amaranth.utils import log2_int
 
 from . import Element, Multiplexer
 from .. import event
@@ -16,50 +18,40 @@ class EventMonitor(Elaboratable):
 
     CSR registers
     -------------
-    enable : ``self.src.event_map.size``, read/write
+    enable : ``event_map.size``, read/write
         Enabled events. See :meth:`..event.EventMap.sources` for layout.
-    pending : ``self.src.event_map.size``, read/clear
+    pending : ``event_map.size``, read/clear
         Pending events. See :meth:`..event.EventMap.sources` for layout.
 
     Parameters
     ----------
+    event_map : :class:`..event.EventMap`
+        A collection of event sources.
+    trigger : :class:`..event.Source.Trigger`
+        Trigger mode. See :class:`..event.Source`.
     data_width : int
         CSR bus data width. See :class:`..csr.Interface`.
     alignment : int, power-of-2 exponent
         CSR address alignment. See :class:`..memory.MemoryMap`.
-    trigger : :class:`..event.Source.Trigger`
-        Trigger mode. See :class:`..event.Source`.
     name : str
         Window name. Optional. See :class:`..memory.MemoryMap`.
     """
-    def __init__(self, *, data_width, alignment=0, trigger="level", name=None):
-        choices = ("level", "rise", "fall")
-        if not isinstance(trigger, event.Source.Trigger) and trigger not in choices:
-            raise ValueError("Invalid trigger mode {!r}; must be one of {}"
-                             .format(trigger, ", ".join(choices)))
+    def __init__(self, event_map, *, trigger="level", data_width, alignment=0, name=None):
+        if not isinstance(data_width, int) or data_width <= 0:
+            raise ValueError(f"Data width must be a positive integer, not {data_width!r}")
+        if not isinstance(alignment, int) or alignment < 0:
+            raise ValueError(f"Alignment must be a non-negative integer, not {alignment!r}")
 
-        self._trigger = event.Source.Trigger(trigger)
-        self._map     = event.EventMap()
-        self._monitor = None
-        self._enable  = None
-        self._pending = None
-        self._mux     = Multiplexer(addr_width=1, data_width=data_width, alignment=alignment,
-                                    name=name)
-        self._frozen  = False
+        self._monitor = event.Monitor(event_map, trigger=trigger)
+        self._enable  = Element(event_map.size, "rw", path=("enable",))
+        self._pending = Element(event_map.size, "rw", path=("pending",))
 
-    def freeze(self):
-        """Freeze the event monitor.
-
-        Once the event monitor is frozen, subordinate sources cannot be added anymore.
-        """
-        if self._frozen:
-            return
-        self._monitor = event.Monitor(self._map, trigger=self._trigger)
-        self._enable  = Element(self._map.size, "rw", path=("enable",))
-        self._pending = Element(self._map.size, "rw", path=("pending",))
-        self._mux.add(self._enable,  name="enable",  extend=True)
-        self._mux.add(self._pending, name="pending", extend=True)
-        self._frozen  = True
+        elem_size  = ceil(event_map.size / data_width)
+        addr_width = 1 + max(log2_int(elem_size, need_pow2=False), alignment)
+        self._mux  = Multiplexer(addr_width=addr_width, data_width=data_width,
+                                 alignment=alignment, name=name)
+        self._mux.add(self._enable,  name="enable")
+        self._mux.add(self._pending, name="pending")
 
     @property
     def src(self):
@@ -70,7 +62,6 @@ class EventMonitor(Elaboratable):
         An :class:`..event.Source`. Its input line is asserted by the monitor when a subordinate
         event is enabled and pending.
         """
-        self.freeze()
         return self._monitor.src
 
     @property
@@ -81,19 +72,9 @@ class EventMonitor(Elaboratable):
         ------------
         A :class:`..csr.Interface` providing access to registers.
         """
-        self.freeze()
         return self._mux.bus
 
-    def add(self, src):
-        """Add a subordinate event source.
-
-        See :meth:`..event.EventMap.add` for details.
-        """
-        self._map.add(src)
-
     def elaborate(self, platform):
-        self.freeze()
-
         m = Module()
         m.submodules.monitor = self._monitor
         m.submodules.mux     = self._mux

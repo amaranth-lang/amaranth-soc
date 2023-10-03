@@ -18,53 +18,40 @@ def simulation_test(dut, process):
 
 class EventMonitorTestCase(unittest.TestCase):
     def test_params(self):
-        monitor = EventMonitor(data_width=16, alignment=4, trigger="rise")
+        event_map = event.EventMap()
+        monitor = EventMonitor(event_map, trigger="rise", data_width=16, alignment=4)
+        self.assertEqual(monitor.src.trigger, event.Source.Trigger.RISE)
         self.assertEqual(monitor.bus.data_width, 16)
         self.assertEqual(monitor.bus.memory_map.alignment, 4)
-        self.assertEqual(monitor.src.trigger, event.Source.Trigger.RISE)
 
-    def test_trigger_wrong(self):
+    def test_wrong_data_width(self):
         with self.assertRaisesRegex(ValueError,
-                r"Invalid trigger mode 'foo'; must be one of level, rise, fall"):
-            EventMonitor(data_width=8, trigger="foo")
-
-    def test_add(self):
-        monitor = EventMonitor(data_width=8)
-        sub = event.Source.Signature().create()
-        monitor.add(sub)
-        self.assertEqual(monitor.src.event_map.size, 1)
-        self.assertEqual(monitor.src.event_map.index(sub), 0)
-
-    def test_freeze(self):
-        monitor = EventMonitor(data_width=8)
-        monitor.freeze()
-        sub = event.Source.Signature().create()
+                r"Data width must be a positive integer, not 'foo'"):
+            EventMonitor(event.EventMap(), data_width='foo')
         with self.assertRaisesRegex(ValueError,
-                r"Event map has been frozen. Cannot add source."):
-            monitor.add(sub)
+                r"Data width must be a positive integer, not 0"):
+            EventMonitor(event.EventMap(), data_width=0)
 
-    def test_src_freeze(self):
-        monitor = EventMonitor(data_width=8)
-        monitor.src
-        sub = event.Source.Signature().create()
+    def test_wrong_alignment(self):
         with self.assertRaisesRegex(ValueError,
-                r"Event map has been frozen. Cannot add source."):
-            monitor.add(sub)
+                r"Alignment must be a non-negative integer, not 'foo'"):
+            EventMonitor(event.EventMap(), data_width=8, alignment="foo")
+        with self.assertRaisesRegex(ValueError,
+                r"Alignment must be a non-negative integer, not -1"):
+            EventMonitor(event.EventMap(), data_width=8, alignment=-1)
 
-    def test_bus_freeze(self):
-        monitor = EventMonitor(data_width=8)
-        monitor.bus
-        sub = event.Source.Signature().create()
+    def test_wrong_trigger(self):
         with self.assertRaisesRegex(ValueError,
-                r"Event map has been frozen. Cannot add source."):
-            monitor.add(sub)
+                r"'foo' is not a valid Source.Trigger"):
+            EventMonitor(event.EventMap(), data_width=8, trigger="foo")
 
     def test_csr_regs(self):
-        monitor = EventMonitor(data_width=8)
-        sub_0 = event.Source.Signature().create()
-        sub_1 = event.Source.Signature().create()
-        monitor.add(sub_0)
-        monitor.add(sub_1)
+        sub_0 = event.Source(path=("sub_0",))
+        sub_1 = event.Source(path=("sub_1",))
+        event_map = event.EventMap()
+        event_map.add(sub_0)
+        event_map.add(sub_1)
+        monitor = EventMonitor(event_map, data_width=8)
         resources = list(monitor.bus.memory_map.resources())
         self.assertEqual(len(resources), 2)
         enable,  enable_name,  enable_range  = resources[0]
@@ -78,20 +65,13 @@ class EventMonitorTestCase(unittest.TestCase):
             (2, Element.Access.RW, (1, 2))
         )
 
-    def test_freeze_idempotent(self):
-        monitor = EventMonitor(data_width=8)
-        src = monitor.src
-        bus = monitor.bus
-        monitor.freeze()
-        self.assertIs(src, monitor.src)
-        self.assertIs(bus, monitor.bus)
-
 
 class EventMonitorSimulationTestCase(unittest.TestCase):
     def test_simple(self):
-        dut = EventMonitor(data_width=8)
-        sub = event.Source.Signature().create(path=("sub",))
-        dut.add(sub)
+        sub = event.Source(path=("sub",))
+        event_map = event.EventMap()
+        event_map.add(sub)
+        dut = EventMonitor(event_map, data_width=8)
 
         addr_enable  = 0x0
         addr_pending = 0x1

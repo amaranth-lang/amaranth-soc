@@ -152,11 +152,10 @@ class InterfaceTestCase(unittest.TestCase):
         iface = csr.Interface(addr_width=16, data_width=8)
         iface.memory_map = MemoryMap(addr_width=16, data_width=8)
         with self.assertRaisesRegex(ValueError,
-                r"Memory map has been frozen. Address width cannot be extended "
-                r"further"):
-            iface.memory_map.addr_width = 24
+                r"Memory map has been frozen\. Cannot add resource 'foo'"):
+            iface.memory_map.add_resource("foo", name="foo", size=1)
 
-    def test_set_map_wrong(self):
+    def test_set_wrong_map(self):
         iface = csr.Interface(addr_width=16, data_width=8)
         with self.assertRaisesRegex(TypeError,
                 r"Memory map must be an instance of MemoryMap, not 'foo'"):
@@ -202,12 +201,6 @@ class MultiplexerTestCase(unittest.TestCase):
         elem_16b = csr.Element(16, "rw", path=("elem_16b",))
         self.assertEqual(self.dut.add(elem_16b, name="elem_16b"), (0, 2))
         self.assertEqual(self.dut.add(elem_8b,  name="elem_8b"), (2, 3))
-
-    def test_add_extend(self):
-        elem_8b = csr.Element(8, "rw", path=("elem_8b",))
-        self.assertEqual(self.dut.add(elem_8b, name="elem_8b", addr=0x10000, extend=True),
-                         (0x10000, 0x10001))
-        self.assertEqual(self.dut.bus.addr_width, 17)
 
     def test_add_wrong(self):
         with self.assertRaisesRegex(TypeError,
@@ -408,12 +401,6 @@ class DecoderTestCase(unittest.TestCase):
         sub_2 = csr.Interface(addr_width=10, data_width=8, path=("sub_2",))
         sub_2.memory_map = MemoryMap(addr_width=10, data_width=8)
         self.assertEqual(self.dut.add(sub_2), (0x1000, 0x1400, 1))
-
-    def test_add_extend(self):
-        iface = csr.Interface(addr_width=17, data_width=8, path=("iface",))
-        iface.memory_map = MemoryMap(addr_width=17, data_width=8)
-        self.assertEqual(self.dut.add(iface, extend=True), (0, 0x20000, 1))
-        self.assertEqual(self.dut.bus.addr_width, 18)
 
     def test_add_wrong_sub_bus(self):
         with self.assertRaisesRegex(TypeError,
