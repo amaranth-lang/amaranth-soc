@@ -105,45 +105,45 @@ class SignatureTestCase(unittest.TestCase):
 
     def test_wrong_addr_width(self):
         with self.assertRaisesRegex(TypeError,
-                r"Address width must be a non-negative integer, not -1"):
-            wishbone.Signature(addr_width=-1, data_width=8)
+                r"Address width must be a positive integer, not 0"):
+            wishbone.Signature(addr_width=0, data_width=8)
         with self.assertRaisesRegex(TypeError,
-                r"Address width must be a non-negative integer, not -1"):
-            wishbone.Signature.check_parameters(addr_width=-1, data_width=8, granularity=8,
+                r"Address width must be a positive integer, not 0"):
+            wishbone.Signature.check_parameters(addr_width=0, data_width=8, granularity=8,
                                                 features=())
 
     def test_wrong_data_width(self):
         with self.assertRaisesRegex(ValueError,
                 r"Data width must be one of 8, 16, 32, 64, not 7"):
-            wishbone.Signature(addr_width=0, data_width=7)
+            wishbone.Signature(addr_width=1, data_width=7)
         with self.assertRaisesRegex(ValueError,
                 r"Data width must be one of 8, 16, 32, 64, not 7"):
-            wishbone.Signature.check_parameters(addr_width=0, data_width=7, granularity=7,
+            wishbone.Signature.check_parameters(addr_width=1, data_width=7, granularity=7,
                                                 features=())
 
     def test_wrong_granularity(self):
         with self.assertRaisesRegex(ValueError,
                 r"Granularity must be one of 8, 16, 32, 64, not 7"):
-            wishbone.Signature(addr_width=0, data_width=32, granularity=7)
+            wishbone.Signature(addr_width=1, data_width=32, granularity=7)
         with self.assertRaisesRegex(ValueError,
                 r"Granularity must be one of 8, 16, 32, 64, not 7"):
-            wishbone.Signature.check_parameters(addr_width=0, data_width=32, granularity=7,
+            wishbone.Signature.check_parameters(addr_width=1, data_width=32, granularity=7,
                                                 features=())
 
     def test_wrong_granularity_wide(self):
         with self.assertRaisesRegex(ValueError,
                 r"Granularity 32 may not be greater than data width 8"):
-            wishbone.Signature(addr_width=0, data_width=8, granularity=32)
+            wishbone.Signature(addr_width=1, data_width=8, granularity=32)
         with self.assertRaisesRegex(ValueError,
                 r"Granularity 32 may not be greater than data width 8"):
-            wishbone.Signature.check_parameters(addr_width=0, data_width=8, granularity=32,
+            wishbone.Signature.check_parameters(addr_width=1, data_width=8, granularity=32,
                                                 features=())
 
     def test_wrong_features(self):
         with self.assertRaisesRegex(ValueError, r"'foo' is not a valid Feature"):
-            wishbone.Signature(addr_width=0, data_width=8, features={"foo"})
+            wishbone.Signature(addr_width=1, data_width=8, features={"foo"})
         with self.assertRaisesRegex(ValueError, r"'foo' is not a valid Feature"):
-            wishbone.Signature.check_parameters(addr_width=0, data_width=8, granularity=8,
+            wishbone.Signature.check_parameters(addr_width=1, data_width=8, granularity=8,
                                                 features={"foo"})
 
 
@@ -158,7 +158,7 @@ class InterfaceTestCase(unittest.TestCase):
         self.assertEqual(iface.cyc.name, "foo__bar__cyc")
 
     def test_get_map_wrong(self):
-        iface = wishbone.Interface(addr_width=0, data_width=8, path=("iface",))
+        iface = wishbone.Interface(addr_width=1, data_width=8, path=("iface",))
         with self.assertRaisesRegex(NotImplementedError,
                 r"wishbone.Interface\(.*\) does not have a memory map"):
             iface.memory_map
@@ -171,7 +171,7 @@ class InterfaceTestCase(unittest.TestCase):
             iface.memory_map.add_resource("foo", name="foo", size=1)
 
     def test_set_map_wrong(self):
-        iface = wishbone.Interface(addr_width=0, data_width=8, path=("iface",))
+        iface = wishbone.Interface(addr_width=1, data_width=8, path=("iface",))
         with self.assertRaisesRegex(TypeError,
                 r"Memory map must be an instance of MemoryMap, not 'foo'"):
             iface.memory_map = "foo"
