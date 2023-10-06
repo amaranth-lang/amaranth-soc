@@ -1,7 +1,7 @@
 from collections import defaultdict
 from amaranth import *
 from amaranth.lib import enum, wiring
-from amaranth.lib.wiring import In, Out
+from amaranth.lib.wiring import In, Out, flipped
 from amaranth.utils import log2_int
 
 from ..memory import MemoryMap
@@ -198,6 +198,7 @@ class Signature(wiring.Signature):
 
         self._addr_width = addr_width
         self._data_width = data_width
+        self._memory_map = None
 
         members = {
             "addr":   Out(self.addr_width),
@@ -215,6 +216,27 @@ class Signature(wiring.Signature):
     @property
     def data_width(self):
         return self._data_width
+
+    @property
+    def memory_map(self):
+        if self._memory_map is None:
+            raise AttributeError(f"{self!r} does not have a memory map")
+        return self._memory_map
+
+    @memory_map.setter
+    def memory_map(self, memory_map):
+        if self.frozen:
+            raise ValueError(f"Signature has been frozen. Cannot set its memory map")
+        if memory_map is not None:
+            if not isinstance(memory_map, MemoryMap):
+                raise TypeError(f"Memory map must be an instance of MemoryMap, not {memory_map!r}")
+            if memory_map.addr_width != self.addr_width:
+                raise ValueError(f"Memory map has address width {memory_map.addr_width}, which is not "
+                                 f"the same as bus interface address width {self.addr_width}")
+            if memory_map.data_width != self.data_width:
+                raise ValueError(f"Memory map has data width {memory_map.data_width}, which is not the "
+                                 f"same as bus interface data width {self.data_width}")
+        self._memory_map = memory_map
 
     @classmethod
     def check_parameters(cls, *, addr_width, data_width):
@@ -241,7 +263,9 @@ class Signature(wiring.Signature):
         -------
         An :class:`Interface` object using this signature.
         """
-        return Interface(addr_width=self.addr_width, data_width=self.data_width, path=path)
+        return Interface(addr_width=self.addr_width, data_width=self.data_width,
+                         memory_map=self._memory_map, # if None, do not raise an exception
+                         path=path)
 
     def __eq__(self, other):
         """Compare signatures.
@@ -280,22 +304,19 @@ class Interface(wiring.Interface):
         Address width. See :class:`Signature`.
     data_width : :class:`int`
         Data width. See :class:`Signature`.
+    memory_map: :class:`MemoryMap`
+        Memory map of the bus. Optional. See :class:`Signature`.
     path : iter(:class:`str`)
         Path to this CSR interface. Optional. See :class:`wiring.Interface`.
-
-    Attributes
-    ----------
-    memory_map : :class:`MemoryMap`
-        Map of the bus.
 
     Raises
     ------
     See :meth:`Signature.check_parameters`.
     """
-    def __init__(self, *, addr_width, data_width, path=()):
-        super().__init__(Signature(addr_width=addr_width, data_width=data_width), path=path)
-
-        self._map = None
+    def __init__(self, *, addr_width, data_width, memory_map=None, path=()):
+        sig = Signature(addr_width=addr_width, data_width=data_width)
+        sig.memory_map = memory_map
+        super().__init__(sig, path=path)
 
     @property
     def addr_width(self):
@@ -307,28 +328,13 @@ class Interface(wiring.Interface):
 
     @property
     def memory_map(self):
-        if self._map is None:
-            raise NotImplementedError(f"{self!r} does not have a memory map")
-        return self._map
-
-    @memory_map.setter
-    def memory_map(self, memory_map):
-        if not isinstance(memory_map, MemoryMap):
-            raise TypeError(f"Memory map must be an instance of MemoryMap, not {memory_map!r}")
-        if memory_map.addr_width != self.addr_width:
-            raise ValueError(f"Memory map has address width {memory_map.addr_width}, which is not "
-                             f"the same as bus interface address width {self.addr_width}")
-        if memory_map.data_width != self.data_width:
-            raise ValueError(f"Memory map has data width {memory_map.data_width}, which is not the "
-                             f"same as bus interface data width {self.data_width}")
-        memory_map.freeze()
-        self._map = memory_map
+        return self.signature.memory_map
 
     def __repr__(self):
         return f"csr.Interface({self.signature!r})"
 
 
-class Multiplexer(Elaboratable):
+class Multiplexer(wiring.Component):
     class _Shadow:
         class Chunk:
             """The interface between a CSR multiplexer and a shadow register chunk."""
@@ -555,44 +561,42 @@ class Multiplexer(Elaboratable):
         CSR bus providing access to registers.
     """
     def __init__(self, *, addr_width, data_width, alignment=0, name=None, shadow_overlaps=None):
-        self._map = MemoryMap(addr_width=addr_width, data_width=data_width, alignment=alignment,
-                              name=name)
-        self._bus = None
-        self._r_shadow = Multiplexer._Shadow(data_width, shadow_overlaps, name="r_shadow")
-        self._w_shadow = Multiplexer._Shadow(data_width, shadow_overlaps, name="w_shadow")
+        bus_signature = Signature(addr_width=addr_width, data_width=data_width)
+        bus_signature.memory_map = MemoryMap(addr_width=addr_width, data_width=data_width,
+                                             alignment=alignment, name=name)
+
+        self._signature = wiring.Signature({"bus": In(bus_signature)})
+        self._r_shadow  = Multiplexer._Shadow(data_width, shadow_overlaps, name="r_shadow")
+        self._w_shadow  = Multiplexer._Shadow(data_width, shadow_overlaps, name="w_shadow")
+        super().__init__()
 
     @property
-    def bus(self):
-        if self._bus is None:
-            self._map.freeze()
-            self._bus = Interface(addr_width=self._map.addr_width, data_width=self._map.data_width,
-                                  path=("csr",))
-            self._bus.memory_map = self._map
-        return self._bus
+    def signature(self):
+        return self._signature
 
     def align_to(self, alignment):
         """Align the implicit address of the next register.
 
         See :meth:`MemoryMap.align_to` for details.
         """
-        return self._map.align_to(alignment)
+        return self.bus.memory_map.align_to(alignment)
 
-    def add(self, element, *, name, addr=None, alignment=None):
+    def add(self, elem, *, name, addr=None, alignment=None):
         """Add a register.
 
         See :meth:`MemoryMap.add_resource` for details.
         """
-        if not isinstance(element, Element):
-            raise TypeError(f"Element must be an instance of csr.Element, not {element!r}")
+        if not isinstance(elem, Element):
+            raise TypeError(f"Element must be an instance of csr.Element, not {elem!r}")
 
-        size = (element.width + self._map.data_width - 1) // self._map.data_width
-        return self._map.add_resource(element, size=size, addr=addr, alignment=alignment,
-                                      name=name)
+        size = (elem.width + self.bus.memory_map.data_width - 1) // self.bus.memory_map.data_width
+        return self.bus.memory_map.add_resource(elem, size=size, addr=addr, alignment=alignment,
+                                                name=name)
 
     def elaborate(self, platform):
         m = Module()
 
-        for elem, _, (elem_start, elem_end) in self._map.resources():
+        for elem, _, (elem_start, elem_end) in self.bus.memory_map.resources():
             elem_range = range(elem_start, elem_end)
             if elem.access.readable():
                 self._r_shadow.add(elem_range)
@@ -619,7 +623,7 @@ class Multiplexer(Elaboratable):
             with m.Switch(self.bus.addr):
                 for elem_range in r_chunk.elements():
                     chunk_addr  = self._r_shadow.encode_offset(chunk_offset, elem_range)
-                    elem        = self._map.decode_address(elem_range.start)
+                    elem        = self.bus.memory_map.decode_address(elem_range.start)
                     elem_offset = chunk_addr - elem_range.start
                     elem_slice  = elem.r_data.word_select(elem_offset, self.bus.data_width)
 
@@ -644,7 +648,7 @@ class Multiplexer(Elaboratable):
             with m.Switch(self.bus.addr):
                 for elem_range in w_chunk.elements():
                     chunk_addr  = self._w_shadow.encode_offset(chunk_offset, elem_range)
-                    elem        = self._map.decode_address(elem_range.start)
+                    elem        = self.bus.memory_map.decode_address(elem_range.start)
                     elem_offset = chunk_addr - elem_range.start
                     elem_slice  = elem.w_data.word_select(elem_offset, self.bus.data_width)
 
@@ -666,7 +670,7 @@ class Multiplexer(Elaboratable):
         return m
 
 
-class Decoder(Elaboratable):
+class Decoder(wiring.Component):
     """CSR bus decoder.
 
     An address decoder for subordinate CSR buses.
@@ -700,39 +704,42 @@ class Decoder(Elaboratable):
         CSR bus providing access to subordinate buses.
     """
     def __init__(self, *, addr_width, data_width, alignment=0, name=None):
-        self._map  = MemoryMap(addr_width=addr_width, data_width=data_width, alignment=alignment,
-                               name=name)
-        self._bus  = None
-        self._subs = dict()
+        bus_signature = Signature(addr_width=addr_width, data_width=data_width)
+        bus_signature.memory_map = MemoryMap(addr_width=addr_width, data_width=data_width,
+                                             alignment=alignment, name=name)
+
+        self._signature = wiring.Signature({"bus": In(bus_signature)})
+        self._subs      = dict()
+        super().__init__()
 
     @property
-    def bus(self):
-        if self._bus is None:
-            self._map.freeze()
-            self._bus = Interface(addr_width=self._map.addr_width, data_width=self._map.data_width,
-                                  path=("csr",))
-            self._bus.memory_map = self._map
-        return self._bus
+    def signature(self):
+        return self._signature
 
     def align_to(self, alignment):
         """Align the implicit address of the next window.
 
         See :meth:`MemoryMap.align_to` for details.
         """
-        return self._map.align_to(alignment)
+        return self.bus.memory_map.align_to(alignment)
 
     def add(self, sub_bus, *, addr=None):
         """Add a window to a subordinate bus.
 
         See :meth:`MemoryMap.add_resource` for details.
         """
-        if not isinstance(sub_bus, Interface):
-            raise TypeError(f"Subordinate bus must be an instance of csr.Interface, not {sub_bus!r}")
-        if sub_bus.data_width != self._map.data_width:
+        if isinstance(sub_bus, wiring.FlippedInterface):
+            sub_bus_unflipped = flipped(sub_bus)
+        else:
+            sub_bus_unflipped = sub_bus
+        if not isinstance(sub_bus_unflipped, Interface):
+            raise TypeError(f"Subordinate bus must be an instance of csr.Interface, not "
+                            f"{sub_bus_unflipped!r}")
+        if sub_bus.data_width != self.bus.data_width:
             raise ValueError(f"Subordinate bus has data width {sub_bus.data_width}, which is not "
-                             f"the same as decoder data width {self._map.data_width}")
+                             f"the same as decoder data width {self.bus.data_width}")
         self._subs[sub_bus.memory_map] = sub_bus
-        return self._map.add_window(sub_bus.memory_map, addr=addr)
+        return self.bus.memory_map.add_window(sub_bus.memory_map, addr=addr)
 
     def elaborate(self, platform):
         m = Module()
@@ -741,7 +748,7 @@ class Decoder(Elaboratable):
         r_data_fanin = 0
 
         with m.Switch(self.bus.addr):
-            for sub_map, (sub_pat, sub_ratio) in self._map.window_patterns():
+            for sub_map, (sub_pat, sub_ratio) in self.bus.memory_map.window_patterns():
                 assert sub_ratio == 1
 
                 sub_bus = self._subs[sub_map]

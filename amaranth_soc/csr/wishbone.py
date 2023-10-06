@@ -1,7 +1,9 @@
 from amaranth import *
+from amaranth.lib import wiring
+from amaranth.lib.wiring import In, flipped
 from amaranth.utils import log2_int
 
-from . import Interface as CSRInterface
+from . import Interface
 from .. import wishbone
 from ..memory import MemoryMap
 
@@ -9,7 +11,7 @@ from ..memory import MemoryMap
 __all__ = ["WishboneCSRBridge"]
 
 
-class WishboneCSRBridge(Elaboratable):
+class WishboneCSRBridge(wiring.Component):
     """Wishbone to CSR bridge.
 
     A bus bridge for accessing CSR registers from Wishbone. This bridge supports any Wishbone
@@ -36,28 +38,42 @@ class WishboneCSRBridge(Elaboratable):
         Wishbone bus provided by the bridge.
     """
     def __init__(self, csr_bus, *, data_width=None, name=None):
-        if not isinstance(csr_bus, CSRInterface):
-            raise ValueError("CSR bus must be an instance of CSRInterface, not {!r}"
-                             .format(csr_bus))
+        if isinstance(csr_bus, wiring.FlippedInterface):
+            csr_bus_unflipped = flipped(csr_bus)
+        else:
+            csr_bus_unflipped = csr_bus
+        if not isinstance(csr_bus_unflipped, Interface):
+            raise TypeError(f"CSR bus must be an instance of csr.Interface, not "
+                            f"{csr_bus_unflipped!r}")
         if csr_bus.data_width not in (8, 16, 32, 64):
-            raise ValueError("CSR bus data width must be one of 8, 16, 32, 64, not {!r}"
-                             .format(csr_bus.data_width))
+            raise ValueError(f"CSR bus data width must be one of 8, 16, 32, 64, not "
+                             f"{csr_bus.data_width!r}")
         if data_width is None:
             data_width = csr_bus.data_width
 
-        self.csr_bus = csr_bus
-        self.wb_bus  = wishbone.Interface(
+        wb_signature = wishbone.Signature(
             addr_width=max(0, csr_bus.addr_width - log2_int(data_width // csr_bus.data_width)),
             data_width=data_width,
-            granularity=csr_bus.data_width,
-            path=("wb",))
+            granularity=csr_bus.data_width)
 
-        wb_map = MemoryMap(addr_width=csr_bus.addr_width, data_width=csr_bus.data_width,
-                           name=name)
+        wb_signature.memory_map = MemoryMap(addr_width=csr_bus.addr_width,
+                                            data_width=csr_bus.data_width,
+                                            name=name)
         # Since granularity of the Wishbone interface matches the data width of the CSR bus,
         # no width conversion is performed, even if the Wishbone data width is greater.
-        wb_map.add_window(self.csr_bus.memory_map)
-        self.wb_bus.memory_map = wb_map
+        wb_signature.memory_map.add_window(csr_bus.memory_map)
+
+        self._signature = wiring.Signature({"wb_bus": In(wb_signature)})
+        self._csr_bus   = csr_bus
+        super().__init__()
+
+    @property
+    def signature(self):
+        return self._signature
+
+    @property
+    def csr_bus(self):
+        return self._csr_bus
 
     def elaborate(self, platform):
         csr_bus = self.csr_bus

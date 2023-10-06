@@ -146,6 +146,45 @@ class SignatureTestCase(unittest.TestCase):
             wishbone.Signature.check_parameters(addr_width=1, data_width=8, granularity=8,
                                                 features={"foo"})
 
+    def test_set_map(self):
+        sig = wishbone.Signature(addr_width=15, data_width=16, granularity=8)
+        memory_map = MemoryMap(addr_width=16, data_width=8)
+        sig.memory_map = memory_map
+        self.assertIs(sig.memory_map, memory_map)
+
+    def test_get_map_none(self):
+        sig = wishbone.Signature(addr_width=8, data_width=8)
+        with self.assertRaisesRegex(AttributeError,
+                r"wishbone.Signature\(.*\) does not have a memory map"):
+            sig.memory_map
+
+    def test_set_map_frozen(self):
+        sig = wishbone.Signature(addr_width=8, data_width=8)
+        sig.freeze()
+        with self.assertRaisesRegex(ValueError,
+                r"Signature has been frozen\. Cannot set its memory map"):
+            sig.memory_map = MemoryMap(addr_width=8, data_width=8)
+
+    def test_set_wrong_map(self):
+        sig = wishbone.Signature(addr_width=8, data_width=8)
+        with self.assertRaisesRegex(TypeError,
+                r"Memory map must be an instance of MemoryMap, not 'foo'"):
+            sig.memory_map = "foo"
+
+    def test_set_wrong_map_data_width(self):
+        sig = wishbone.Signature(addr_width=30, data_width=32, granularity=8)
+        with self.assertRaisesRegex(ValueError,
+                r"Memory map has data width 32, which is not the same as bus "
+                r"interface granularity 8"):
+            sig.memory_map = MemoryMap(addr_width=32, data_width=32)
+
+    def test_set_wrong_map_addr_width(self):
+        sig = wishbone.Signature(addr_width=30, data_width=32, granularity=8)
+        with self.assertRaisesRegex(ValueError,
+                r"Memory map has address width 30, which is not the same as the bus interface "
+                r"effective address width 32 \(= 30 address bits \+ 2 granularity bits\)"):
+            sig.memory_map = MemoryMap(addr_width=30, data_width=8)
+
 
 class InterfaceTestCase(unittest.TestCase):
     def test_simple(self):
@@ -157,38 +196,36 @@ class InterfaceTestCase(unittest.TestCase):
         self.assertEqual(iface.features, {wishbone.Feature.ERR})
         self.assertEqual(iface.cyc.name, "foo__bar__cyc")
 
-    def test_get_map_wrong(self):
+    def test_map(self):
+        memory_map = MemoryMap(addr_width=32, data_width=8)
+        iface = wishbone.Interface(addr_width=30, data_width=32, granularity=8,
+                                   memory_map=memory_map, path=("iface",))
+        self.assertIs(iface.memory_map, memory_map)
+
+    def test_get_map_none(self):
         iface = wishbone.Interface(addr_width=1, data_width=8, path=("iface",))
-        with self.assertRaisesRegex(NotImplementedError,
-                r"wishbone.Interface\(.*\) does not have a memory map"):
+        with self.assertRaisesRegex(AttributeError,
+                r"wishbone.Signature\(.*\) does not have a memory map"):
             iface.memory_map
 
-    def test_get_map_frozen(self):
-        iface = wishbone.Interface(addr_width=1, data_width=8, path=("iface",))
-        iface.memory_map = MemoryMap(addr_width=1, data_width=8)
-        with self.assertRaisesRegex(ValueError,
-                r"Memory map has been frozen\. Cannot add resource 'foo'"):
-            iface.memory_map.add_resource("foo", name="foo", size=1)
-
-    def test_set_map_wrong(self):
-        iface = wishbone.Interface(addr_width=1, data_width=8, path=("iface",))
+    def test_wrong_map(self):
         with self.assertRaisesRegex(TypeError,
                 r"Memory map must be an instance of MemoryMap, not 'foo'"):
-            iface.memory_map = "foo"
+            wishbone.Interface(addr_width=1, data_width=8, memory_map="foo")
 
-    def test_set_map_wrong_data_width(self):
-        iface = wishbone.Interface(addr_width=30, data_width=32, granularity=8, path=("iface",))
+    def test_wrong_map_data_width(self):
         with self.assertRaisesRegex(ValueError,
                 r"Memory map has data width 32, which is not the same as bus "
                 r"interface granularity 8"):
-            iface.memory_map = MemoryMap(addr_width=32, data_width=32)
+            wishbone.Interface(addr_width=30, data_width=32, granularity=8,
+                               memory_map=MemoryMap(addr_width=32, data_width=32))
 
-    def test_set_map_wrong_addr_width(self):
-        iface = wishbone.Interface(addr_width=30, data_width=32, granularity=8, path=("iface",))
+    def test_wrong_map_addr_width(self):
         with self.assertRaisesRegex(ValueError,
-                r"Memory map has address width 30, which is not the same as bus "
-                r"interface address width 32 \(30 address bits \+ 2 granularity bits\)"):
-            iface.memory_map = MemoryMap(addr_width=30, data_width=8)
+                r"Memory map has address width 30, which is not the same as the bus interface "
+                r"effective address width 32 \(= 30 address bits \+ 2 granularity bits\)"):
+            wishbone.Interface(addr_width=30, data_width=32, granularity=8,
+                               memory_map=MemoryMap(addr_width=30, data_width=8))
 
 
 class DecoderTestCase(unittest.TestCase):
@@ -196,11 +233,12 @@ class DecoderTestCase(unittest.TestCase):
         self.dut = wishbone.Decoder(addr_width=31, data_width=32, granularity=16)
 
     def test_add_align_to(self):
-        sig   = wishbone.Signature(addr_width=15, data_width=32, granularity=16)
-        sub_1 = sig.create(path=("sub_1"))
-        sub_2 = sig.create(path=("sub_2"))
-        sub_1.memory_map = MemoryMap(addr_width=16, data_width=16)
-        sub_2.memory_map = MemoryMap(addr_width=16, data_width=16)
+        sig_1 = wishbone.Signature(addr_width=15, data_width=32, granularity=16)
+        sig_1.memory_map = MemoryMap(addr_width=16, data_width=16)
+        sig_2 = wishbone.Signature(addr_width=15, data_width=32, granularity=16)
+        sig_2.memory_map = MemoryMap(addr_width=16, data_width=16)
+        sub_1 = sig_1.create(path=("sub_1"))
+        sub_2 = sig_2.create(path=("sub_2"))
         self.assertEqual(self.dut.add(sub_1), (0x00000000, 0x00010000, 1))
         self.assertEqual(self.dut.align_to(18), 0x000040000)
         self.assertEqual(self.dut.align_to(alignment=18), 0x000040000)
@@ -241,8 +279,9 @@ class DecoderTestCase(unittest.TestCase):
             self.dut.add(sub)
 
     def test_add_wrong_out_of_bounds(self):
-        sub = wishbone.Interface(addr_width=31, data_width=32, granularity=16, path=("sub",))
-        sub.memory_map = MemoryMap(addr_width=32, data_width=16)
+        sub = wishbone.Interface(addr_width=31, data_width=32, granularity=16,
+                                 memory_map=MemoryMap(addr_width=32, data_width=16),
+                                 path=("sub",))
         with self.assertRaisesRegex(ValueError,
             r"Address range 0x1\.\.0x100000001 out of bounds for memory map spanning "
             r"range 0x0\.\.0x100000000 \(32 address bits\)"):
@@ -253,13 +292,14 @@ class DecoderSimulationTestCase(unittest.TestCase):
     def test_simple(self):
         dut = wishbone.Decoder(addr_width=30, data_width=32, granularity=8,
                                features={"err", "rty", "stall", "lock", "cti", "bte"})
-        sub_1 = wishbone.Interface(addr_width=14, data_width=32, granularity=8, path=("sub_1",))
-        sub_1.memory_map = MemoryMap(addr_width=16, data_width=8)
+        sub_1 = wishbone.Interface(addr_width=14, data_width=32, granularity=8,
+                                   memory_map=MemoryMap(addr_width=16, data_width=8),
+                                   path=("sub_1",))
         dut.add(sub_1, addr=0x10000)
         sub_2 = wishbone.Interface(addr_width=14, data_width=32, granularity=8,
                                    features={"err", "rty", "stall", "lock", "cti", "bte"},
+                                   memory_map=MemoryMap(addr_width=16, data_width=8),
                                    path=("sub_2",))
-        sub_2.memory_map = MemoryMap(addr_width=16, data_width=8)
         dut.add(sub_2)
 
         def sim_test():
@@ -315,7 +355,7 @@ class DecoderSimulationTestCase(unittest.TestCase):
     def test_addr_translate(self):
         class AddressLoopback(Elaboratable):
             def __init__(self, **kwargs):
-                self.bus = wishbone.Signature(**kwargs).create()
+                self.bus = wishbone.Interface(path=("bus",), **kwargs)
 
             def elaborate(self, platform):
                 m = Module()
@@ -328,20 +368,20 @@ class DecoderSimulationTestCase(unittest.TestCase):
                 return m
 
         dut = wishbone.Decoder(addr_width=20, data_width=32, granularity=16)
-        loop_1 = AddressLoopback(addr_width=7, data_width=32, granularity=16)
-        loop_1.bus.memory_map = MemoryMap(addr_width=8, data_width=16)
+        loop_1 = AddressLoopback(addr_width=7, data_width=32, granularity=16,
+                                 memory_map=MemoryMap(addr_width=8, data_width=16))
         self.assertEqual(dut.add(loop_1.bus, addr=0x10000),
                          (0x10000, 0x10100, 1))
-        loop_2 = AddressLoopback(addr_width=6, data_width=32, granularity=8)
-        loop_2.bus.memory_map = MemoryMap(addr_width=8, data_width=8)
+        loop_2 = AddressLoopback(addr_width=6, data_width=32, granularity=8,
+                                 memory_map=MemoryMap(addr_width=8, data_width=8))
         self.assertEqual(dut.add(loop_2.bus, addr=0x20000),
                          (0x20000, 0x20080, 2))
-        loop_3 = AddressLoopback(addr_width=8, data_width=16, granularity=16)
-        loop_3.bus.memory_map = MemoryMap(addr_width=8, data_width=16)
+        loop_3 = AddressLoopback(addr_width=8, data_width=16, granularity=16,
+                                 memory_map=MemoryMap(addr_width=8, data_width=16))
         self.assertEqual(dut.add(loop_3.bus, addr=0x30000, sparse=True),
                          (0x30000, 0x30100, 1))
-        loop_4 = AddressLoopback(addr_width=8, data_width=8,  granularity=8)
-        loop_4.bus.memory_map = MemoryMap(addr_width=8, data_width=8)
+        loop_4 = AddressLoopback(addr_width=8, data_width=8,  granularity=8,
+                                 memory_map=MemoryMap(addr_width=8, data_width=8))
         self.assertEqual(dut.add(loop_4.bus, addr=0x40000, sparse=True),
                          (0x40000, 0x40100, 1))
 
@@ -425,8 +465,9 @@ class DecoderSimulationTestCase(unittest.TestCase):
 
     def test_coarse_granularity(self):
         dut = wishbone.Decoder(addr_width=3, data_width=32)
-        sub = wishbone.Interface(addr_width=2, data_width=32, path=("sub",))
-        sub.memory_map = MemoryMap(addr_width=2, data_width=32)
+        sub = wishbone.Interface(addr_width=2, data_width=32,
+                                 memory_map=MemoryMap(addr_width=2, data_width=32),
+                                 path=("sub",))
         dut.add(sub)
 
         def sim_test():
