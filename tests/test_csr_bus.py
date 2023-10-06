@@ -134,6 +134,45 @@ class SignatureTestCase(unittest.TestCase):
                 r"Data width must be a positive integer, not -1"):
             csr.Signature.check_parameters(addr_width=16, data_width=-1)
 
+    def test_set_map(self):
+        sig = csr.Signature(addr_width=16, data_width=16)
+        memory_map = MemoryMap(addr_width=16, data_width=16)
+        sig.memory_map = memory_map
+        self.assertIs(sig.memory_map, memory_map)
+
+    def test_get_map_none(self):
+        sig = csr.Signature(addr_width=1, data_width=8)
+        with self.assertRaisesRegex(AttributeError,
+                r"csr.Signature\(.*\) does not have a memory map"):
+            sig.memory_map
+
+    def test_set_map_frozen(self):
+        sig = csr.Signature(addr_width=8, data_width=8)
+        sig.freeze()
+        with self.assertRaisesRegex(ValueError,
+                r"Signature has been frozen\. Cannot set its memory map"):
+            sig.memory_map = MemoryMap(addr_width=8, data_width=8)
+
+    def test_set_wrong_map(self):
+        sig = csr.Signature(addr_width=8, data_width=8)
+        with self.assertRaisesRegex(TypeError,
+                r"Memory map must be an instance of MemoryMap, not 'foo'"):
+            sig.memory_map = "foo"
+
+    def test_set_wrong_map_addr_width(self):
+        sig = csr.Signature(addr_width=8, data_width=8)
+        with self.assertRaisesRegex(ValueError,
+                r"Memory map has address width 7, which is not the same as bus interface address "
+                r"width 8"):
+            sig.memory_map = MemoryMap(addr_width=7, data_width=8)
+
+    def test_set_wrong_map_data_width(self):
+        sig = csr.Signature(addr_width=8, data_width=8)
+        with self.assertRaisesRegex(ValueError,
+                r"Memory map has data width 7, which is not the same as bus interface data width "
+                r"8"):
+            sig.memory_map = MemoryMap(addr_width=8, data_width=7)
+
 
 class InterfaceTestCase(unittest.TestCase):
     def test_simple(self):
@@ -142,38 +181,35 @@ class InterfaceTestCase(unittest.TestCase):
         self.assertEqual(iface.data_width, 8)
         self.assertEqual(iface.r_stb.name, "foo__bar__r_stb")
 
-    def test_get_map_wrong(self):
-        iface = csr.Interface(addr_width=16, data_width=8)
-        with self.assertRaisesRegex(NotImplementedError,
-                r"csr.Interface\(.*\) does not have a memory map"):
+    def test_map(self):
+        memory_map = MemoryMap(addr_width=12, data_width=8)
+        iface = csr.Interface(addr_width=12, data_width=8, memory_map=memory_map, path=("iface",))
+        self.assertIs(iface.memory_map, memory_map)
+
+    def test_get_map_none(self):
+        iface = csr.Interface(addr_width=16, data_width=8, path=("iface",))
+        with self.assertRaisesRegex(AttributeError,
+                r"csr.Signature\(.*\) does not have a memory map"):
             iface.memory_map
 
-    def test_get_map_frozen(self):
-        iface = csr.Interface(addr_width=16, data_width=8)
-        iface.memory_map = MemoryMap(addr_width=16, data_width=8)
-        with self.assertRaisesRegex(ValueError,
-                r"Memory map has been frozen\. Cannot add resource 'foo'"):
-            iface.memory_map.add_resource("foo", name="foo", size=1)
-
-    def test_set_wrong_map(self):
-        iface = csr.Interface(addr_width=16, data_width=8)
+    def test_wrong_map(self):
         with self.assertRaisesRegex(TypeError,
                 r"Memory map must be an instance of MemoryMap, not 'foo'"):
-            iface.memory_map = "foo"
+            csr.Interface(addr_width=16, data_width=8, memory_map="foo")
 
-    def test_set_map_wrong_addr_width(self):
-        iface = csr.Interface(addr_width=16, data_width=8)
+    def test_wrong_map_addr_width(self):
         with self.assertRaisesRegex(ValueError,
                 r"Memory map has address width 8, which is not the same as "
                 r"bus interface address width 16"):
-            iface.memory_map = MemoryMap(addr_width=8, data_width=8)
+            csr.Interface(addr_width=16, data_width=8,
+                          memory_map=MemoryMap(addr_width=8, data_width=8))
 
-    def test_set_map_wrong_data_width(self):
-        iface = csr.Interface(addr_width=16, data_width=8)
+    def test_wrong_map_data_width(self):
         with self.assertRaisesRegex(ValueError,
                 r"Memory map has data width 16, which is not the same as "
                 r"bus interface data width 8"):
-            iface.memory_map = MemoryMap(addr_width=16, data_width=16)
+            csr.Interface(addr_width=16, data_width=8,
+                          memory_map=MemoryMap(addr_width=16, data_width=16))
 
 
 class MultiplexerTestCase(unittest.TestCase):
@@ -205,7 +241,7 @@ class MultiplexerTestCase(unittest.TestCase):
     def test_add_wrong(self):
         with self.assertRaisesRegex(TypeError,
                 r"Element must be an instance of csr\.Element, not 'foo'"):
-            self.dut.add(element="foo", name="elem_4b")
+            self.dut.add(elem="foo", name="elem_4b")
 
     def test_align_to(self):
         elem_0 = csr.Element(8, "rw", path=("elem_0",))
@@ -215,7 +251,7 @@ class MultiplexerTestCase(unittest.TestCase):
         self.assertEqual(self.dut.add(elem_1, name="elem_1"), (4, 5))
 
     def test_add_wrong_out_of_bounds(self):
-        elem = csr.Element.Signature(8, "rw").create()
+        elem = csr.Element(8, "rw", path=("elem",))
         with self.assertRaisesRegex(ValueError,
                 r"Address range 0x10000\.\.0x10001 out of bounds for memory map spanning "
                 r"range 0x0\.\.0x10000 \(16 address bits\)"):
@@ -391,15 +427,17 @@ class DecoderTestCase(unittest.TestCase):
         self.dut = csr.Decoder(addr_width=16, data_width=8)
 
     def test_align_to(self):
-        sub_1 = csr.Interface(addr_width=10, data_width=8, path=("sub_1",))
-        sub_1.memory_map = MemoryMap(addr_width=10, data_width=8)
+        sig_1 = csr.Signature(addr_width=10, data_width=8)
+        sig_1.memory_map = MemoryMap(addr_width=10, data_width=8)
+        sub_1 = sig_1.create(path=("sub_1",))
         self.assertEqual(self.dut.add(sub_1), (0, 0x400, 1))
 
         self.assertEqual(self.dut.align_to(12), 0x1000)
         self.assertEqual(self.dut.align_to(alignment=12), 0x1000)
 
-        sub_2 = csr.Interface(addr_width=10, data_width=8, path=("sub_2",))
-        sub_2.memory_map = MemoryMap(addr_width=10, data_width=8)
+        sig_2 = csr.Signature(addr_width=10, data_width=8)
+        sig_2.memory_map = MemoryMap(addr_width=10, data_width=8)
+        sub_2 = sig_2.create(path=("sub_2",))
         self.assertEqual(self.dut.add(sub_2), (0x1000, 0x1400, 1))
 
     def test_add_wrong_sub_bus(self):
@@ -417,8 +455,9 @@ class DecoderTestCase(unittest.TestCase):
             self.dut.add(mux.bus)
 
     def test_add_wrong_out_of_bounds(self):
-        iface = csr.Interface(addr_width=17, data_width=8, path=("iface",))
-        iface.memory_map = MemoryMap(addr_width=17, data_width=8)
+        iface = csr.Interface(addr_width=17, data_width=8,
+                              memory_map=MemoryMap(addr_width=17, data_width=8),
+                              path=("iface",))
         with self.assertRaisesRegex(ValueError,
                 r"Address range 0x0\.\.0x20000 out of bounds for memory map spanning "
                 r"range 0x0\.\.0x10000 \(16 address bits\)"):

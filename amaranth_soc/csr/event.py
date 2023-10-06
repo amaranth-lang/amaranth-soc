@@ -2,6 +2,8 @@
 from math import ceil
 
 from amaranth import *
+from amaranth.lib import wiring
+from amaranth.lib.wiring import In, Out, flipped, connect
 from amaranth.utils import log2_int
 
 from . import Element, Multiplexer
@@ -11,7 +13,7 @@ from .. import event
 __all__ = ["EventMonitor"]
 
 
-class EventMonitor(Elaboratable):
+class EventMonitor(wiring.Component):
     """Event monitor.
 
     A monitor for subordinate event sources, with a CSR bus interface.
@@ -35,6 +37,14 @@ class EventMonitor(Elaboratable):
         CSR address alignment. See :class:`..memory.MemoryMap`.
     name : str
         Window name. Optional. See :class:`..memory.MemoryMap`.
+
+    Attributes
+    ----------
+    src : :class:`..event.Source`
+        Event source. Its input line is asserted by the monitor when a subordinate event is enabled
+        and pending.
+    bus : :class:`..csr.Interface`
+        CSR bus interface.
     """
     def __init__(self, event_map, *, trigger="level", data_width, alignment=0, name=None):
         if not isinstance(data_width, int) or data_width <= 0:
@@ -53,31 +63,23 @@ class EventMonitor(Elaboratable):
         self._mux.add(self._enable,  name="enable")
         self._mux.add(self._pending, name="pending")
 
-    @property
-    def src(self):
-        """Event source.
-
-        Return value
-        ------------
-        An :class:`..event.Source`. Its input line is asserted by the monitor when a subordinate
-        event is enabled and pending.
-        """
-        return self._monitor.src
+        self._signature = wiring.Signature({
+            "src": Out(self._monitor.src.signature),
+            "bus": In(self._mux.bus.signature),
+        })
+        super().__init__()
 
     @property
-    def bus(self):
-        """CSR bus interface.
-
-        Return value
-        ------------
-        A :class:`..csr.Interface` providing access to registers.
-        """
-        return self._mux.bus
+    def signature(self):
+        return self._signature
 
     def elaborate(self, platform):
         m = Module()
         m.submodules.monitor = self._monitor
         m.submodules.mux     = self._mux
+
+        connect(m, flipped(self.src), self._monitor.src)
+        connect(m, self.bus, self._mux.bus)
 
         with m.If(self._enable.w_stb):
             m.d.sync += self._monitor.enable.eq(self._enable.w_data)
