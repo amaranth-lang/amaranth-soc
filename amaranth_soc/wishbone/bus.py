@@ -183,7 +183,7 @@ class Signature(wiring.Signature):
         Raises
         ------
         :exc:`TypeError`
-            If ``addr_width`` is not an integer greater than to 0.
+            If ``addr_width`` is not an integer greater than or equal to 0.
         :exc:`ValueError`
             If ``data_width`` is not 8, 16, 32 or 64.
         :exc:`ValueError`
@@ -193,8 +193,8 @@ class Signature(wiring.Signature):
         :exc:`ValueError`
             If ``features`` contains other values than :class:`Feature` members.
         """
-        if not isinstance(addr_width, int) or addr_width <= 0:
-            raise TypeError(f"Address width must be a positive integer, not {addr_width!r}")
+        if not isinstance(addr_width, int) or addr_width < 0:
+            raise TypeError(f"Address width must be a non-negative integer, not {addr_width!r}")
         if data_width not in (8, 16, 32, 64):
             raise ValueError(f"Data width must be one of 8, 16, 32, 64, not {data_width!r}")
         if granularity not in (8, 16, 32, 64):
