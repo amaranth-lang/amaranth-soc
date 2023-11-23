@@ -1,7 +1,7 @@
 from collections.abc import Mapping, Sequence
 from amaranth import *
 from amaranth.lib import enum, wiring
-from amaranth.lib.wiring import In, Out
+from amaranth.lib.wiring import In, Out, connect, flipped
 
 from ..memory import MemoryMap
 from .bus import Element, Multiplexer
@@ -57,10 +57,10 @@ class FieldPort(wiring.Interface):
             self._access = FieldPort.Access(access)
 
             members = {
-                "r_data": Out(self.shape),
-                "r_stb":  In(1),
-                "w_data": In(self.shape),
-                "w_stb":  In(1),
+                "r_data": In(self.shape),
+                "r_stb":  Out(1),
+                "w_data": Out(self.shape),
+                "w_stb":  Out(1),
             }
             super().__init__(members)
 
@@ -154,7 +154,7 @@ class FieldPort(wiring.Interface):
         return f"csr.FieldPort({self.signature!r})"
 
 
-class Field(Elaboratable):
+class Field(wiring.Component):
     _doc_template = """
     {description}
 
@@ -181,15 +181,24 @@ class Field(Elaboratable):
     attributes="")
 
     def __init__(self, shape, access):
-        self.port = FieldPort.Signature(shape, access).create(path=("port",))
+        FieldPort.Signature.check_parameters(shape, access)
+        self._shape  = Shape.cast(shape)
+        self._access = FieldPort.Access(access)
+        super().__init__()
 
     @property
     def shape(self):
-        return self.port.shape
+        return self._shape
 
     @property
     def access(self):
-        return self.port.access
+        return self._access
+
+    @property
+    def signature(self):
+        return wiring.Signature({
+            "port": Out(FieldPort.Signature(self._shape, self._access)),
+        })
 
 
 class FieldMap(Mapping):
@@ -346,7 +355,7 @@ class FieldArray(Sequence):
                 assert False # :nocov:
 
 
-class Register(Elaboratable):
+class Register(wiring.Component):
     """CSR register.
 
     Parameters
@@ -407,8 +416,10 @@ class Register(Elaboratable):
                 raise ValueError(f"Field {'__'.join(field_name)} is writable, but register access "
                                  f"mode is {access!r}")
 
-        self.element = Element.Signature(width, access).create(path=("element",))
+        self._width  = width
+        self._access = access
         self._fields = fields
+        super().__init__()
 
     @property
     def fields(self):
@@ -417,6 +428,12 @@ class Register(Elaboratable):
     @property
     def f(self):
         return self._fields
+
+    @property
+    def signature(self):
+        return wiring.Signature({
+            "element": Out(Element.Signature(self._width, self._access)),
+        })
 
     def __iter__(self):
         """Recursively iterate over the field collection.
@@ -684,7 +701,7 @@ class RegisterMap:
         raise KeyError(path)
 
 
-class Bridge(Elaboratable):
+class Bridge(wiring.Component):
     """CSR bridge.
 
     Parameters
@@ -754,18 +771,20 @@ class Bridge(Elaboratable):
 
         self._map = register_map
         self._mux = Multiplexer(memory_map)
+        super().__init__()
 
     @property
     def register_map(self):
         return self._map
 
     @property
-    def bus(self):
-        return self._mux.bus
+    def signature(self):
+        return self._mux.signature
 
     def elaborate(self, platform):
         m = Module()
         for register, path in self.register_map.flatten():
             m.submodules["__".join(path)] = register
         m.submodules.mux = self._mux
+        connect(m, flipped(self), self._mux)
         return m
