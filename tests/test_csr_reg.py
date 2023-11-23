@@ -15,10 +15,10 @@ class FieldPortSignatureTestCase(unittest.TestCase):
         self.assertEqual(sig.shape, unsigned(1))
         self.assertEqual(sig.access, FieldPort.Access.R)
         self.assertEqual(sig.members, Signature({
-            "r_data": Out(unsigned(1)),
-            "r_stb":  In(1),
-            "w_data": In(unsigned(1)),
-            "w_stb":  In(1),
+            "r_data": In(unsigned(1)),
+            "r_stb":  Out(1),
+            "w_data": Out(unsigned(1)),
+            "w_stb":  Out(1),
         }).members)
 
     def test_shape_8_rw(self):
@@ -26,10 +26,10 @@ class FieldPortSignatureTestCase(unittest.TestCase):
         self.assertEqual(sig.shape, unsigned(8))
         self.assertEqual(sig.access, FieldPort.Access.RW)
         self.assertEqual(sig.members, Signature({
-            "r_data": Out(unsigned(8)),
-            "r_stb":  In(1),
-            "w_data": In(unsigned(8)),
-            "w_stb":  In(1),
+            "r_data": In(unsigned(8)),
+            "r_stb":  Out(1),
+            "w_data": Out(unsigned(8)),
+            "w_stb":  Out(1),
         }).members)
 
     def test_shape_10_wo(self):
@@ -37,10 +37,10 @@ class FieldPortSignatureTestCase(unittest.TestCase):
         self.assertEqual(sig.shape, unsigned(10))
         self.assertEqual(sig.access, FieldPort.Access.W)
         self.assertEqual(sig.members, Signature({
-            "r_data": Out(unsigned(10)),
-            "r_stb":  In(1),
-            "w_data": In(unsigned(10)),
-            "w_stb":  In(1),
+            "r_data": In(unsigned(10)),
+            "r_stb":  Out(1),
+            "w_data": Out(unsigned(10)),
+            "w_stb":  Out(1),
         }).members)
 
     def test_shape_0_rw(self):
@@ -48,10 +48,10 @@ class FieldPortSignatureTestCase(unittest.TestCase):
         self.assertEqual(sig.shape, unsigned(0))
         self.assertEqual(sig.access, FieldPort.Access.W)
         self.assertEqual(sig.members, Signature({
-            "r_data": Out(unsigned(0)),
-            "r_stb":  In(1),
-            "w_data": In(unsigned(0)),
-            "w_stb":  In(1),
+            "r_data": In(unsigned(0)),
+            "r_stb":  Out(1),
+            "w_data": Out(unsigned(0)),
+            "w_stb":  Out(1),
         }).members)
 
     def test_create(self):
