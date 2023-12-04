@@ -50,14 +50,14 @@ class _RangeMap:
 class ResourceInfo:
     """Resource metadata.
 
-    A wrapper class for resource objects, with their assigned name and address range.
+    A wrapper class for resource objects, with their assigned path and address range.
 
     Parameters
     ----------
     resource : object
         Arbitrary object representing a resource. See :meth:`MemoryMap.add_resource` for details.
-    name : iter(str)
-        Name assigned to the resource. It is prefixed by the name of each window sitting between
+    path : iter(str)
+        Path of the resource. It is composed of the names of each window sitting between
         the resource and the memory map from which this :class:`ResourceInfo` was obtained.
         See :meth:`MemoryMap.add_window` for details.
     start : int
@@ -69,12 +69,10 @@ class ResourceInfo:
         memory map from which this :class:`ResourceInfo` was obtained, or less if the resource
         is located behind a window that uses sparse addressing.
     """
-    def __init__(self, resource, name, start, end, width):
-        if isinstance(name, str):
-            name = (name,)
-        if not name or not all(isinstance(part, str) and part for part in name):
-            raise TypeError("Name must be a non-empty sequence of non-empty strings, not {!r}"
-                            .format(name))
+    def __init__(self, resource, path, start, end, width):
+        if not path or not all(isinstance(part, str) and part for part in path):
+            raise TypeError("Path must be a non-empty sequence of non-empty strings, not {!r}"
+                            .format(path))
         if not isinstance(start, int) or start < 0:
             raise TypeError("Start address must be a non-negative integer, not {!r}"
                             .format(start))
@@ -86,7 +84,7 @@ class ResourceInfo:
                             .format(width))
 
         self._resource = resource
-        self._name     = tuple(name)
+        self._path     = tuple(path)
         self._start    = start
         self._end      = end
         self._width    = width
@@ -96,8 +94,8 @@ class ResourceInfo:
         return self._resource
 
     @property
-    def name(self):
-        return self._name
+    def path(self):
+        return self._path
 
     @property
     def start(self):
@@ -497,11 +495,11 @@ class MemoryMap:
         # layouts that cannot be easily represented, so reject those.
         assert window_range.step == 1 or resource_info.width == window.data_width
 
-        name  = resource_info.name if window.name is None else (window.name, *resource_info.name)
+        path  = resource_info.path if window.name is None else (window.name, *resource_info.path)
         size  = (resource_info.end - resource_info.start) // window_range.step
         start = resource_info.start + window_range.start
         width = resource_info.width * window_range.step
-        return ResourceInfo(resource_info.resource, name, start, start + size, width)
+        return ResourceInfo(resource_info.resource, path, start, start + size, width)
 
     def all_resources(self):
         """Iterate all resources and their address ranges.
@@ -516,7 +514,8 @@ class MemoryMap:
         for addr_range, assignment in self._ranges.items():
             if id(assignment) in self._resources:
                 _, resource_name, _ = self._resources[id(assignment)]
-                yield ResourceInfo(assignment, resource_name, addr_range.start, addr_range.stop,
+                resource_path = (resource_name,)
+                yield ResourceInfo(assignment, resource_path, addr_range.start, addr_range.stop,
                                    self.data_width)
             elif id(assignment) in self._windows:
                 for resource_info in assignment.all_resources():
@@ -545,7 +544,8 @@ class MemoryMap:
         """
         if id(resource) in self._resources:
             _, resource_name, resource_range = self._resources[id(resource)]
-            return ResourceInfo(resource, resource_name, resource_range.start, resource_range.stop,
+            resource_path = (resource_name,)
+            return ResourceInfo(resource, resource_path, resource_range.start, resource_range.stop,
                                 self.data_width)
 
         for window, window_range in self._windows.values():
