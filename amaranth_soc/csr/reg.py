@@ -285,7 +285,7 @@ class FieldMap(Mapping):
         Yields
         ------
         iter(:class:`str`)
-            Name of the field. It is prefixed by the name of every nested field collection.
+            Path of the field. It is prefixed by the name of every nested field collection.
         :class:`Field`
             Register field.
         """
@@ -293,8 +293,8 @@ class FieldMap(Mapping):
             if isinstance(field, Field):
                 yield (key,), field
             elif isinstance(field, (FieldMap, FieldArray)):
-                for sub_name, sub_field in field.flatten():
-                    yield (key, *sub_name), sub_field
+                for sub_path, sub_field in field.flatten():
+                    yield (key, *sub_path), sub_field
             else:
                 assert False # :nocov:
 
@@ -341,7 +341,7 @@ class FieldArray(Sequence):
         Yields
         ------
         iter(:class:`str`)
-            Name of the field. It is prefixed by the name of every nested field collection.
+            Path of the field. It is prefixed by the name of every nested field collection.
         :class:`Field`
             Register field.
         """
@@ -349,8 +349,8 @@ class FieldArray(Sequence):
             if isinstance(field, Field):
                 yield (key,), field
             elif isinstance(field, (FieldMap, FieldArray)):
-                for sub_name, sub_field in field.flatten():
-                    yield (key, *sub_name), sub_field
+                for sub_path, sub_field in field.flatten():
+                    yield (key, *sub_path), sub_field
             else:
                 assert False # :nocov:
 
@@ -407,13 +407,13 @@ class Register(wiring.Component):
             raise TypeError(f"Field collection must be a FieldMap or a FieldArray, not {fields!r}")
 
         width = 0
-        for field_name, field in fields.flatten():
+        for field_path, field in fields.flatten():
             width += Shape.cast(field.shape).width
             if field.access.readable() and not access.readable():
-                raise ValueError(f"Field {'__'.join(field_name)} is readable, but register access "
+                raise ValueError(f"Field {'__'.join(field_path)} is readable, but register access "
                                  f"mode is {access!r}")
             if field.access.writable() and not access.writable():
-                raise ValueError(f"Field {'__'.join(field_name)} is writable, but register access "
+                raise ValueError(f"Field {'__'.join(field_path)} is writable, but register access "
                                  f"mode is {access!r}")
 
         self._width  = width
@@ -441,7 +441,7 @@ class Register(wiring.Component):
         Yields
         ------
         iter(:class:`str`)
-            Name of the field. It is prefixed by the name of every nested field collection.
+            Path of the field. It is prefixed by the name of every nested field collection.
         :class:`Field`
             Register field.
         """
@@ -452,8 +452,8 @@ class Register(wiring.Component):
 
         field_start = 0
 
-        for field_name, field in self.fields.flatten():
-            m.submodules["__".join(str(key) for key in field_name)] = field
+        for field_path, field in self.fields.flatten():
+            m.submodules["__".join(str(key) for key in field_path)] = field
 
             field_slice = slice(field_start, field_start + Shape.cast(field.shape).width)
 
