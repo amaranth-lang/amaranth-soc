@@ -42,50 +42,46 @@ class RangeMapTestCase(unittest.TestCase):
 
 class ResourceInfoTestCase(unittest.TestCase):
     def test_simple(self):
-        info = ResourceInfo("a", name=("foo", "bar"), start=0, end=1, width=8)
-        self.assertEqual(info.name, ("foo", "bar"))
+        info = ResourceInfo("a", path=("foo", "bar"), start=0, end=1, width=8)
+        self.assertEqual(info.path, ("foo", "bar"))
         self.assertEqual(info.start, 0)
         self.assertEqual(info.end, 1)
         self.assertEqual(info.width, 8)
 
-    def test_name_cast(self):
-        info = ResourceInfo("a", name="foo", start=0, end=1, width=8)
-        self.assertEqual(info.name, ("foo",))
-
-    def test_wrong_name(self):
+    def test_wrong_path(self):
         with self.assertRaisesRegex(TypeError,
-                r"Name must be a non-empty sequence of non-empty strings, not \(1,\)"):
-            ResourceInfo("a", name=(1,), start=0, end=1, width=8)
+                r"Path must be a non-empty sequence of non-empty strings, not \(1,\)"):
+            ResourceInfo("a", path=(1,), start=0, end=1, width=8)
         with self.assertRaisesRegex(TypeError,
-                r"Name must be a non-empty sequence of non-empty strings, not \(\)"):
-            ResourceInfo("a", name=(), start=0, end=1, width=8)
+                r"Path must be a non-empty sequence of non-empty strings, not \(\)"):
+            ResourceInfo("a", path=(), start=0, end=1, width=8)
         with self.assertRaisesRegex(TypeError,
-                r"Name must be a non-empty sequence of non-empty strings, not \('foo', ''\)"):
-            ResourceInfo("a", name=("foo", ""), start=0, end=1, width=8)
+                r"Path must be a non-empty sequence of non-empty strings, not \('foo', ''\)"):
+            ResourceInfo("a", path=("foo", ""), start=0, end=1, width=8)
 
     def test_wrong_start_addr(self):
         with self.assertRaisesRegex(TypeError,
                 r"Start address must be a non-negative integer, not 'foo'"):
-            ResourceInfo("a", name="b", start="foo", end=1, width=8)
+            ResourceInfo("a", path=("b",), start="foo", end=1, width=8)
         with self.assertRaisesRegex(TypeError,
                 r"Start address must be a non-negative integer, not -1"):
-            ResourceInfo("a", name="b", start=-1, end=1, width=8)
+            ResourceInfo("a", path=("b",), start=-1, end=1, width=8)
 
     def test_wrong_end_addr(self):
         with self.assertRaisesRegex(TypeError,
                 r"End address must be an integer greater than the start address, not 'foo'"):
-            ResourceInfo("a", name="b", start=0, end="foo", width=8)
+            ResourceInfo("a", path=("b",), start=0, end="foo", width=8)
         with self.assertRaisesRegex(TypeError,
                 r"End address must be an integer greater than the start address, not 0"):
-            ResourceInfo("a", name="b", start=0, end=0, width=8)
+            ResourceInfo("a", path=("b",), start=0, end=0, width=8)
 
     def test_wrong_width(self):
         with self.assertRaisesRegex(TypeError,
                 r"Width must be a non-negative integer, not 'foo'"):
-            ResourceInfo("a", name="b", start=0, end=1, width="foo")
+            ResourceInfo("a", path=("b",), start=0, end=1, width="foo")
         with self.assertRaisesRegex(TypeError,
                 r"Width must be a non-negative integer, not -1"):
-            ResourceInfo("a", name="b", start=0, end=1, width=-1)
+            ResourceInfo("a", path=("b",), start=0, end=1, width=-1)
 
 
 class MemoryMapTestCase(unittest.TestCase):
@@ -391,37 +387,37 @@ class MemoryMapDiscoveryTestCase(unittest.TestCase):
         res_info = list(self.root.all_resources())
 
         self.assertIs(res_info[0].resource, self.res1)
-        self.assertEqual(res_info[0].name,  ("name1",))
+        self.assertEqual(res_info[0].path,  ("name1",))
         self.assertEqual(res_info[0].start, 0x00000000)
         self.assertEqual(res_info[0].end,   0x00000010)
         self.assertEqual(res_info[0].width, 32)
 
         self.assertIs(res_info[1].resource, self.res2)
-        self.assertEqual(res_info[1].name,  ("name2",))
+        self.assertEqual(res_info[1].path,  ("name2",))
         self.assertEqual(res_info[1].start, 0x00010000)
         self.assertEqual(res_info[1].end,   0x00010020)
         self.assertEqual(res_info[1].width, 32)
 
         self.assertIs(res_info[2].resource, self.res3)
-        self.assertEqual(res_info[2].name,  ("name3",))
+        self.assertEqual(res_info[2].path,  ("name3",))
         self.assertEqual(res_info[2].start, 0x00010020)
         self.assertEqual(res_info[2].end,   0x00010040)
         self.assertEqual(res_info[2].width, 32)
 
         self.assertIs(res_info[3].resource, self.res4)
-        self.assertEqual(res_info[3].name,  ("name4",))
+        self.assertEqual(res_info[3].path,  ("name4",))
         self.assertEqual(res_info[3].start, 0x00020000)
         self.assertEqual(res_info[3].end,   0x00020001)
         self.assertEqual(res_info[3].width, 32)
 
         self.assertIs(res_info[4].resource, self.res5)
-        self.assertEqual(res_info[4].name,  ("name5",))
+        self.assertEqual(res_info[4].path,  ("name5",))
         self.assertEqual(res_info[4].start, 0x00030000)
         self.assertEqual(res_info[4].end,   0x00030010)
         self.assertEqual(res_info[4].width, 8)
 
         self.assertIs(res_info[5].resource, self.res6)
-        self.assertEqual(res_info[5].name,  ("win3", "name6"))
+        self.assertEqual(res_info[5].path,  ("win3", "name6"))
         self.assertEqual(res_info[5].start, 0x00040000)
         self.assertEqual(res_info[5].end,   0x00040004)
         self.assertEqual(res_info[5].width, 32)
@@ -430,7 +426,7 @@ class MemoryMapDiscoveryTestCase(unittest.TestCase):
         for res_info in self.root.all_resources():
             other = self.root.find_resource(res_info.resource)
             self.assertIs(other.resource, res_info.resource)
-            self.assertEqual(other.name,  res_info.name)
+            self.assertEqual(other.path,  res_info.path)
             self.assertEqual(other.start, res_info.start)
             self.assertEqual(other.end,   res_info.end)
             self.assertEqual(other.width, res_info.width)
