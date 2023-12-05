@@ -1,11 +1,15 @@
 # amaranth: UnusedElaboratable=no
-
+#
+import logging
 import unittest
+from types import SimpleNamespace
+
 from amaranth import *
 from amaranth.lib import wiring
 from amaranth.lib.wiring import Out
 
-from amaranth_soc.memory import _RangeMap, _Namespace, ResourceInfo, MemoryMap
+from amaranth_soc.memory import _RangeMap, _Namespace, ResourceInfo, MemoryMap, MemoryMapAnnotation
+from amaranth_soc import csr
 
 
 class _MockResource(wiring.Component):
@@ -16,6 +20,11 @@ class _MockResource(wiring.Component):
 
     def __repr__(self):
         return f"_MockResource('{self._name}')"
+
+
+class _MockRegister(wiring.Component):
+    def __init__(self, width, access):
+        super().__init__({"element": Out(csr.Element.Signature(width, access))})
 
 
 class RangeMapTestCase(unittest.TestCase):
@@ -628,3 +637,94 @@ class MemoryMapDiscoveryTestCase(unittest.TestCase):
 
     def test_decode_address_missing(self):
         self.assertIsNone(self.root.decode_address(address=0x00000100))
+
+
+class MemoryMapAnnotationTestCase(unittest.TestCase):
+    def test_origin_freeze(self):
+        memory_map = MemoryMap(addr_width=2, data_width=8)
+        res = _MockResource("res")
+        MemoryMapAnnotation(memory_map)
+        with self.assertRaisesRegex(ValueError,
+                r"Memory map has been frozen. Cannot add resource _MockResource\('res'\)"):
+            memory_map.add_resource(res, name="foo", size=0)
+
+    def test_as_json(self):
+        elem_1_1 = _MockRegister(8, "rw")
+        elem_1_2 = _MockRegister(16, "r")
+        memorymap_1 = MemoryMap(addr_width=2, data_width=8)
+        memorymap_1.add_resource(elem_1_1, name=("memorymap_1", "elem_1"), size=1)
+        memorymap_1.add_resource(elem_1_2, name=("memorymap_1", "elem_2"), size=2)
+        mux_1 = csr.Multiplexer(memorymap_1)
+
+        elem_2_1 = _MockRegister(8, "rw")
+        elem_2_2 = _MockRegister(16, "w")
+        memorymap_2 = MemoryMap(addr_width=2, data_width=8)
+        memorymap_2.add_resource(elem_2_1, name=("memorymap_2", "elem_1",), size=1)
+        memorymap_2.add_resource(elem_2_2, name=("memorymap_2", "elem_2",), size=2)
+        mux_2 = csr.Multiplexer(memorymap_2)
+
+        decoder = csr.Decoder(addr_width=4, data_width=8)
+        decoder.add(mux_1.bus)
+        decoder.add(mux_2.bus)
+
+        annotation = MemoryMapAnnotation(decoder.bus.memory_map)
+        self.assertEqual(annotation.as_json(), {
+            'addr_width': 4,
+            'data_width': 8,
+            'alignment': 0,
+            'windows': [{
+                'name': [],
+                'start': 0,
+                'end': 4,
+                'ratio': 1,
+                'annotations': {
+                    'https://amaranth-lang.org/schema/amaranth-soc/0.1/memory/memory-map.json': {
+                        'addr_width': 2,
+                        'data_width': 8,
+                        'alignment': 0,
+                        'windows': [],
+                        'resources': [{
+                            'name': ['memorymap_1', 'elem_1'],
+                            'start': 0,
+                            'end': 1,
+                            'annotations': {}
+                        }, {
+                            'name': ['memorymap_1', 'elem_2'],
+                            'start': 1,
+                            'end': 3,
+                            'annotations': {}
+                        }]
+                    }
+                }
+            }, {
+                'name': [],
+                'start': 4,
+                'end': 8,
+                'ratio': 1,
+                'annotations': {
+                    'https://amaranth-lang.org/schema/amaranth-soc/0.1/memory/memory-map.json': {
+                        'addr_width': 2,
+                        'data_width': 8,
+                        'alignment': 0,
+                        'windows': [],
+                        'resources': [{
+                            'name': ['memorymap_2', 'elem_1'],
+                            'start': 0,
+                            'end': 1,
+                            'annotations': {}
+                        }, {
+                            'name': ['memorymap_2', 'elem_2'],
+                            'start': 1,
+                            'end': 3,
+                            'annotations': {}
+                        }]
+                    }
+                }
+            }],
+            'resources': []
+        })
+
+    def test_wrong_origin(self):
+        with self.assertRaisesRegex(TypeError,
+                r"Origin must be a MemoryMap object, not 'foo'"):
+            MemoryMapAnnotation("foo")
