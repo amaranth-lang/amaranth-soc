@@ -1,9 +1,10 @@
 import bisect
 
+from amaranth.lib import wiring, meta
 from amaranth.utils import bits_for
 
 
-__all__ = ["ResourceInfo", "MemoryMap"]
+__all__ = ["ResourceInfo", "MemoryMap", "MemoryMapAnnotation"]
 
 
 class _RangeMap:
@@ -167,6 +168,10 @@ class MemoryMap:
         self._frozen     = False
 
     @property
+    def annotation(self):
+        return MemoryMapAnnotation(self)
+
+    @property
     def addr_width(self):
         return self._addr_width
 
@@ -264,7 +269,8 @@ class MemoryMap:
         Arguments
         ---------
         resource : object
-            Arbitrary object representing a resource.
+            Arbitrary object representing a resource. It must have a 'signature' attribute that is
+            a :class:`wiring.Signature` object.
         name : str
             Name of the resource. It must not collide with the name of other resources or windows
             present in this memory map.
@@ -284,17 +290,29 @@ class MemoryMap:
 
         Exceptions
         ----------
-        Raises :exn:`ValueError` if one of the following occurs:
-
-        - this memory map is frozen;
-        - the requested address and size, after alignment, would overlap with any resources or
-        windows that have already been added, or would be out of bounds;
-        - the resource has already been added to this memory map;
-        - the name of the resource is already present in the namespace of this memory map;
+        :exc:`ValueError`
+            If the memory map is frozen.
+        :exc:`AttributeError`
+            If the resource does not have a 'signature' attribute.
+        :exc:`TypeError`
+            If the resource signature is not a :class:`wiring.Signature` object.
+        :exc:`ValueError`
+            If the requested address and size, after alignment, would overlap with any resources or
+            windows that have already been added, or would be out of bounds.
+        :exc:`ValueError`
+            If the resource has already been added to this memory map.
+        :exc:`ValueError`
+            If the name of the resource is already present in the namespace of this memory map.
         """
         if self._frozen:
             raise ValueError("Memory map has been frozen. Cannot add resource {!r}"
                              .format(resource))
+
+        if not hasattr(resource, "signature"):
+            raise AttributeError(f"Resource {resource!r} must have a 'signature' attribute")
+        if not isinstance(resource.signature, wiring.Signature):
+            raise TypeError(f"Signature of resource {resource!r} must be a wiring.Signature "
+                            f"object, not {resource.signature!r}")
 
         if id(resource) in self._resources:
             _, _, addr_range = self._resources[id(resource)]
@@ -579,3 +597,166 @@ class MemoryMap:
             return assignment.decode_address((address - addr_range.start) // addr_range.step)
         else:
             assert False # :nocov:
+
+
+class MemoryMapAnnotation(meta.Annotation):
+    schema = {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$id": "https://amaranth-lang.org/schema/amaranth-soc/0.1/memory/memory-map.json",
+        "type": "object",
+        "properties": {
+            "name": {
+                "type": "string",
+            },
+            "addr_width": {
+                "type": "integer",
+                "minimum": 0,
+            },
+            "data_width": {
+                "type": "integer",
+                "minimum": 0,
+            },
+            "alignment": {
+                "type": "integer",
+                "minimum": 0,
+            },
+            "windows": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "start": {
+                            "type": "integer",
+                            "minimum": 0,
+                        },
+                        "end": {
+                            "type": "integer",
+                            "minimum": 0,
+                        },
+                        "ratio": {
+                            "type": "integer",
+                            "minimum": 1,
+                        },
+                        "annotations": {
+                            "type": "object",
+                            "patternProperties": {
+                                "^.+$": { "$ref": "#" },
+                            },
+                        },
+                    },
+                    "additionalProperties": False,
+                    "required": [
+                        "start",
+                        "end",
+                        "ratio",
+                        "annotations",
+                    ],
+                },
+            },
+            "resources": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "name": {
+                            "type": "string",
+                        },
+                        "start": {
+                            "type": "integer",
+                            "minimum": 0,
+                        },
+                        "end": {
+                            "type": "integer",
+                            "minimum": 0,
+                        },
+                        "annotations": {
+                            "type": "object",
+                            "patternProperties": {
+                                "^.+$": { "type": "object" },
+                            },
+                        },
+                    },
+                    "additionalProperties": False,
+                    "required": [
+                        "name",
+                        "start",
+                        "end",
+                        "annotations",
+                    ],
+                },
+            },
+        },
+        "additionalProperties": False,
+        "required": [
+            "addr_width",
+            "data_width",
+            "alignment",
+            "windows",
+            "resources",
+        ],
+    }
+
+    """Memory map annotation.
+
+    Parameters
+    ----------
+    origin : :class:`MemoryMap`
+        The memory map described by this annotation instance. It is frozen as a side-effect of
+        this instantiation.
+
+    Raises
+    ------
+    :exc:`TypeError`
+        If ``origin`` is not a :class:`MemoryMap`.
+    """
+    def __init__(self, origin):
+        if not isinstance(origin, MemoryMap):
+            raise TypeError(f"Origin must be a MemoryMap object, not {origin!r}")
+        origin.freeze()
+        self._origin = origin
+
+    @property
+    def origin(self):
+        return self._origin
+
+    def as_json(self):
+        """Translate to JSON.
+
+        Returns
+        -------
+        :class:`dict`
+            A JSON representation of :attr:`~MemoryMapAnnotation.origin`, describing its address width,
+            data width, address range alignment, and a hierarchical description of its local windows
+            and resources.
+        """
+        instance = {}
+        if self.origin.name is not None:
+            instance["name"] = self.origin.name
+        instance.update({
+            "addr_width": self.origin.addr_width,
+            "data_width": self.origin.data_width,
+            "alignment": self.origin.alignment,
+            "windows": [
+                {
+                    "start": start,
+                    "end": end,
+                    "ratio": ratio,
+                    "annotations": {
+                        window.annotation.schema["$id"]: window.annotation.as_json()
+                    },
+                } for window, (start, end, ratio) in self.origin.windows()
+            ],
+            "resources": [
+                {
+                    "name": name,
+                    "start": start,
+                    "end": end,
+                    "annotations": {
+                        annotation.schema["$id"]: annotation.as_json()
+                        for annotation in resource.signature.annotations(resource)
+                    },
+                } for resource, name, (start, end) in self.origin.resources()
+            ],
+        })
+        self.validate(instance)
+        return instance
