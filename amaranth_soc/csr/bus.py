@@ -10,7 +10,7 @@ from ..memory import MemoryMap
 __all__ = ["Element", "Signature", "Interface", "Decoder", "Multiplexer"]
 
 
-class Element(wiring.Interface):
+class Element(wiring.PureInterface):
     class Access(enum.Enum):
         """Register access mode.
 
@@ -138,7 +138,7 @@ class Element(wiring.Interface):
     access : :class:`Element.Access`
         Register access mode.
     path : iter(:class:`str`)
-        Path to this CSR interface. Optional. See :class:`wiring.Interface`.
+        Path to this CSR interface. Optional. See :class:`wiring.PureInterface`.
 
     Raises
     ------
@@ -280,7 +280,7 @@ class Signature(wiring.Signature):
         return f"csr.Signature({self.members!r})"
 
 
-class Interface(wiring.Interface):
+class Interface(wiring.PureInterface):
     """CPU-side CSR interface.
 
     A low-level interface to a set of atomically readable and writable peripheral CSR registers.
@@ -307,7 +307,7 @@ class Interface(wiring.Interface):
     memory_map: :class:`MemoryMap`
         Memory map of the bus. Optional. See :class:`Signature`.
     path : iter(:class:`str`)
-        Path to this CSR interface. Optional. See :class:`wiring.Interface`.
+        Path to this CSR interface. Optional. See :class:`wiring.PureInterface`.
 
     Raises
     ------

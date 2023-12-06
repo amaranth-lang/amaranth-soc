@@ -235,7 +235,7 @@ class Signature(wiring.Signature):
         return f"wishbone.Signature({self.members!r})"
 
 
-class Interface(wiring.Interface):
+class Interface(wiring.PureInterface):
     """Wishbone bus interface.
 
     Note that the data width of the underlying memory map of the interface is equal to port
@@ -255,7 +255,7 @@ class Interface(wiring.Interface):
     memory_map: :class:`MemoryMap`
         Memory map of the bus. Optional. See :class:`Signature`.
     path : iter(:class:`str`)
-        Path to this Wishbone interface. Optional. See :class:`wiring.Interface`.
+        Path to this Wishbone interface. Optional. See :class:`wiring.PureInterface`.
 
     Raises
     ------

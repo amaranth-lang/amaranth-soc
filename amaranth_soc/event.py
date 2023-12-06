@@ -6,7 +6,7 @@ from amaranth.lib.wiring import In, Out
 __all__ = ["Source", "EventMap", "Monitor"]
 
 
-class Source(wiring.Interface):
+class Source(wiring.PureInterface):
     class Trigger(enum.Enum):
         """Event trigger mode."""
         LEVEL = "level"
@@ -110,7 +110,7 @@ class Source(wiring.Interface):
     trigger : :class:`Source.Trigger`
         Trigger mode. An event can be edge- or level-triggered by the input line.
     path : iter(:class:`str`)
-        Path to this event source interface. Optional. See :class:`wiring.Interface`.
+        Path to this event source interface. Optional. See :class:`wiring.PureInterface`.
 
     Attributes
     ----------
