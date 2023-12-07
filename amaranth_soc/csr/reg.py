@@ -10,7 +10,7 @@ from .bus import Element, Multiplexer
 __all__ = ["FieldPort", "Field", "FieldMap", "FieldArray", "Register", "RegisterMap", "Bridge"]
 
 
-class FieldPort(wiring.Interface):
+class FieldPort(wiring.PureInterface):
     class Access(enum.Enum):
         """Field access mode."""
         R  = "r"
@@ -127,7 +127,7 @@ class FieldPort(wiring.Interface):
     signature : :class:`FieldPort.Signature`
         Field port signature.
     path : iter(:class:`str`)
-        Path to the field port. Optional. See :class:`wiring.Interface`.
+        Path to the field port. Optional. See :class:`wiring.PureInterface`.
 
     Raises
     ------
