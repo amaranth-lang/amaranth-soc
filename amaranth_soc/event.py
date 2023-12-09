@@ -80,7 +80,7 @@ class Source(wiring.PureInterface):
             except ValueError as e:
                 raise ValueError(f"{trigger!r} is not a valid Source.Trigger") from e
 
-        def create(self, *, path=()):
+        def create(self, *, path=None, src_loc_at=0):
             """Create a compatible interface.
 
             See :meth:`wiring.Signature.create` for details.
@@ -91,7 +91,7 @@ class Source(wiring.PureInterface):
             """
             return Source(trigger=self.trigger,
                           event_map=self._event_map, # if None, do not raise an exception
-                          path=path)
+                          path=path, src_loc_at=1 + src_loc_at)
 
         def __eq__(self, other):
             """Compare signatures.
@@ -121,10 +121,10 @@ class Source(wiring.PureInterface):
     ------
     See :meth:`Source.Signature.check_parameters`.
     """
-    def __init__(self, *, trigger="level", event_map=None, path=()):
+    def __init__(self, *, trigger="level", event_map=None, path=None, src_loc_at=0):
         sig = Source.Signature(trigger=trigger)
         sig.event_map = event_map
-        super().__init__(sig, path=path)
+        super().__init__(sig, path=path, src_loc_at=1 + src_loc_at)
 
     @property
     def trigger(self):

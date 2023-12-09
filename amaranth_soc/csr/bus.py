@@ -102,7 +102,7 @@ class Element(wiring.PureInterface):
             except ValueError as e:
                 raise ValueError(f"{access!r} is not a valid Element.Access") from e
 
-        def create(self, *, path=()):
+        def create(self, *, path=None, src_loc_at=0):
             """Create a compatible interface.
 
             See :meth:`wiring.Signature.create` for details.
@@ -111,7 +111,7 @@ class Element(wiring.PureInterface):
             -------
             An :class:`Element` object using this signature.
             """
-            return Element(self.width, self.access, path=path)
+            return Element(self.width, self.access, path=path, src_loc_at=1 + src_loc_at)
 
         def __eq__(self, other):
             """Compare signatures.
@@ -144,8 +144,8 @@ class Element(wiring.PureInterface):
     ------
     See :meth:`Element.Signature.check_parameters`
     """
-    def __init__(self, width, access, *, path=()):
-        super().__init__(Element.Signature(width=width, access=access), path=path)
+    def __init__(self, width, access, *, path=None, src_loc_at=0):
+        super().__init__(Element.Signature(width=width, access=access), path=path, src_loc_at=1 + src_loc_at)
 
     @property
     def width(self):
@@ -254,7 +254,7 @@ class Signature(wiring.Signature):
         if not isinstance(data_width, int) or data_width <= 0:
             raise TypeError(f"Data width must be a positive integer, not {data_width!r}")
 
-    def create(self, *, path=()):
+    def create(self, *, path=None, src_loc_at=0):
         """Create a compatible interface.
 
         See :meth:`wiring.Signature.create` for details.
@@ -265,7 +265,7 @@ class Signature(wiring.Signature):
         """
         return Interface(addr_width=self.addr_width, data_width=self.data_width,
                          memory_map=self._memory_map, # if None, do not raise an exception
-                         path=path)
+                         path=path, src_loc_at=1 + src_loc_at)
 
     def __eq__(self, other):
         """Compare signatures.
@@ -313,10 +313,10 @@ class Interface(wiring.PureInterface):
     ------
     See :meth:`Signature.check_parameters`.
     """
-    def __init__(self, *, addr_width, data_width, memory_map=None, path=()):
+    def __init__(self, *, addr_width, data_width, memory_map=None, path=None, src_loc_at=0):
         sig = Signature(addr_width=addr_width, data_width=data_width)
         sig.memory_map = memory_map
-        super().__init__(sig, path=path)
+        super().__init__(sig, path=path, src_loc_at=1 + src_loc_at)
 
     @property
     def addr_width(self):
