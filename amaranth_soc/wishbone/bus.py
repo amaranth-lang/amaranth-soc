@@ -205,7 +205,7 @@ class Signature(wiring.Signature):
         for feature in features:
             Feature(feature) # raises ValueError if feature is invalid
 
-    def create(self, *, path=()):
+    def create(self, *, path=None, src_loc_at=0):
         """Create a compatible interface.
 
         See :meth:`wiring.Signature.create` for details.
@@ -217,7 +217,7 @@ class Signature(wiring.Signature):
         return Interface(addr_width=self.addr_width, data_width=self.data_width,
                          granularity=self.granularity, features=self.features,
                          memory_map=self._memory_map, # if None, do not raise an exception
-                         path=path)
+                         path=path, src_loc_at=1 + src_loc_at)
 
     def __eq__(self, other):
         """Compare signatures.
@@ -262,11 +262,11 @@ class Interface(wiring.PureInterface):
     See :meth:`Signature.check_parameters`.
     """
     def __init__(self, *, addr_width, data_width, granularity=None, features=frozenset(),
-                 memory_map=None, path=()):
+                 memory_map=None, path=None, src_loc_at=0):
         signature = Signature(addr_width=addr_width, data_width=data_width,
                               granularity=granularity, features=features)
         signature.memory_map = memory_map
-        super().__init__(signature, path=path)
+        super().__init__(signature, path=path, src_loc_at=1 + src_loc_at)
 
     @property
     def addr_width(self):
