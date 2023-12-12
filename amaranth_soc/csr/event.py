@@ -8,6 +8,7 @@ from amaranth.utils import log2_int
 
 from . import Element, Multiplexer
 from .. import event
+from ..memory import MemoryMap
 
 
 __all__ = ["EventMonitor"]
@@ -53,25 +54,23 @@ class EventMonitor(wiring.Component):
             raise ValueError(f"Alignment must be a non-negative integer, not {alignment!r}")
 
         self._monitor = event.Monitor(event_map, trigger=trigger)
-        self._enable  = Element(event_map.size, "rw", path=("enable",))
-        self._pending = Element(event_map.size, "rw", path=("pending",))
+        self._enable  = Element(event_map.size, "rw")
+        self._pending = Element(event_map.size, "rw")
 
         elem_size  = ceil(event_map.size / data_width)
         addr_width = 1 + max(log2_int(elem_size, need_pow2=False), alignment)
         self._mux  = Multiplexer(addr_width=addr_width, data_width=data_width,
-                                 alignment=alignment, name=name)
+                                 alignment=alignment)
         self._mux.add(self._enable,  name="enable")
         self._mux.add(self._pending, name="pending")
 
-        self._signature = wiring.Signature({
+        super().__init__({
             "src": Out(self._monitor.src.signature),
             "bus": In(self._mux.bus.signature),
         })
-        super().__init__()
-
-    @property
-    def signature(self):
-        return self._signature
+        self.bus.memory_map = MemoryMap(addr_width=addr_width, data_width=data_width,
+                                        alignment=alignment, name=name)
+        self.bus.memory_map.add_window(self._mux.bus.memory_map)
 
     def elaborate(self, platform):
         m = Module()

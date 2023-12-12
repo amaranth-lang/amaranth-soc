@@ -198,7 +198,6 @@ class Signature(wiring.Signature):
 
         self._addr_width = addr_width
         self._data_width = data_width
-        self._memory_map = None
 
         members = {
             "addr":   Out(self.addr_width),
@@ -216,27 +215,6 @@ class Signature(wiring.Signature):
     @property
     def data_width(self):
         return self._data_width
-
-    @property
-    def memory_map(self):
-        if self._memory_map is None:
-            raise AttributeError(f"{self!r} does not have a memory map")
-        return self._memory_map
-
-    @memory_map.setter
-    def memory_map(self, memory_map):
-        if self.frozen:
-            raise ValueError(f"Signature has been frozen. Cannot set its memory map")
-        if memory_map is not None:
-            if not isinstance(memory_map, MemoryMap):
-                raise TypeError(f"Memory map must be an instance of MemoryMap, not {memory_map!r}")
-            if memory_map.addr_width != self.addr_width:
-                raise ValueError(f"Memory map has address width {memory_map.addr_width}, which is not "
-                                 f"the same as bus interface address width {self.addr_width}")
-            if memory_map.data_width != self.data_width:
-                raise ValueError(f"Memory map has data width {memory_map.data_width}, which is not the "
-                                 f"same as bus interface data width {self.data_width}")
-        self._memory_map = memory_map
 
     @classmethod
     def check_parameters(cls, *, addr_width, data_width):
@@ -264,7 +242,6 @@ class Signature(wiring.Signature):
         An :class:`Interface` object using this signature.
         """
         return Interface(addr_width=self.addr_width, data_width=self.data_width,
-                         memory_map=self._memory_map, # if None, do not raise an exception
                          path=path, src_loc_at=1 + src_loc_at)
 
     def __eq__(self, other):
@@ -304,19 +281,22 @@ class Interface(wiring.PureInterface):
         Address width. See :class:`Signature`.
     data_width : :class:`int`
         Data width. See :class:`Signature`.
-    memory_map: :class:`MemoryMap`
-        Memory map of the bus. Optional. See :class:`Signature`.
     path : iter(:class:`str`)
         Path to this CSR interface. Optional. See :class:`wiring.PureInterface`.
+
+    Attributes
+    ----------
+    memory_map: :class:`MemoryMap`
+        Memory map of the bus. Optional.
 
     Raises
     ------
     See :meth:`Signature.check_parameters`.
     """
-    def __init__(self, *, addr_width, data_width, memory_map=None, path=None, src_loc_at=0):
+    def __init__(self, *, addr_width, data_width, path=None, src_loc_at=0):
         sig = Signature(addr_width=addr_width, data_width=data_width)
-        sig.memory_map = memory_map
         super().__init__(sig, path=path, src_loc_at=1 + src_loc_at)
+        self._memory_map = None
 
     @property
     def addr_width(self):
@@ -328,7 +308,21 @@ class Interface(wiring.PureInterface):
 
     @property
     def memory_map(self):
-        return self.signature.memory_map
+        if self._memory_map is None:
+            raise AttributeError(f"{self!r} does not have a memory map")
+        return self._memory_map
+
+    @memory_map.setter
+    def memory_map(self, memory_map):
+        if not isinstance(memory_map, MemoryMap):
+            raise TypeError(f"Memory map must be an instance of MemoryMap, not {memory_map!r}")
+        if memory_map.addr_width != self.addr_width:
+            raise ValueError(f"Memory map has address width {memory_map.addr_width}, which is not "
+                             f"the same as bus interface address width {self.addr_width}")
+        if memory_map.data_width != self.data_width:
+            raise ValueError(f"Memory map has data width {memory_map.data_width}, which is not the "
+                             f"same as bus interface data width {self.data_width}")
+        self._memory_map = memory_map
 
     def __repr__(self):
         return f"csr.Interface({self.signature!r})"
@@ -561,18 +555,11 @@ class Multiplexer(wiring.Component):
         CSR bus providing access to registers.
     """
     def __init__(self, *, addr_width, data_width, alignment=0, name=None, shadow_overlaps=None):
-        bus_signature = Signature(addr_width=addr_width, data_width=data_width)
-        bus_signature.memory_map = MemoryMap(addr_width=addr_width, data_width=data_width,
-                                             alignment=alignment, name=name)
-
-        self._signature = wiring.Signature({"bus": In(bus_signature)})
-        self._r_shadow  = Multiplexer._Shadow(data_width, shadow_overlaps, name="r_shadow")
-        self._w_shadow  = Multiplexer._Shadow(data_width, shadow_overlaps, name="w_shadow")
-        super().__init__()
-
-    @property
-    def signature(self):
-        return self._signature
+        super().__init__({"bus": In(Signature(addr_width=addr_width, data_width=data_width))})
+        self.bus.memory_map = MemoryMap(addr_width=addr_width, data_width=data_width,
+                                        alignment=alignment, name=name)
+        self._r_shadow = Multiplexer._Shadow(data_width, shadow_overlaps, name="r_shadow")
+        self._w_shadow = Multiplexer._Shadow(data_width, shadow_overlaps, name="w_shadow")
 
     def align_to(self, alignment):
         """Align the implicit address of the next register.
@@ -704,17 +691,10 @@ class Decoder(wiring.Component):
         CSR bus providing access to subordinate buses.
     """
     def __init__(self, *, addr_width, data_width, alignment=0, name=None):
-        bus_signature = Signature(addr_width=addr_width, data_width=data_width)
-        bus_signature.memory_map = MemoryMap(addr_width=addr_width, data_width=data_width,
-                                             alignment=alignment, name=name)
-
-        self._signature = wiring.Signature({"bus": In(bus_signature)})
-        self._subs      = dict()
-        super().__init__()
-
-    @property
-    def signature(self):
-        return self._signature
+        super().__init__({"bus": In(Signature(addr_width=addr_width, data_width=data_width))})
+        self.bus.memory_map = MemoryMap(addr_width=addr_width, data_width=data_width,
+                                        alignment=alignment, name=name)
+        self._subs = dict()
 
     def align_to(self, alignment):
         """Align the implicit address of the next window.
