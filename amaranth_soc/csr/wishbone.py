@@ -51,25 +51,19 @@ class WishboneCSRBridge(wiring.Component):
         if data_width is None:
             data_width = csr_bus.data_width
 
-        wb_signature = wishbone.Signature(
-            addr_width=max(0, csr_bus.addr_width - log2_int(data_width // csr_bus.data_width)),
-            data_width=data_width,
-            granularity=csr_bus.data_width)
+        wb_sig = wishbone.Signature(addr_width=max(0, csr_bus.addr_width -
+                                                      log2_int(data_width // csr_bus.data_width)),
+                                    data_width=data_width, granularity=csr_bus.data_width)
 
-        wb_signature.memory_map = MemoryMap(addr_width=csr_bus.addr_width,
-                                            data_width=csr_bus.data_width,
-                                            name=name)
+        super().__init__({"wb_bus": In(wb_sig)})
+
+        self.wb_bus.memory_map = MemoryMap(addr_width=csr_bus.addr_width,
+                                           data_width=csr_bus.data_width, name=name)
         # Since granularity of the Wishbone interface matches the data width of the CSR bus,
         # no width conversion is performed, even if the Wishbone data width is greater.
-        wb_signature.memory_map.add_window(csr_bus.memory_map)
+        self.wb_bus.memory_map.add_window(csr_bus.memory_map)
 
-        self._signature = wiring.Signature({"wb_bus": In(wb_signature)})
-        self._csr_bus   = csr_bus
-        super().__init__()
-
-    @property
-    def signature(self):
-        return self._signature
+        self._csr_bus = csr_bus
 
     @property
     def csr_bus(self):

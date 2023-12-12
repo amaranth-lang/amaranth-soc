@@ -53,31 +53,6 @@ class SourceSignatureTestCase(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, r"'foo' is not a valid Source.Trigger"):
             src = event.Source.Signature(trigger="foo")
 
-    def test_set_map(self):
-        sig = event.Source.Signature()
-        event_map = event.EventMap()
-        sig.event_map = event_map
-        self.assertIs(sig.event_map, event_map)
-
-    def test_get_map_none(self):
-        sig = event.Source.Signature()
-        with self.assertRaisesRegex(AttributeError,
-                r"event\.Source\.Signature\(.*\) does not have an event map"):
-            sig.event_map
-
-    def test_set_map_frozen(self):
-        sig = event.Source.Signature()
-        sig.freeze()
-        with self.assertRaisesRegex(ValueError,
-                r"Signature has been frozen\. Cannot set its event map"):
-            sig.event_map = event.EventMap()
-
-    def test_set_wrong_map(self):
-        sig = event.Source.Signature()
-        with self.assertRaisesRegex(TypeError,
-                r"Event map must be an instance of EventMap, not 'foo'"):
-            sig.event_map = "foo"
-
 
 class SourceTestCase(unittest.TestCase):
     def test_simple(self):
@@ -86,27 +61,30 @@ class SourceTestCase(unittest.TestCase):
         self.assertEqual(src.trigger, event.Source.Trigger.LEVEL)
         self.assertEqual(src.trg.name, "foo__bar__trg")
 
-    def test_map(self):
+    def test_set_map(self):
+        src = event.Source()
         event_map = event.EventMap()
-        src = event.Source(event_map=event_map)
+        src.event_map = event_map
         self.assertIs(src.event_map, event_map)
 
     def test_get_map_none(self):
         src = event.Source()
         with self.assertRaisesRegex(AttributeError,
-                r"event\.Source\.Signature\(.*\) does not have an event map"):
+                r"event\.Source\(.*\) does not have an event map"):
             src.event_map
 
     def test_get_map_frozen(self):
-        src = event.Source(event_map=event.EventMap())
+        src = event.Source()
+        src.event_map = event.EventMap()
         with self.assertRaisesRegex(ValueError,
                 r"Event map has been frozen\. Cannot add source"):
             src.event_map.add(event.Source.Signature().create())
 
-    def test_wrong_map(self):
+    def test_set_wrong_map(self):
+        src = event.Source()
         with self.assertRaisesRegex(TypeError,
                 r"Event map must be an instance of EventMap, not 'foo'"):
-            event.Source(event_map="foo")
+            src.event_map = "foo"
 
 
 class EventMapTestCase(unittest.TestCase):
@@ -139,8 +117,8 @@ class EventMapTestCase(unittest.TestCase):
         self.assertEqual(event_map.size, 2)
 
     def test_index(self):
-        src_0 = event.Source(path=("src_0",))
-        src_1 = event.Source(path=("src_1",))
+        src_0 = event.Source()
+        src_1 = event.Source()
         event_map = event.EventMap()
         event_map.add(src_0)
         event_map.add(src_1)
@@ -148,7 +126,7 @@ class EventMapTestCase(unittest.TestCase):
         self.assertEqual(event_map.index(src=src_1), 1)
 
     def test_index_add_twice(self):
-        src = event.Source(path=("src",))
+        src = event.Source()
         event_map = event.EventMap()
         event_map.add(src)
         event_map.add(src)
@@ -162,14 +140,14 @@ class EventMapTestCase(unittest.TestCase):
             event_map.index("foo")
 
     def test_index_not_found(self):
-        src = event.Source(path=("src",))
+        src = event.Source()
         event_map = event.EventMap()
         with self.assertRaises(KeyError):
             event_map.index(src)
 
     def test_iter_sources(self):
-        src_0 = event.Source(path=("src_0",))
-        src_1 = event.Source(path=("src_1",))
+        src_0 = event.Source()
+        src_1 = event.Source()
         event_map = event.EventMap()
         event_map.add(src_0)
         event_map.add(src_1)

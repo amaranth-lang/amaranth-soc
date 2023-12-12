@@ -52,10 +52,10 @@ class EventMonitorTestCase(unittest.TestCase):
         event_map.add(sub_0)
         event_map.add(sub_1)
         monitor = EventMonitor(event_map, data_width=8)
-        resources = list(monitor.bus.memory_map.resources())
+        resources = list(monitor.bus.memory_map.all_resources())
         self.assertEqual(len(resources), 2)
-        enable,  enable_name,  enable_range  = resources[0]
-        pending, pending_name, pending_range = resources[1]
+        enable,   enable_range = resources[0].resource, (resources[0].start, resources[0].end)
+        pending, pending_range = resources[1].resource, (resources[1].start, resources[1].end)
         self.assertEqual(
             (enable.width, enable.access, enable_range),
             (2, Element.Access.RW, (0, 1))
@@ -68,7 +68,7 @@ class EventMonitorTestCase(unittest.TestCase):
 
 class EventMonitorSimulationTestCase(unittest.TestCase):
     def test_simple(self):
-        sub = event.Source(path=("sub",))
+        sub = event.Source()
         event_map = event.EventMap()
         event_map.add(sub)
         dut = EventMonitor(event_map, data_width=8)

@@ -34,35 +34,15 @@ class Source(wiring.PureInterface):
         """
         def __init__(self, *, trigger="level"):
             self.check_parameters(trigger=trigger)
-
-            self._trigger   = Source.Trigger(trigger)
-            self._event_map = None
-
-            members = {
+            super().__init__({
                 "i":   Out(1),
                 "trg": In(1),
-            }
-            super().__init__(members)
+            })
+            self._trigger = Source.Trigger(trigger)
 
         @property
         def trigger(self):
             return self._trigger
-
-        @property
-        def event_map(self):
-            if self._event_map is None:
-                raise AttributeError(f"{self!r} does not have an event map")
-            return self._event_map
-
-        @event_map.setter
-        def event_map(self, event_map):
-            if self.frozen:
-                raise ValueError(f"Signature has been frozen. Cannot set its event map")
-            if event_map is not None:
-                if not isinstance(event_map, EventMap):
-                    raise TypeError(f"Event map must be an instance of EventMap, not {event_map!r}")
-                event_map.freeze()
-            self._event_map = event_map
 
         def check_parameters(cls, *, trigger):
             """Validate signature parameters.
@@ -89,9 +69,7 @@ class Source(wiring.PureInterface):
             -------
             A :class:`Source` object using this signature.
             """
-            return Source(trigger=self.trigger,
-                          event_map=self._event_map, # if None, do not raise an exception
-                          path=path, src_loc_at=1 + src_loc_at)
+            return Source(trigger=self.trigger, path=path, src_loc_at=1 + src_loc_at)
 
         def __eq__(self, other):
             """Compare signatures.
@@ -121,10 +99,9 @@ class Source(wiring.PureInterface):
     ------
     See :meth:`Source.Signature.check_parameters`.
     """
-    def __init__(self, *, trigger="level", event_map=None, path=None, src_loc_at=0):
-        sig = Source.Signature(trigger=trigger)
-        sig.event_map = event_map
-        super().__init__(sig, path=path, src_loc_at=1 + src_loc_at)
+    def __init__(self, *, trigger="level", path=None, src_loc_at=0):
+        super().__init__(Source.Signature(trigger=trigger), path=path, src_loc_at=1 + src_loc_at)
+        self._event_map = None
 
     @property
     def trigger(self):
@@ -132,7 +109,16 @@ class Source(wiring.PureInterface):
 
     @property
     def event_map(self):
-        return self.signature.event_map
+        if self._event_map is None:
+            raise AttributeError(f"{self!r} does not have an event map")
+        return self._event_map
+
+    @event_map.setter
+    def event_map(self, event_map):
+        if not isinstance(event_map, EventMap):
+            raise TypeError(f"Event map must be an instance of EventMap, not {event_map!r}")
+        event_map.freeze()
+        self._event_map = event_map
 
     def __repr__(self):
         return f"event.Source({self.signature!r})"
@@ -242,20 +228,15 @@ class Monitor(wiring.Component):
         Clear selected pending events.
     """
     def __init__(self, event_map, *, trigger="level"):
-        src_signature = Source.Signature(trigger=trigger)
-        src_signature.event_map = event_map
-
-        self._signature = wiring.Signature({
-            "src":     Out(src_signature),
+        if not isinstance(event_map, EventMap):
+            raise TypeError(f"Event map must be an instance of EventMap, not {event_map!r}")
+        super().__init__({
+            "src":     Out(Source.Signature(trigger=trigger)),
             "enable":  In(event_map.size),
             "pending": In(event_map.size),
             "clear":   In(event_map.size),
         })
-        super().__init__()
-
-    @property
-    def signature(self):
-        return self._signature
+        self.src.event_map = event_map
 
     def elaborate(self, platform):
         m = Module()
