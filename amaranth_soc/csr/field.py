@@ -1,25 +1,33 @@
 from amaranth import *
+from amaranth.lib import wiring
+from amaranth.lib.wiring import In, Out
 
-from .reg import Field
+from .reg import FieldPort
 
 
 __all__ = ["R", "W", "RW", "RW1C", "RW1S"]
 
 
-class R(Field):
-    __doc__ = Field._doc_template.format(
-    description="""
-    A read-only field.
-    """.strip(),
-    parameters="",
-    attributes="""
+class R(wiring.Component):
+    """A read-only field.
+
+    Parameters
+    ----------
+    shape : :ref:`shape-castable <lang-shapecasting>`
+        Shape of the field.
+
+    Interface attributes
+    --------------------
+    port : :class:`FieldPort`
+        Field port.
     r_data : Signal(shape)
         Read data. Drives the :attr:`~FieldPort.r_data` signal of ``port``.
-    """.strip())
-
+    """
     def __init__(self, shape):
-        super().__init__(shape, access="r")
-        self.r_data = Signal(shape)
+        super().__init__({
+            "port":   In(FieldPort.Signature(shape, access="r")),
+            "r_data": In(shape),
+        })
 
     def elaborate(self, platform):
         m = Module()
@@ -27,20 +35,26 @@ class R(Field):
         return m
 
 
-class W(Field):
-    __doc__ = Field._doc_template.format(
-    description="""
-    A write-only field.
-    """.strip(),
-    parameters="",
-    attributes="""
+class W(wiring.Component):
+    """A write-only field.
+
+    Parameters
+    ----------
+    shape : :ref:`shape-castable <lang-shapecasting>`
+        Shape of the field.
+
+    Interface attributes
+    --------------------
+    port : :class:`FieldPort`
+        Field port.
     w_data : Signal(shape)
         Write data. Driven by the :attr:`~FieldPort.w_data` signal of ``port``.
-    """.strip())
-
+    """
     def __init__(self, shape):
-        super().__init__(shape, access="w")
-        self.w_data = Signal(shape)
+        super().__init__({
+            "port":   In(FieldPort.Signature(shape, access="w")),
+            "w_data": Out(shape),
+        })
 
     def elaborate(self, platform):
         m = Module()
@@ -48,26 +62,31 @@ class W(Field):
         return m
 
 
-class RW(Field):
-    __doc__ = Field._doc_template.format(
-    description="""
-    A read/write field with built-in storage.
+class RW(wiring.Component):
+    """A read/write field with built-in storage.
 
     Storage is updated with the value of ``port.w_data`` one clock cycle after ``port.w_stb`` is
     asserted.
-    """.strip(),
-    parameters="""
+
+    Parameters
+    ----------
+    shape : :ref:`shape-castable <lang-shapecasting>`
+        Shape of the field.
     reset : :class:`int`
         Storage reset value.
-    """,
-    attributes="""
+
+    Interface attributes
+    --------------------
+    port : :class:`FieldPort`
+        Field port.
     data : Signal(shape)
         Storage output.
-    """.strip())
-
+    """
     def __init__(self, shape, *, reset=0):
-        super().__init__(shape, access="rw")
-        self.data     = Signal(shape)
+        super().__init__({
+            "port": In(FieldPort.Signature(shape, access="rw")),
+            "data": Out(shape),
+        })
         self._storage = Signal(shape, reset=reset)
         self._reset   = reset
 
@@ -89,32 +108,37 @@ class RW(Field):
         return m
 
 
-class RW1C(Field):
-    __doc__ = Field._doc_template.format(
-    description="""
-    A read/write-one-to-clear field with built-in storage.
+class RW1C(wiring.Component):
+    """A read/write-one-to-clear field with built-in storage.
 
     Storage bits are:
       * cleared by high bits in ``port.w_data``, one clock cycle after ``port.w_stb`` is asserted;
       * set by high bits in ``set``, one clock cycle after they are asserted.
 
     If a storage bit is set and cleared on the same clock cycle, setting it has precedence.
-    """.strip(),
-    parameters="""
+
+    Parameters
+    ----------
+    shape : :ref:`shape-castable <lang-shapecasting>`
+        Shape of the field.
     reset : :class:`int`
         Storage reset value.
-    """,
-    attributes="""
+
+    Interface attributes
+    --------------------
+    port : :class:`FieldPort`
+        Field port.
     data : Signal(shape)
         Storage output.
     set : Signal(shape)
         Mask to set storage bits.
-    """.strip())
-
+    """
     def __init__(self, shape, *, reset=0):
-        super().__init__(shape, access="rw")
-        self.data     = Signal(shape)
-        self.set      = Signal(shape)
+        super().__init__({
+            "port": In(FieldPort.Signature(shape, access="rw")),
+            "data": Out(shape),
+            "set":  In(shape),
+        })
         self._storage = Signal(shape, reset=reset)
         self._reset   = reset
 
@@ -139,31 +163,37 @@ class RW1C(Field):
         return m
 
 
-class RW1S(Field):
-    __doc__ = Field._doc_template.format(
-    description="""
-    A read/write-one-to-set field with built-in storage.
+class RW1S(wiring.Component):
+    """A read/write-one-to-set field with built-in storage.
 
     Storage bits are:
       * set by high bits in ``port.w_data``, one clock cycle after ``port.w_stb`` is asserted;
       * cleared by high bits in ``clear``, one clock cycle after they are asserted.
 
     If a storage bit is set and cleared on the same clock cycle, setting it has precedence.
-    """.strip(),
-    parameters="""
+
+    Parameters
+    ----------
+    shape : :ref:`shape-castable <lang-shapecasting>`
+        Shape of the field.
     reset : :class:`int`
         Storage reset value.
-    """,
-    attributes="""
+
+    Interface attributes
+    --------------------
+    port : :class:`FieldPort`
+        Field port.
     data : Signal(shape)
         Storage output.
     clear : Signal(shape)
         Mask to clear storage bits.
-    """.strip())
+    """
     def __init__(self, shape, *, reset=0):
-        super().__init__(shape, access="rw")
-        self.data     = Signal(shape)
-        self.clear    = Signal(shape)
+        super().__init__({
+            "port":  In(FieldPort.Signature(shape, access="rw")),
+            "clear": In(shape),
+            "data":  Out(shape),
+        })
         self._storage = Signal(shape, reset=reset)
         self._reset   = reset
 
