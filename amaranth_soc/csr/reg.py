@@ -4,7 +4,7 @@ from amaranth.lib import enum, wiring
 from amaranth.lib.wiring import In, Out, connect, flipped
 
 from ..memory import MemoryMap
-from .bus import Element, Multiplexer
+from .bus import Element, Signature, Multiplexer
 
 
 __all__ = ["FieldPort", "Field", "FieldMap", "FieldArray", "Register", "RegisterMap", "Bridge"]
@@ -52,17 +52,15 @@ class FieldPort(wiring.PureInterface):
         """
         def __init__(self, shape, access):
             self.check_parameters(shape, access)
-
             self._shape  = Shape.cast(shape)
             self._access = FieldPort.Access(access)
 
-            members = {
+            super().__init__({
                 "r_data": In(self.shape),
                 "r_stb":  Out(1),
                 "w_data": Out(self.shape),
                 "w_stb":  Out(1),
-            }
-            super().__init__(members)
+            })
 
         @property
         def shape(self):
@@ -95,7 +93,7 @@ class FieldPort(wiring.PureInterface):
             except ValueError as e:
                 raise ValueError(f"{access!r} is not a valid FieldPort.Access") from e
 
-        def create(self, *, path=()):
+        def create(self, *, path=None, src_loc_at=0):
             """Create a compatible interface.
 
             See :meth:`wiring.Signature.create` for details.
@@ -104,7 +102,7 @@ class FieldPort(wiring.PureInterface):
             -------
             A :class:`FieldPort` object using this signature.
             """
-            return FieldPort(self, path=path)
+            return FieldPort(self, path=path, src_loc_at=1 + src_loc_at)
 
         def __eq__(self, other):
             """Compare signatures.
@@ -129,18 +127,23 @@ class FieldPort(wiring.PureInterface):
     path : iter(:class:`str`)
         Path to the field port. Optional. See :class:`wiring.PureInterface`.
 
+    Attributes
+    ----------
+    shape : :ref:`shape-castable <lang-shapecasting>`
+        Shape of the field. See :class:`FieldPort.Signature`.
+    access : :class:`FieldPort.Access`
+        Field access mode. See :class:`FieldPort.Signature`.
+
     Raises
     ------
     :exc:`TypeError`
-        If ``shape`` is not a shape-castable object.
-    :exc:`TypeError`
-        If ``access`` is not a member of :class:`FieldPort.Access`.
+        If ``signature`` is not a :class:`FieldPort.Signature`.
     """
-    def __init__(self, signature, *, path=()):
+    def __init__(self, signature, *, path=None, src_loc_at=0):
         if not isinstance(signature, FieldPort.Signature):
             raise TypeError(f"This interface requires a csr.FieldPort.Signature, not "
                             f"{signature!r}")
-        super().__init__(signature, path=path)
+        super().__init__(signature, path=path, src_loc_at=1 + src_loc_at)
 
     @property
     def shape(self):
@@ -154,51 +157,34 @@ class FieldPort(wiring.PureInterface):
         return f"csr.FieldPort({self.signature!r})"
 
 
-class Field(wiring.Component):
-    _doc_template = """
-    {description}
+class Field:
+    """Register field factory.
 
     Parameters
     ----------
-    shape : :ref:`shape-castable <lang-shapecasting>`
-        Shape of the field.
-    access : :class:`FieldPort.Access`
-        Field access mode.
-    {parameters}
-
-    Attributes
-    ----------
-    port : :class:`FieldPort`
-        Field port.
-    {attributes}
+    field_cls : :class:`type`
+        The field type instantiated by :meth:`Field.create`. It must be a :class:`wiring.Component`
+        subclass. ``field_cls`` instances must have a signature containing a member named "port",
+        which must be an input :class:`FieldPort.Signature`.
+    *args : :class:`tuple`
+        Positional arguments passed to ``field_cls.__init__``.
+    **kwargs : :class:`dict`
+        Keyword arguments passed to ``field_cls.__init__``.
     """
+    def __init__(self, field_cls, *args, **kwargs):
+        self._field_cls = field_cls
+        self._args      = args
+        self._kwargs    = kwargs
 
-    __doc__ = _doc_template.format(
-    description="""
-    A generic register field.
-    """.strip(),
-    parameters="",
-    attributes="")
+    def create(self):
+        """Create a field instance.
 
-    def __init__(self, shape, access):
-        FieldPort.Signature.check_parameters(shape, access)
-        self._shape  = Shape.cast(shape)
-        self._access = FieldPort.Access(access)
-        super().__init__()
-
-    @property
-    def shape(self):
-        return self._shape
-
-    @property
-    def access(self):
-        return self._access
-
-    @property
-    def signature(self):
-        return wiring.Signature({
-            "port": Out(FieldPort.Signature(self._shape, self._access)),
-        })
+        Returns
+        -------
+        :class:`object`
+            The instance returned by ``field_cls(*args, **kwargs)``.
+        """
+        return self._field_cls(*self._args, **self._kwargs)
 
 
 class FieldMap(Mapping):
@@ -206,23 +192,42 @@ class FieldMap(Mapping):
 
     Parameters
     ----------
-    fields : dict of :class:`str` to one of :class:`Field` or :class:`FieldMap`.
+    fields : :class:`dict` of :class:`str` to (:class:`Field` or :class:`dict` or :class:`list`)
+        Field map members. A :class:`FieldMap` stores an instance of :class:`Field` members (see
+        :meth:`Field.create`). :class:`dict` members are cast to :class:`FieldMap`. :class:`list`
+        members are cast to :class:`FieldArray`.
+
+    Raises
+    ------
+    :exc:`TypeError`
+        If ``fields`` is not a non-empty dict.
+    :exc:`TypeError`
+        If ``fields`` has a key that is not a non-empty string.
+    :exc:`TypeError`
+        If ``fields`` has a value that is neither a :class:`Field` object or a dict or list of
+        :class:`Field` objects.
     """
     def __init__(self, fields):
         self._fields = {}
 
-        if not isinstance(fields, Mapping) or len(fields) == 0:
-            raise TypeError("Fields must be provided as a non-empty mapping, not {!r}"
-                            .format(fields))
+        if not isinstance(fields, dict) or len(fields) == 0:
+            raise TypeError(f"Fields must be provided as a non-empty dict, not {fields!r}")
 
         for key, field in fields.items():
             if not isinstance(key, str) or not key:
-                raise TypeError("Field name must be a non-empty string, not {!r}"
-                                .format(key))
-            if not isinstance(field, (Field, FieldMap, FieldArray)):
-                raise TypeError("Field must be a Field or a FieldMap or a FieldArray, not {!r}"
-                                .format(field))
-            self._fields[key] = field
+                raise TypeError(f"Field name must be a non-empty string, not {key!r}")
+
+            if isinstance(field, Field):
+                field_inst = field.create()
+            elif isinstance(field, dict):
+                field_inst = FieldMap(field)
+            elif isinstance(field, list):
+                field_inst = FieldArray(field)
+            else:
+                raise TypeError(f"{field!r} must be a Field object or a collection of Field "
+                                f"objects")
+
+            self._fields[key] = field_inst
 
     def __getitem__(self, key):
         """Access a field by name or index.
@@ -257,13 +262,11 @@ class FieldMap(Mapping):
         try:
             item = self[name]
         except KeyError:
-            raise AttributeError("Field map does not have a field {!r}; "
-                                 "did you mean one of: {}?"
-                                 .format(name, ", ".join(repr(name) for name in self.keys())))
+            raise AttributeError(f"Field map does not have a field {name!r}; did you mean one of: "
+                                 f"{', '.join(f'{name!r}' for name in self.keys())}?")
         if name.startswith("_"):
-            raise AttributeError("Field map field {!r} has a reserved name and may only be "
-                                 "accessed by indexing"
-                                 .format(name))
+            raise AttributeError(f"Field map field {name!r} has a reserved name and may only be "
+                                 f"accessed by indexing")
         return item
 
     def __iter__(self):
@@ -277,6 +280,13 @@ class FieldMap(Mapping):
         yield from self._fields
 
     def __len__(self):
+        """Field map length.
+
+        Returns
+        -------
+        :class:`int`
+            The number of items in the map.
+        """
         return len(self._fields)
 
     def flatten(self):
@@ -286,17 +296,15 @@ class FieldMap(Mapping):
         ------
         iter(:class:`str`)
             Path of the field. It is prefixed by the name of every nested field collection.
-        :class:`Field`
+        :class:`wiring.Component`
             Register field.
         """
         for key, field in self.items():
-            if isinstance(field, Field):
-                yield (key,), field
-            elif isinstance(field, (FieldMap, FieldArray)):
+            if isinstance(field, (FieldMap, FieldArray)):
                 for sub_path, sub_field in field.flatten():
                     yield (key, *sub_path), sub_field
             else:
-                assert False # :nocov:
+                yield (key,), field
 
 
 class FieldArray(Sequence):
@@ -304,16 +312,37 @@ class FieldArray(Sequence):
 
     Parameters
     ----------
-    fields : iter(:class:`Field` or :class:`FieldMap` or :class:`FieldArray`)
-        Field array members.
+    fields : :class:`list` of (:class:`Field` or :class:`dict` or :class:`list`)
+        Field array members. A :class:`FieldArray` stores an instance of :class:`Field` members
+        (see :meth:`Field.create`). :class:`dict` members are cast to :class:`FieldMap`.
+        :class:`list` members are cast to :class:`FieldArray`.
+
+    Raises
+    ------
+    :exc:`TypeError`
+        If ``fields`` is not a non-empty list.
+    :exc:`TypeError`
+        If ``fields`` has an item that is neither a :class:`Field` object or a dict or list of
+        :class:`Field` objects.
     """
     def __init__(self, fields):
-        fields = tuple(fields)
+        self._fields = []
+
+        if not isinstance(fields, list) or len(fields) == 0:
+            raise TypeError(f"Fields must be provided as a non-empty list, not {fields!r}")
+
         for field in fields:
-            if not isinstance(field, (Field, FieldMap, FieldArray)):
-                raise TypeError("Field must be a Field or a FieldMap or a FieldArray, not {!r}"
-                                .format(field))
-        self._fields = fields
+            if isinstance(field, Field):
+                field_inst = field.create()
+            elif isinstance(field, dict):
+                field_inst = FieldMap(field)
+            elif isinstance(field, list):
+                field_inst = FieldArray(field)
+            else:
+                raise TypeError(f"{field!r} must be a Field object or a collection of Field "
+                                f"objects")
+
+            self._fields.append(field_inst)
 
     def __getitem__(self, key):
         """Access a field by index.
@@ -342,17 +371,15 @@ class FieldArray(Sequence):
         ------
         iter(:class:`str`)
             Path of the field. It is prefixed by the name of every nested field collection.
-        :class:`Field`
+        :class:`wiring.Component`
             Register field.
         """
         for key, field in enumerate(self._fields):
-            if isinstance(field, Field):
-                yield (key,), field
-            elif isinstance(field, (FieldMap, FieldArray)):
+            if isinstance(field, (FieldMap, FieldArray)):
                 for sub_path, sub_field in field.flatten():
                     yield (key, *sub_path), sub_field
             else:
-                assert False # :nocov:
+                yield (key,), field
 
 
 class Register(wiring.Component):
@@ -362,14 +389,21 @@ class Register(wiring.Component):
     ----------
     access : :class:`Element.Access`
         Register access mode.
-    fields : :class:`FieldMap` or :class:`FieldArray`
-        Collection of register fields. If ``None`` (default), a :class:`FieldMap` is created
-        from Python :term:`variable annotations <python:variable annotations>`.
+    fields : :class:`dict` or :class:`list`
+        Collection of register fields. If ``None`` (default), a :class:`dict` is populated from
+        Python :term:`variable annotations <python:variable annotations>`. If ``fields`` is a
+        :class:`dict`, it is cast to a :class:`FieldMap`; if ``fields`` is a :class:`list`, it is
+        cast to a :class`FieldArray`.
+
+    Interface attributes
+    --------------------
+    element : :class:`Element`
+        Interface between this register and a CSR bus primitive.
 
     Attributes
     ----------
-    element : :class:`Element`
-        Interface between this register and a CSR bus primitive.
+    access : :class:`Element.Access`
+        Register access mode.
     fields : :class:`FieldMap` or :class:`FieldArray`
         Collection of register fields.
     f : :class:`FieldMap` or :class:`FieldArray`
@@ -380,7 +414,9 @@ class Register(wiring.Component):
     :exc:`TypeError`
         If ``access`` is not a member of :class:`Element.Access`.
     :exc:`TypeError`
-        If ``fields`` is not ``None`` or a :class:`FieldMap` or a :class:`FieldArray`.
+        If ``fields`` is not ``None`` or a :class:`dict` or a :class:`list`.
+    :exc:`ValueError`
+        If ``fields`` is not ``None`` and at least one variable annotation is a :class:`Field`.
     :exc:`ValueError`
         If ``access`` is not readable and at least one field is readable.
     :exc:`ValueError`
@@ -389,37 +425,65 @@ class Register(wiring.Component):
     def __init__(self, access="rw", fields=None):
         if not isinstance(access, Element.Access) and access not in ("r", "w", "rw"):
             raise TypeError(f"Access mode must be one of \"r\", \"w\", or \"rw\", not {access!r}")
-        access = Element.Access(access)
+        self._access = Element.Access(access)
 
         if hasattr(self, "__annotations__"):
-            annot_fields = {}
-            for key, value in self.__annotations__.items():
-                if isinstance(value, (Field, FieldMap, FieldArray)):
-                    annot_fields[key] = value
+            def filter_dict(d):
+                fields = {}
+                for key, value in d.items():
+                    if isinstance(value, Field):
+                        fields[key] = value
+                    elif isinstance(value, dict):
+                        if sub_fields := filter_dict(value):
+                            fields[key] = sub_fields
+                    elif isinstance(value, list):
+                        if sub_fields := filter_list(value):
+                            fields[key] = sub_fields
+                return fields
+
+            def filter_list(l):
+                fields = []
+                for item in l:
+                    if isinstance(item, Field):
+                        fields.append(item)
+                    elif isinstance(item, dict):
+                        if sub_fields := filter_dict(item):
+                            fields.append(sub_fields)
+                    elif isinstance(item, list):
+                        if sub_fields := filter_list(item):
+                            fields.append(sub_fields)
+                return fields
+
+            annot_fields = filter_dict(self.__annotations__)
 
             if fields is None:
-                fields = FieldMap(annot_fields)
+                fields = annot_fields
             elif annot_fields:
                 raise ValueError(f"Field collection {fields} cannot be provided in addition to "
                                  f"field annotations: {', '.join(annot_fields)}")
 
-        if not isinstance(fields, (FieldMap, FieldArray)):
-            raise TypeError(f"Field collection must be a FieldMap or a FieldArray, not {fields!r}")
+        if isinstance(fields, dict):
+            self._fields = FieldMap(fields)
+        elif isinstance(fields, list):
+            self._fields = FieldArray(fields)
+        else:
+            raise TypeError(f"Field collection must be a dict or a list, not {fields!r}")
 
         width = 0
-        for field_path, field in fields.flatten():
-            width += Shape.cast(field.shape).width
-            if field.access.readable() and not access.readable():
+        for field_path, field in self._fields.flatten():
+            width += Shape.cast(field.port.shape).width
+            if field.port.access.readable() and not self._access.readable():
                 raise ValueError(f"Field {'__'.join(field_path)} is readable, but register access "
-                                 f"mode is {access!r}")
-            if field.access.writable() and not access.writable():
+                                 f"mode is {self._access!r}")
+            if field.port.access.writable() and not self._access.writable():
                 raise ValueError(f"Field {'__'.join(field_path)} is writable, but register access "
-                                 f"mode is {access!r}")
+                                 f"mode is {self._access!r}")
 
-        self._width  = width
-        self._access = access
-        self._fields = fields
-        super().__init__()
+        super().__init__({"element": Out(Element.Signature(width, self._access))})
+
+    @property
+    def access(self):
+        return self._access
 
     @property
     def fields(self):
@@ -428,12 +492,6 @@ class Register(wiring.Component):
     @property
     def f(self):
         return self._fields
-
-    @property
-    def signature(self):
-        return wiring.Signature({
-            "element": Out(Element.Signature(self._width, self._access)),
-        })
 
     def __iter__(self):
         """Recursively iterate over the field collection.
@@ -453,16 +511,17 @@ class Register(wiring.Component):
         field_start = 0
 
         for field_path, field in self.fields.flatten():
+            field_width = Shape.cast(field.port.shape).width
+            field_slice = slice(field_start, field_start + field_width)
+
             m.submodules["__".join(str(key) for key in field_path)] = field
 
-            field_slice = slice(field_start, field_start + Shape.cast(field.shape).width)
-
-            if field.access.readable():
+            if field.port.access.readable():
                 m.d.comb += [
                     self.element.r_data[field_slice].eq(field.port.r_data),
                     field.port.r_stb.eq(self.element.r_stb),
                 ]
-            if field.access.writable():
+            if field.port.access.writable():
                 m.d.comb += [
                     field.port.w_data.eq(self.element.w_data[field_slice]),
                     field.port.w_stb .eq(self.element.w_stb),
@@ -518,13 +577,12 @@ class RegisterMap:
         if self._frozen:
             raise ValueError("Register map is frozen")
         if not isinstance(register, Register):
-            raise TypeError("Register must be an instance of csr.Register, not {!r}"
-                            .format(register))
+            raise TypeError(f"Register must be an instance of csr.Register, not {register!r}")
 
         if not isinstance(name, str) or not name:
-            raise TypeError("Name must be a non-empty string, not {!r}".format(name))
+            raise TypeError(f"Name must be a non-empty string, not {name!r}")
         if name in self._namespace:
-            raise ValueError("Name '{}' is already used by {!r}".format(name, self._namespace[name]))
+            raise ValueError(f"Name '{name}' is already used by {self._namespace[name]!r}")
 
         self._registers[id(register)] = register, name
         self._namespace[name] = register
@@ -572,13 +630,12 @@ class RegisterMap:
         if self._frozen:
             raise ValueError("Register map is frozen")
         if not isinstance(cluster, RegisterMap):
-            raise TypeError("Cluster must be an instance of csr.RegisterMap, not {!r}"
-                            .format(cluster))
+            raise TypeError(f"Cluster must be an instance of csr.RegisterMap, not {cluster!r}")
 
         if not isinstance(name, str) or not name:
-            raise TypeError("Name must be a non-empty string, not {!r}".format(name))
+            raise TypeError(f"Name must be a non-empty string, not {name!r}")
         if name in self._namespace:
-            raise ValueError("Name '{}' is already used by {!r}".format(name, self._namespace[name]))
+            raise ValueError(f"Name '{name}' is already used by {self._namespace[name]!r}")
 
         self._clusters[id(cluster)] = cluster, name
         self._namespace[name] = cluster
@@ -639,8 +696,7 @@ class RegisterMap:
             If ``register` is not in the register map.
         """
         if not isinstance(register, Register):
-            raise TypeError("Register must be an instance of csr.Register, not {!r}"
-                            .format(register))
+            raise TypeError(f"Register must be an instance of csr.Register, not {register!r}")
 
         if id(register) in self._registers:
             _, name = self._registers[id(register)]
@@ -682,7 +738,7 @@ class RegisterMap:
             raise ValueError("Path must be a non-empty iterable")
         for name in path:
             if not isinstance(name, str) or not name:
-                raise TypeError("Path must contain non-empty strings, not {!r}".format(name))
+                raise TypeError(f"Path must contain non-empty strings, not {name!r}")
 
         name, *rest = path
 
@@ -717,9 +773,9 @@ class Bridge(wiring.Component):
     name : :class:`str`
         Window name. Optional.
     register_addr : :class:`dict`
-        Register address mapping. Optional, defaults to ``None``.
+        Register address assignments. Optional, defaults to ``None``.
     register_alignment : :class:`dict`
-        Register alignment mapping. Optional, defaults to ``None``.
+        Register alignment assignments. Optional, defaults to ``None``.
 
     Attributes
     ----------
@@ -733,15 +789,15 @@ class Bridge(wiring.Component):
     :exc:`TypeError`
         If ``register_map`` is not an instance of :class:`RegisterMap`.
     :exc:`TypeError`
-        If ``register_addr`` is a not a mapping.
+        If ``register_addr`` is a not a dict.
     :exc:`TypeError`
-        If ``register_alignment`` is a not a mapping.
+        If ``register_alignment`` is a not a dict.
     """
     def __init__(self, register_map, *, addr_width, data_width, alignment=0, name=None,
                  register_addr=None, register_alignment=None):
         if not isinstance(register_map, RegisterMap):
-            raise TypeError("Register map must be an instance of RegisterMap, not {!r}"
-                            .format(register_map))
+            raise TypeError(f"Register map must be an instance of RegisterMap, not "
+                            f"{register_map!r}")
 
         memory_map = MemoryMap(addr_width=addr_width, data_width=data_width, alignment=alignment,
                                name=name)
@@ -752,9 +808,9 @@ class Bridge(wiring.Component):
             for name in path:
                 if node is None:
                     break
-                if not isinstance(node, Mapping):
-                    raise TypeError("Register {}{} must be a mapping, not {!r}"
-                                    .format(kind, "" if not prev else f" {tuple(prev)}", node))
+                if not isinstance(node, dict):
+                    raise TypeError(f"Register {kind}{'' if not prev else f' {tuple(prev)}'} must "
+                                    f"be a dict, not {node!r}")
                 prev.append(name)
                 node = node.get(name, None)
             return node
@@ -771,20 +827,21 @@ class Bridge(wiring.Component):
 
         self._map = register_map
         self._mux = Multiplexer(memory_map)
-        super().__init__()
+
+        super().__init__({"bus": In(Signature(addr_width=addr_width, data_width=data_width))})
+        self.bus.memory_map = self._mux.bus.memory_map
 
     @property
     def register_map(self):
         return self._map
 
-    @property
-    def signature(self):
-        return self._mux.signature
-
     def elaborate(self, platform):
         m = Module()
+
+        m.submodules.mux = self._mux
         for register, path in self.register_map.flatten():
             m.submodules["__".join(path)] = register
-        m.submodules.mux = self._mux
-        connect(m, flipped(self), self._mux)
+
+        connect(m, flipped(self.bus), self._mux.bus)
+
         return m
