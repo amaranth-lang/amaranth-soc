@@ -341,9 +341,13 @@ class Decoder(wiring.Component):
 
         See :meth:`MemoryMap.add_resource` for details.
         """
-        if not isinstance(sub_bus, Interface):
+        if isinstance(sub_bus, wiring.FlippedInterface):
+            sub_bus_unflipped = flipped(sub_bus)
+        else:
+            sub_bus_unflipped = sub_bus
+        if not isinstance(sub_bus_unflipped, Interface):
             raise TypeError(f"Subordinate bus must be an instance of wishbone.Interface, not "
-                            f"{sub_bus!r}")
+                            f"{sub_bus_unflipped!r}")
         if sub_bus.granularity > self.bus.granularity:
             raise ValueError(f"Subordinate bus has granularity {sub_bus.granularity}, which is "
                              f"greater than the decoder granularity {self.bus.granularity}")
