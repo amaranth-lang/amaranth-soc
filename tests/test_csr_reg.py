@@ -1,7 +1,7 @@
-# amaranth: UnusedElaboratable=no
-
 import unittest
+import warnings
 from amaranth import *
+from amaranth.hdl.ir import UnusedElaboratable
 from amaranth.lib import wiring
 from amaranth.lib.wiring import In, Out
 from amaranth.sim import *
@@ -10,9 +10,8 @@ from amaranth_soc.csr.reg import *
 from amaranth_soc.csr import field, Element
 
 
-def _silence_unused(*objs):
-    for obj in objs:
-        Fragment.get(obj, platform=None)
+# The `amaranth: UnusedElaboratable=no` modeline isn't enough here.
+warnings.simplefilter(action="ignore", category=UnusedElaboratable)
 
 
 def _compatible_fields(a, b):
@@ -133,7 +132,6 @@ class FieldTestCase(unittest.TestCase):
         field_u8 = Field(MockField, unsigned(8), reset=1).create()
         self.assertEqual(field_u8.port.shape, unsigned(8))
         self.assertEqual(field_u8.reset, 1)
-        _silence_unused(field_u8)
 
     def test_create_multiple(self):
         class MockField(wiring.Component):
@@ -145,7 +143,6 @@ class FieldTestCase(unittest.TestCase):
         field_1 = Field(MockField).create()
         field_2 = Field(MockField).create()
         self.assertIsNot(field_1, field_2)
-        _silence_unused(field_1, field_2)
 
 
 class FieldMapTestCase(unittest.TestCase):
@@ -170,9 +167,6 @@ class FieldMapTestCase(unittest.TestCase):
 
         self.assertEqual(len(field_map), 3)
 
-        _silence_unused(*(v for k, v in field_map.flatten()))
-        _silence_unused(field_r_u1, field_rw_s3, field_rw_u4)
-
     def test_iter(self):
         field_map = FieldMap({
             "a": Field(field.R, unsigned(1)),
@@ -182,7 +176,6 @@ class FieldMapTestCase(unittest.TestCase):
             ("a", field_map["a"]),
             ("b", field_map["b"]),
         ])
-        _silence_unused(*(v for k, v in field_map.flatten()))
 
     def test_flatten(self):
         field_map = FieldMap({
@@ -195,7 +188,6 @@ class FieldMapTestCase(unittest.TestCase):
             (("b",), field_map["b"]),
             (("c", "d"), field_map["c"]["d"]),
         ])
-        _silence_unused(*(v for k, v in field_map.flatten()))
 
     def test_wrong_dict(self):
         with self.assertRaisesRegex(TypeError,
@@ -219,14 +211,11 @@ class FieldMapTestCase(unittest.TestCase):
         field_map = FieldMap({"a": Field(field.RW, unsigned(1))})
         with self.assertRaises(KeyError):
             field_map["b"]
-        _silence_unused(*(v for k, v in field_map.flatten()))
 
     def test_getitem_reserved(self):
         field_map = FieldMap({"_reserved": Field(field.RW, unsigned(1))})
         field_rw_u1 = Field(field.RW, unsigned(1)).create()
         self.assertTrue(_compatible_fields(field_map["_reserved"], field_rw_u1))
-        _silence_unused(*(v for k, v in field_map.flatten()))
-        _silence_unused(field_rw_u1)
 
     def test_getattr_missing(self):
         field_map = FieldMap({"a": Field(field.RW, unsigned(1)),
@@ -234,7 +223,6 @@ class FieldMapTestCase(unittest.TestCase):
         with self.assertRaisesRegex(AttributeError,
                 r"Field map does not have a field 'c'; did you mean one of: 'a', 'b'?"):
             field_map.c
-        _silence_unused(*(v for k, v in field_map.flatten()))
 
     def test_getattr_reserved(self):
         field_map = FieldMap({"_reserved": Field(field.RW, unsigned(1))})
@@ -242,7 +230,6 @@ class FieldMapTestCase(unittest.TestCase):
                 r"Field map field '_reserved' has a reserved name and may only be accessed by "
                 r"indexing"):
             field_map._reserved
-        _silence_unused(*(v for k, v in field_map.flatten()))
 
 
 class FieldArrayTestCase(unittest.TestCase):
@@ -252,8 +239,6 @@ class FieldArrayTestCase(unittest.TestCase):
         self.assertEqual(len(field_array), 8)
         for i in range(8):
             self.assertTrue(_compatible_fields(field_array[i], field_rw_u2))
-        _silence_unused(*(v for k, v in field_array.flatten()))
-        _silence_unused(field_rw_u2)
 
     def test_dim_2(self):
         field_array = FieldArray([[Field(field.RW, unsigned(1)) for _ in range(4)]
@@ -263,8 +248,6 @@ class FieldArrayTestCase(unittest.TestCase):
         for i in range(4):
             for j in range(4):
                 self.assertTrue(_compatible_fields(field_array[i][j], field_rw_u1))
-        _silence_unused(*(v for k, v in field_array.flatten()))
-        _silence_unused(field_rw_u1)
 
     def test_nested(self):
         field_array = FieldArray([{"a": Field(field.RW, unsigned(4)),
@@ -277,15 +260,12 @@ class FieldArrayTestCase(unittest.TestCase):
             self.assertTrue(_compatible_fields(field_array[i]["a"], field_rw_u4))
             for j in range(4):
                 self.assertTrue(_compatible_fields(field_array[i]["b"][j], field_rw_u1))
-        _silence_unused(*(v for k, v in field_array.flatten()))
-        _silence_unused(field_rw_u4, field_rw_u1)
 
     def test_iter(self):
         field_array = FieldArray([Field(field.RW, 1) for _ in range(3)])
         self.assertEqual(list(field_array), [
             field_array[i] for i in range(3)
         ])
-        _silence_unused(*(v for k, v in field_array.flatten()))
 
     def test_flatten(self):
         field_array = FieldArray([{"a": Field(field.RW, 4),
@@ -299,7 +279,6 @@ class FieldArrayTestCase(unittest.TestCase):
             ((1, "b", 0), field_array[1]["b"][0]),
             ((1, "b", 1), field_array[1]["b"][1]),
         ])
-        _silence_unused(*(v for k, v in field_array.flatten()))
 
     def test_wrong_fields(self):
         with self.assertRaisesRegex(TypeError,
@@ -340,8 +319,6 @@ class RegisterTestCase(unittest.TestCase):
         self.assertEqual(reg.element.access.readable(), True)
         self.assertEqual(reg.element.access.writable(), True)
 
-        _silence_unused(reg, field_r_u1, field_rw1c_u3, field_rw_s2, field_w_u1)
-
     def test_fields_list(self):
         reg = Register(access="r", fields=[
             {"a": Field(field.R, unsigned(1))} for _ in range(2)
@@ -357,7 +334,6 @@ class RegisterTestCase(unittest.TestCase):
         self.assertEqual(reg.element.access.readable(), True)
         self.assertEqual(reg.element.access.writable(), False)
 
-        _silence_unused(reg, field_r_u1)
 
     def test_wrong_fields(self):
         with self.assertRaisesRegex(TypeError,
@@ -395,7 +371,6 @@ class RegisterTestCase(unittest.TestCase):
         self.assertEqual(reg.element.access.readable(), True)
         self.assertEqual(reg.element.access.writable(), True)
 
-        _silence_unused(reg, field_r_u1, field_rw1c_u3, field_w_u1, field_rw_s2)
 
     def test_annotations_conflict(self):
         class MockRegister(Register):
@@ -412,7 +387,6 @@ class RegisterTestCase(unittest.TestCase):
         field_r_u1 = Field(field.R, unsigned(1)).create()
         self.assertTrue(_compatible_fields(reg.f.a, field_r_u1))
         self.assertEqual(reg.element.width, 1)
-        _silence_unused(reg, field_r_u1)
 
     def test_wrong_access(self):
         with self.assertRaisesRegex(TypeError,
@@ -420,17 +394,12 @@ class RegisterTestCase(unittest.TestCase):
             Register(access="foo")
 
     def test_access_mismatch(self):
-        class _UnusedField(Field):
-            def create(self):
-                obj = super().create()
-                _silence_unused(obj)
-                return obj
         with self.assertRaisesRegex(ValueError,
                 r"Field a__b is readable, but register access mode is \<Access\.W: 'w'\>"):
-            Register("w", {"a": {"b": _UnusedField(field.RW, unsigned(1))}})
+            Register("w", {"a": {"b": Field(field.RW, unsigned(1))}})
         with self.assertRaisesRegex(ValueError,
                 r"Field a__b is writable, but register access mode is \<Access\.R: 'r'\>"):
-            Register("r", {"a": {"b": _UnusedField(field.RW, unsigned(1))}})
+            Register("r", {"a": {"b": Field(field.RW, unsigned(1))}})
 
     def test_iter(self):
         reg = Register("rw", {
@@ -446,7 +415,6 @@ class RegisterTestCase(unittest.TestCase):
             (("e", 0), reg.f.e[0]),
             (("e", 1), reg.f.e[1]),
         ])
-        _silence_unused(reg)
 
     def test_sim(self):
         dut = Register("rw", {
@@ -588,14 +556,12 @@ class RegisterMapTestCase(unittest.TestCase):
     def test_add_register(self):
         reg_rw_a = Register("rw", {"a": Field(field.RW, 1)})
         self.assertIs(self.map.add_register(reg_rw_a, name="reg_rw_a"), reg_rw_a)
-        _silence_unused(reg_rw_a)
 
     def test_add_register_frozen(self):
         self.map.freeze()
         reg_rw_a = Register("rw", {"a": Field(field.RW, 1)})
         with self.assertRaisesRegex(ValueError, r"Register map is frozen"):
             self.map.add_register(reg_rw_a, name="reg_rw_a")
-        _silence_unused(reg_rw_a)
 
     def test_add_register_wrong_type(self):
         with self.assertRaisesRegex(TypeError,
@@ -607,14 +573,12 @@ class RegisterMapTestCase(unittest.TestCase):
         with self.assertRaisesRegex(TypeError,
                 r"Name must be a non-empty string, not None"):
             self.map.add_register(reg_rw_a, name=None)
-        _silence_unused(reg_rw_a)
 
     def test_add_register_empty_name(self):
         reg_rw_a = Register("rw", {"a": Field(field.RW, 1)})
         with self.assertRaisesRegex(TypeError,
                 r"Name must be a non-empty string, not ''"):
             self.map.add_register(reg_rw_a, name="")
-        _silence_unused(reg_rw_a)
 
     def test_add_cluster(self):
         cluster = RegisterMap()
@@ -665,8 +629,6 @@ class RegisterMapTestCase(unittest.TestCase):
                 r"Name 'cluster_0' is already used by *"):
             self.map.add_register(reg_rw_b, name="cluster_0")
 
-        _silence_unused(reg_rw_a, reg_rw_b)
-
     def test_iter_registers(self):
         reg_rw_a = Register("rw", {"a": Field(field.RW, 1)})
         reg_rw_b = Register("rw", {"b": Field(field.RW, 1)})
@@ -680,8 +642,6 @@ class RegisterMapTestCase(unittest.TestCase):
         self.assertEqual(registers[0][1], "reg_rw_a")
         self.assertIs(registers[1][0], reg_rw_b)
         self.assertEqual(registers[1][1], "reg_rw_b")
-
-        _silence_unused(reg_rw_a, reg_rw_b)
 
     def test_iter_clusters(self):
         cluster_0 = RegisterMap()
@@ -717,8 +677,6 @@ class RegisterMapTestCase(unittest.TestCase):
         self.assertIs(registers[1][0], reg_rw_b)
         self.assertEqual(registers[1][1], ("cluster_1", "reg_rw_b"))
 
-        _silence_unused(reg_rw_a, reg_rw_b)
-
     def test_get_path(self):
         reg_rw_a = Register("rw", {"a": Field(field.RW, 1)})
         reg_rw_b = Register("rw", {"b": Field(field.RW, 1)})
@@ -738,8 +696,6 @@ class RegisterMapTestCase(unittest.TestCase):
         self.assertEqual(self.map.get_path(reg_rw_b), ("reg_rw_b",))
         self.assertEqual(self.map.get_path(reg_rw_c), ("cluster_1", "reg_rw_c"))
 
-        _silence_unused(reg_rw_a, reg_rw_b, reg_rw_c)
-
     def test_get_path_wrong_register(self):
         with self.assertRaisesRegex(TypeError,
                 r"Register must be an instance of csr\.Register, not 'foo'"):
@@ -749,7 +705,6 @@ class RegisterMapTestCase(unittest.TestCase):
         reg_rw_a = Register("rw", {"a": Field(field.RW, 1)})
         with self.assertRaises(KeyError):
             self.map.get_path(reg_rw_a)
-        _silence_unused(reg_rw_a)
 
     def test_get_register(self):
         reg_rw_a  = Register("rw", {"a": Field(field.RW, 1)})
@@ -762,8 +717,6 @@ class RegisterMapTestCase(unittest.TestCase):
 
         self.assertIs(self.map.get_register(("cluster_0", "reg_rw_a")), reg_rw_a)
         self.assertIs(self.map.get_register(("reg_rw_b",)), reg_rw_b)
-
-        _silence_unused(reg_rw_a, reg_rw_b)
 
     def test_get_register_empty_path(self):
         with self.assertRaisesRegex(ValueError, r"Path must be a non-empty iterable"):
@@ -820,8 +773,6 @@ class BridgeTestCase(unittest.TestCase):
         self.assertEqual(registers[3][1], "cluster_0__reg_rw_16")
         self.assertEqual(registers[3][2], (4, 6))
 
-        _silence_unused(dut)
-
     def test_wrong_register_map(self):
         with self.assertRaisesRegex(TypeError,
                 r"Register map must be an instance of RegisterMap, not 'foo'"):
@@ -867,8 +818,6 @@ class BridgeTestCase(unittest.TestCase):
         self.assertEqual(registers[3][1], "cluster_0__reg_rw_16")
         self.assertEqual(registers[3][2], (0x22, 0x24))
 
-        _silence_unused(dut)
-
     def test_register_alignment(self):
         reg_rw_4  = Register("rw", {"a": Field(field.RW,  4)})
         reg_rw_8  = Register("rw", {"a": Field(field.RW,  8)})
@@ -909,8 +858,6 @@ class BridgeTestCase(unittest.TestCase):
         self.assertEqual(registers[3][1], "cluster_0__reg_rw_16")
         self.assertEqual(registers[3][2], (16, 18))
 
-        _silence_unused(dut)
-
     def test_register_out_of_bounds(self):
         reg_rw_24 = Register("rw", {"a": Field(field.RW, 24)})
         register_map = RegisterMap()
@@ -919,7 +866,6 @@ class BridgeTestCase(unittest.TestCase):
                 r"Address range 0x0\.\.0x3 out of bounds for memory map spanning "
                 r"range 0x0\.\.0x2 \(1 address bits\)"):
             dut = Bridge(register_map, addr_width=1, data_width=8)
-        _silence_unused(reg_rw_24)
 
     def test_wrong_register_address(self):
         reg_rw_4 = Register("rw", {"a": Field(field.RW, 4)})
@@ -927,7 +873,6 @@ class BridgeTestCase(unittest.TestCase):
         register_map.add_register(reg_rw_4, name="reg_rw_4")
         with self.assertRaisesRegex(TypeError, r"Register address must be a dict, not 'foo'"):
             dut = Bridge(register_map, addr_width=1, data_width=8, register_addr="foo")
-        _silence_unused(reg_rw_4)
 
     def test_wrong_cluster_address(self):
         reg_rw_4  = Register("rw", {"a": Field(field.RW, 4)})
@@ -939,7 +884,6 @@ class BridgeTestCase(unittest.TestCase):
                 r"Register address \('cluster_0',\) must be a dict, not 'foo'"):
             dut = Bridge(register_map, addr_width=1, data_width=8,
                          register_addr={"cluster_0": "foo"})
-        _silence_unused(reg_rw_4)
 
     def test_wrong_register_alignment(self):
         reg_rw_4 = Register("rw", {"a": Field(field.RW, 4)})
@@ -947,7 +891,6 @@ class BridgeTestCase(unittest.TestCase):
         register_map.add_register(reg_rw_4, name="reg_rw_4")
         with self.assertRaisesRegex(TypeError, r"Register alignment must be a dict, not 'foo'"):
             dut = Bridge(register_map, addr_width=1, data_width=8, register_alignment="foo")
-        _silence_unused(reg_rw_4)
 
     def test_wrong_cluster_alignment(self):
         reg_rw_4  = Register("rw", {"a": Field(field.RW, 4)})
@@ -959,7 +902,6 @@ class BridgeTestCase(unittest.TestCase):
                 r"Register alignment \('cluster_0',\) must be a dict, not 'foo'"):
             dut = Bridge(register_map, addr_width=1, data_width=8,
                          register_alignment={"cluster_0": "foo"})
-        _silence_unused(reg_rw_4)
 
     def test_sim(self):
         reg_rw_4  = Register("rw", {"a": Field(field.RW,  4, reset=0x0)})
