@@ -170,8 +170,16 @@ class Field:
         Positional arguments passed to ``field_cls.__init__``.
     **kwargs : :class:`dict`
         Keyword arguments passed to ``field_cls.__init__``.
+
+    Raises
+    ------
+    :exc:`TypeError`
+        If ``field_cls`` is not a subclass of :class:`wiring.Component`.
     """
     def __init__(self, field_cls, *args, **kwargs):
+        if not issubclass(field_cls, wiring.Component):
+            raise TypeError(f"{field_cls.__qualname__} must be a subclass of wiring.Component")
+
         self._field_cls = field_cls
         self._args      = args
         self._kwargs    = kwargs
@@ -183,8 +191,22 @@ class Field:
         -------
         :class:`object`
             The instance returned by ``field_cls(*args, **kwargs)``.
+
+        Raises
+        ------
+        :exc:`TypeError`
+            If the instance returned by ``field_cls(*args, **kwargs)`` doesn't have a signature
+            with a member named "port" that is a :class:`FieldPort.Signature` with a
+            :attr:`wiring.In` direction.
         """
-        return self._field_cls(*self._args, **self._kwargs)
+        field = self._field_cls(*self._args, **self._kwargs)
+        if not ("port" in field.signature.members
+                and field.signature.members["port"].flow is In
+                and field.signature.members["port"].is_signature
+                and isinstance(field.signature.members["port"].signature, FieldPort.Signature)):
+            raise TypeError(f"{self._field_cls.__qualname__} instance signature must have a "
+                            f"csr.FieldPort.Signature member named 'port' and oriented as In")
+        return field
 
 
 class FieldMap(Mapping):

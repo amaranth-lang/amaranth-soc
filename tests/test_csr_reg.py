@@ -120,10 +120,20 @@ class FieldPortTestCase(unittest.TestCase):
 
 
 class FieldTestCase(unittest.TestCase):
+    def test_wrong_class(self):
+        class Foo:
+            pass
+        with self.assertRaisesRegex(TypeError,
+                r"Foo must be a subclass of wiring.Component"):
+            Field(Foo)
+
     def test_create(self):
         class MockField(wiring.Component):
             def __init__(self, shape, *, reset):
-                super().__init__({"port": Out(FieldPort.Signature(shape, "rw"))})
+                super().__init__({
+                    "port": In(FieldPort.Signature(shape, "rw")),
+                    "data": Out(shape)
+                })
                 self.reset = reset
 
             def elaborate(self, platform):
@@ -135,7 +145,7 @@ class FieldTestCase(unittest.TestCase):
 
     def test_create_multiple(self):
         class MockField(wiring.Component):
-            port: Out(FieldPort.Signature(unsigned(8), "rw"))
+            port: In(FieldPort.Signature(unsigned(8), "rw"))
 
             def elaborate(self, platform):
                 return Module()
@@ -143,6 +153,58 @@ class FieldTestCase(unittest.TestCase):
         field_1 = Field(MockField).create()
         field_2 = Field(MockField).create()
         self.assertIsNot(field_1, field_2)
+
+    def test_wrong_port_name(self):
+        class MockField(wiring.Component):
+            foo: In(FieldPort.Signature(unsigned(1), access="rw"))
+
+            def elaborate(self, platform):
+                return Module()
+
+        field = Field(MockField)
+        with self.assertRaisesRegex(TypeError,
+                r"MockField instance signature must have a csr\.FieldPort\.Signature member named "
+                r"'port' and oriented as In"):
+            field.create()
+
+    def test_wrong_port_direction(self):
+        class MockField(wiring.Component):
+            port: Out(FieldPort.Signature(unsigned(1), access="rw"))
+
+            def elaborate(self, platform):
+                return Module()
+
+        field = Field(MockField)
+        with self.assertRaisesRegex(TypeError,
+                r"MockField instance signature must have a csr\.FieldPort\.Signature member named "
+                r"'port' and oriented as In"):
+            field.create()
+
+    def test_wrong_port_type_port(self):
+        class MockField(wiring.Component):
+            port: In(unsigned(1))
+
+            def elaborate(self, platform):
+                return Module()
+
+        field = Field(MockField)
+        with self.assertRaisesRegex(TypeError,
+                r"MockField instance signature must have a csr\.FieldPort\.Signature member named "
+                r"'port' and oriented as In"):
+            field.create()
+
+    def test_wrong_port_type_signature(self):
+        class MockField(wiring.Component):
+            port: In(wiring.Signature({"foo": Out(unsigned(1))}))
+
+            def elaborate(self, platform):
+                return Module()
+
+        field = Field(MockField)
+        with self.assertRaisesRegex(TypeError,
+                r"MockField instance signature must have a csr\.FieldPort\.Signature member named "
+                r"'port' and oriented as In"):
+            field.create()
 
 
 class FieldMapTestCase(unittest.TestCase):
