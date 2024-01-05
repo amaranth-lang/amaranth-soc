@@ -357,8 +357,41 @@ class FieldArrayTestCase(unittest.TestCase):
 
 
 class RegisterTestCase(unittest.TestCase):
+    def test_annotations(self):
+        class FooRegister(Register, access="rw"):
+            a: Field(field.R, unsigned(1))
+            b: {"c": Field(field.RW1C, unsigned(3)),
+                "d": [Field(field.W, unsigned(1)) for _ in range(2)]}
+            e: [*({"f": Field(field.RW, signed(2))} for _ in range(2)),
+                [Field(field.RW, signed(2))]]
+            g: {"x": "foo", "y": dict(), "z": "bar"}
+            h: ["foo", [], dict()]
+
+            foo: unsigned(42)
+
+        reg = FooRegister()
+
+        field_r_u1    = Field(field.R,    unsigned(1)).create()
+        field_rw1c_u3 = Field(field.RW1C, unsigned(3)).create()
+        field_w_u1    = Field(field.W,    unsigned(1)).create()
+        field_rw_s2   = Field(field.RW,     signed(2)).create()
+
+        self.assertTrue(_compatible_fields(reg.f.a,       field_r_u1))
+        self.assertTrue(_compatible_fields(reg.f.b.c,     field_rw1c_u3))
+        self.assertTrue(_compatible_fields(reg.f.b.d[0],  field_w_u1))
+        self.assertTrue(_compatible_fields(reg.f.b.d[1],  field_w_u1))
+        self.assertTrue(_compatible_fields(reg.f.e[0].f,  field_rw_s2))
+        self.assertTrue(_compatible_fields(reg.f.e[1].f,  field_rw_s2))
+        self.assertTrue(_compatible_fields(reg.f.e[2][0], field_rw_s2))
+
+        self.assertEqual(reg.element.access, Element.Access.RW)
+        self.assertEqual(reg.element.width, 12)
+
     def test_fields_dict(self):
-        reg = Register("rw", {
+        class FooRegister(Register, access=Element.Access.RW):
+            pass
+
+        reg = FooRegister({
             "a": Field(field.R, unsigned(1)),
             "b": Field(field.RW1C, unsigned(3)),
             "c": {"d": Field(field.RW, signed(2))},
@@ -376,100 +409,76 @@ class RegisterTestCase(unittest.TestCase):
         self.assertTrue(_compatible_fields(reg.f.e[0], field_w_u1))
         self.assertTrue(_compatible_fields(reg.f.e[1], field_w_u1))
 
-        self.assertEqual(reg.access, Element.Access.RW)
+        self.assertEqual(reg.element.access, Element.Access.RW)
         self.assertEqual(reg.element.width, 8)
-        self.assertEqual(reg.element.access.readable(), True)
-        self.assertEqual(reg.element.access.writable(), True)
 
     def test_fields_list(self):
-        reg = Register(access="r", fields=[
-            {"a": Field(field.R, unsigned(1))} for _ in range(2)
-        ])
+        class FooRegister(Register, access="r"):
+            pass
+
+        reg = FooRegister([{"a": Field(field.R, unsigned(1))} for _ in range(2)])
 
         field_r_u1 = Field(field.R, unsigned(1)).create()
 
         self.assertTrue(_compatible_fields(reg.f[0].a, field_r_u1))
         self.assertTrue(_compatible_fields(reg.f[1].a, field_r_u1))
 
-        self.assertEqual(reg.access, Element.Access.R)
+        self.assertEqual(reg.element.access, Element.Access.R)
         self.assertEqual(reg.element.width, 2)
-        self.assertEqual(reg.element.access.readable(), True)
-        self.assertEqual(reg.element.access.writable(), False)
 
+    def test_subclass_requirement(self):
+        with self.assertRaisesRegex(TypeError,
+                r"csr\.Register is a base class and cannot be directly instantiated"):
+            Register()
+
+    def test_wrong_access(self):
+        with self.assertRaisesRegex(ValueError, r"'foo' is not a valid Element.Access"):
+            class FooRegister(Register, access="foo"):
+                pass
 
     def test_wrong_fields(self):
+        class FooRegister(Register, access="w"):
+            pass
         with self.assertRaisesRegex(TypeError,
                 r"Field collection must be a dict or a list, not 'foo'"):
-            Register(access="rw", fields="foo")
-
-    def test_annotations(self):
-        class MockRegister(Register):
-            a: Field(field.R, unsigned(1))
-            b: {"c": Field(field.RW1C, unsigned(3)),
-                "d": [Field(field.W, unsigned(1)) for _ in range(2)]}
-            e: [{"f": Field(field.RW, signed(2))} for _ in range(2)] + [
-                [Field(field.RW, signed(2))]]
-            g: {"x": "foo", "y": dict(), "z": "bar"}
-            h: ["foo", [], dict()]
-
-            foo: unsigned(42)
-
-        reg = MockRegister("rw")
-
-        field_r_u1    = Field(field.R,    unsigned(1)).create()
-        field_rw1c_u3 = Field(field.RW1C, unsigned(3)).create()
-        field_w_u1    = Field(field.W,    unsigned(1)).create()
-        field_rw_s2   = Field(field.RW,     signed(2)).create()
-
-        self.assertTrue(_compatible_fields(reg.f.a,       field_r_u1))
-        self.assertTrue(_compatible_fields(reg.f.b.c,     field_rw1c_u3))
-        self.assertTrue(_compatible_fields(reg.f.b.d[0],  field_w_u1))
-        self.assertTrue(_compatible_fields(reg.f.b.d[1],  field_w_u1))
-        self.assertTrue(_compatible_fields(reg.f.e[0].f,  field_rw_s2))
-        self.assertTrue(_compatible_fields(reg.f.e[1].f,  field_rw_s2))
-        self.assertTrue(_compatible_fields(reg.f.e[2][0], field_rw_s2))
-
-        self.assertEqual(reg.element.width, 12)
-        self.assertEqual(reg.element.access.readable(), True)
-        self.assertEqual(reg.element.access.writable(), True)
-
+            FooRegister(fields="foo")
 
     def test_annotations_conflict(self):
-        class MockRegister(Register):
+        class FooRegister(Register, access="rw"):
             a: Field(field.R, unsigned(1))
         with self.assertRaisesRegex(ValueError,
                 r"Field collection \{'b': <.*>\} cannot be provided in addition to field "
                 r"annotations: a"):
-            MockRegister("rw", {"b": Field(field.W, unsigned(1))})
+            FooRegister({"b": Field(field.W, unsigned(1))})
 
     def test_annotations_other(self):
-        class MockRegister(Register):
+        class FooRegister(Register, access="rw"):
             foo: "bar"
-        reg = MockRegister("rw", {"a": Field(field.R, unsigned(1))})
+        reg = FooRegister({"a": Field(field.R, unsigned(1))})
         field_r_u1 = Field(field.R, unsigned(1)).create()
         self.assertTrue(_compatible_fields(reg.f.a, field_r_u1))
         self.assertEqual(reg.element.width, 1)
 
-    def test_wrong_access(self):
-        with self.assertRaisesRegex(TypeError,
-                r"Access mode must be one of \"r\", \"w\", or \"rw\", not 'foo'"):
-            Register(access="foo")
-
     def test_access_mismatch(self):
+        class WRegister(Register, access="w"):
+            pass
+        class RRegister(Register, access="r"):
+            pass
         with self.assertRaisesRegex(ValueError,
                 r"Field a__b is readable, but register access mode is \<Access\.W: 'w'\>"):
-            Register("w", {"a": {"b": Field(field.RW, unsigned(1))}})
+            WRegister({"a": {"b": Field(field.RW, unsigned(1))}})
         with self.assertRaisesRegex(ValueError,
                 r"Field a__b is writable, but register access mode is \<Access\.R: 'r'\>"):
-            Register("r", {"a": {"b": Field(field.RW, unsigned(1))}})
+            RRegister({"a": {"b": Field(field.RW, unsigned(1))}})
 
     def test_iter(self):
-        reg = Register("rw", {
-            "a": Field(field.R, unsigned(1)),
-            "b": Field(field.RW1C, unsigned(3)),
-            "c": {"d": Field(field.RW, signed(2))},
-            "e": [Field(field.W, unsigned(1)) for _ in range(2)]
-        })
+        class FooRegister(Register, access="rw"):
+            a: Field(field.R, unsigned(1))
+            b: Field(field.RW1C, unsigned(3))
+            c: {"d": Field(field.RW, signed(2))}
+            e: [Field(field.W, unsigned(1)) for _ in range(2)]
+
+        reg = FooRegister()
         self.assertEqual(list(reg), [
             (("a",), reg.f.a),
             (("b",), reg.f.b),
@@ -479,13 +488,14 @@ class RegisterTestCase(unittest.TestCase):
         ])
 
     def test_sim(self):
-        dut = Register("rw", {
-            "a": Field(field.R, unsigned(1)),
-            "b": Field(field.RW1C, unsigned(3), reset=0b111),
-            "c": {"d": Field(field.RW, signed(2), reset=-1)},
-            "e": [Field(field.W, unsigned(1)) for _ in range(2)],
-            "f": Field(field.RW1S, unsigned(3)),
-        })
+        class FooRegister(Register, access="rw"):
+            a: Field(field.R, unsigned(1))
+            b: Field(field.RW1C, unsigned(3), reset=0b111)
+            c: {"d": Field(field.RW, signed(2), reset=-1)}
+            e: [Field(field.W, unsigned(1)) for _ in range(2)]
+            f: Field(field.RW1S, unsigned(3))
+
+        dut = FooRegister()
 
         def process():
             # Check reset values:
@@ -616,12 +626,16 @@ class RegisterMapTestCase(unittest.TestCase):
         self.map = RegisterMap()
 
     def test_add_register(self):
-        reg_rw_a = Register("rw", {"a": Field(field.RW, 1)})
+        class FooRegister(Register, access="rw"):
+            a: Field(field.RW, 1)
+        reg_rw_a = FooRegister()
         self.assertIs(self.map.add_register(reg_rw_a, name="reg_rw_a"), reg_rw_a)
 
     def test_add_register_frozen(self):
+        class FooRegister(Register, access="rw"):
+            a: Field(field.RW, 1)
+        reg_rw_a = FooRegister()
         self.map.freeze()
-        reg_rw_a = Register("rw", {"a": Field(field.RW, 1)})
         with self.assertRaisesRegex(ValueError, r"Register map is frozen"):
             self.map.add_register(reg_rw_a, name="reg_rw_a")
 
@@ -631,13 +645,17 @@ class RegisterMapTestCase(unittest.TestCase):
             self.map.add_register("foo", name="foo")
 
     def test_add_register_wrong_name(self):
-        reg_rw_a = Register("rw", {"a": Field(field.RW, 1)})
+        class FooRegister(Register, access="rw"):
+            a: Field(field.RW, 1)
+        reg_rw_a = FooRegister()
         with self.assertRaisesRegex(TypeError,
                 r"Name must be a non-empty string, not None"):
             self.map.add_register(reg_rw_a, name=None)
 
     def test_add_register_empty_name(self):
-        reg_rw_a = Register("rw", {"a": Field(field.RW, 1)})
+        class FooRegister(Register, access="rw"):
+            a: Field(field.RW, 1)
+        reg_rw_a = FooRegister()
         with self.assertRaisesRegex(TypeError,
                 r"Name must be a non-empty string, not ''"):
             self.map.add_register(reg_rw_a, name="")
@@ -670,8 +688,13 @@ class RegisterMapTestCase(unittest.TestCase):
             self.map.add_cluster(cluster, name="")
 
     def test_namespace_collision(self):
-        reg_rw_a  = Register("rw", {"a": Field(field.RW, 1)})
-        reg_rw_b  = Register("rw", {"b": Field(field.RW, 1)})
+        class FooRegister(Register, access="rw"):
+            a: Field(field.RW, 1)
+        class BarRegister(Register, access="rw"):
+            b: Field(field.RW, 1)
+
+        reg_rw_a  = FooRegister()
+        reg_rw_b  = BarRegister()
         cluster_0 = RegisterMap()
         cluster_1 = RegisterMap()
 
@@ -692,8 +715,13 @@ class RegisterMapTestCase(unittest.TestCase):
             self.map.add_register(reg_rw_b, name="cluster_0")
 
     def test_iter_registers(self):
-        reg_rw_a = Register("rw", {"a": Field(field.RW, 1)})
-        reg_rw_b = Register("rw", {"b": Field(field.RW, 1)})
+        class FooRegister(Register, access="rw"):
+            a: Field(field.RW, 1)
+        class BarRegister(Register, access="rw"):
+            b: Field(field.RW, 1)
+
+        reg_rw_a = FooRegister()
+        reg_rw_b = BarRegister()
         self.map.add_register(reg_rw_a, name="reg_rw_a")
         self.map.add_register(reg_rw_b, name="reg_rw_b")
 
@@ -720,8 +748,13 @@ class RegisterMapTestCase(unittest.TestCase):
         self.assertEqual(clusters[1][1], "cluster_1")
 
     def test_iter_flatten(self):
-        reg_rw_a  = Register("rw", {"a": Field(field.RW, 1)})
-        reg_rw_b  = Register("rw", {"b": Field(field.RW, 1)})
+        class FooRegister(Register, access="rw"):
+            a: Field(field.RW, 1)
+        class BarRegister(Register, access="rw"):
+            b: Field(field.RW, 1)
+
+        reg_rw_a  = FooRegister()
+        reg_rw_b  = BarRegister()
         cluster_0 = RegisterMap()
         cluster_1 = RegisterMap()
 
@@ -740,9 +773,16 @@ class RegisterMapTestCase(unittest.TestCase):
         self.assertEqual(registers[1][1], ("cluster_1", "reg_rw_b"))
 
     def test_get_path(self):
-        reg_rw_a = Register("rw", {"a": Field(field.RW, 1)})
-        reg_rw_b = Register("rw", {"b": Field(field.RW, 1)})
-        reg_rw_c = Register("rw", {"c": Field(field.RW, 1)})
+        class FooRegister(Register, access="rw"):
+            a: Field(field.RW, 1)
+        class BarRegister(Register, access="rw"):
+            b: Field(field.RW, 1)
+        class BazRegister(Register, access="rw"):
+            c: Field(field.RW, 1)
+
+        reg_rw_a = FooRegister()
+        reg_rw_b = BarRegister()
+        reg_rw_c = BazRegister()
 
         cluster_0 = RegisterMap()
         cluster_0.add_register(reg_rw_a, name="reg_rw_a")
@@ -764,13 +804,20 @@ class RegisterMapTestCase(unittest.TestCase):
             self.map.get_path("foo")
 
     def test_get_path_unknown_register(self):
-        reg_rw_a = Register("rw", {"a": Field(field.RW, 1)})
+        class FooRegister(Register, access="rw"):
+            a: Field(field.RW, 1)
+        reg_rw_a = FooRegister()
         with self.assertRaises(KeyError):
             self.map.get_path(reg_rw_a)
 
     def test_get_register(self):
-        reg_rw_a  = Register("rw", {"a": Field(field.RW, 1)})
-        reg_rw_b  = Register("rw", {"b": Field(field.RW, 1)})
+        class FooRegister(Register, access="rw"):
+            a: Field(field.RW, 1)
+        class BarRegister(Register, access="rw"):
+            b: Field(field.RW, 1)
+
+        reg_rw_a  = FooRegister()
+        reg_rw_b  = BarRegister()
         cluster_0 = RegisterMap()
 
         cluster_0.add_register(reg_rw_a, name="reg_rw_a")
@@ -801,11 +848,15 @@ class RegisterMapTestCase(unittest.TestCase):
 
 
 class BridgeTestCase(unittest.TestCase):
+    class _RWRegister(Register, access="rw"):
+        def __init__(self, width, reset=0):
+            super().__init__({"a": Field(field.RW, width, reset=reset)})
+
     def test_memory_map(self):
-        reg_rw_4  = Register("rw", {"a": Field(field.RW,  4)})
-        reg_rw_8  = Register("rw", {"a": Field(field.RW,  8)})
-        reg_rw_12 = Register("rw", {"a": Field(field.RW, 12)})
-        reg_rw_16 = Register("rw", {"a": Field(field.RW, 16)})
+        reg_rw_4  = self._RWRegister( 4)
+        reg_rw_8  = self._RWRegister( 8)
+        reg_rw_12 = self._RWRegister(12)
+        reg_rw_16 = self._RWRegister(16)
 
         cluster_0 = RegisterMap()
         cluster_0.add_register(reg_rw_12, name="reg_rw_12")
@@ -841,10 +892,10 @@ class BridgeTestCase(unittest.TestCase):
             dut = Bridge("foo", addr_width=16, data_width=8)
 
     def test_register_addr(self):
-        reg_rw_4  = Register("rw", {"a": Field(field.RW,  4)})
-        reg_rw_8  = Register("rw", {"a": Field(field.RW,  8)})
-        reg_rw_12 = Register("rw", {"a": Field(field.RW, 12)})
-        reg_rw_16 = Register("rw", {"a": Field(field.RW, 16)})
+        reg_rw_4  = self._RWRegister( 4)
+        reg_rw_8  = self._RWRegister( 8)
+        reg_rw_12 = self._RWRegister(12)
+        reg_rw_16 = self._RWRegister(16)
 
         cluster_0 = RegisterMap()
         cluster_0.add_register(reg_rw_12, name="reg_rw_12")
@@ -881,10 +932,10 @@ class BridgeTestCase(unittest.TestCase):
         self.assertEqual(registers[3][2], (0x22, 0x24))
 
     def test_register_alignment(self):
-        reg_rw_4  = Register("rw", {"a": Field(field.RW,  4)})
-        reg_rw_8  = Register("rw", {"a": Field(field.RW,  8)})
-        reg_rw_12 = Register("rw", {"a": Field(field.RW, 12)})
-        reg_rw_16 = Register("rw", {"a": Field(field.RW, 16)})
+        reg_rw_4  = self._RWRegister( 4)
+        reg_rw_8  = self._RWRegister( 8)
+        reg_rw_12 = self._RWRegister(12)
+        reg_rw_16 = self._RWRegister(16)
 
         cluster_0 = RegisterMap()
         cluster_0.add_register(reg_rw_12, name="reg_rw_12")
@@ -921,7 +972,7 @@ class BridgeTestCase(unittest.TestCase):
         self.assertEqual(registers[3][2], (16, 18))
 
     def test_register_out_of_bounds(self):
-        reg_rw_24 = Register("rw", {"a": Field(field.RW, 24)})
+        reg_rw_24 = self._RWRegister(24)
         register_map = RegisterMap()
         register_map.add_register(reg_rw_24, name="reg_rw_24")
         with self.assertRaisesRegex(ValueError,
@@ -930,14 +981,14 @@ class BridgeTestCase(unittest.TestCase):
             dut = Bridge(register_map, addr_width=1, data_width=8)
 
     def test_wrong_register_address(self):
-        reg_rw_4 = Register("rw", {"a": Field(field.RW, 4)})
+        reg_rw_4 = self._RWRegister(4)
         register_map = RegisterMap()
         register_map.add_register(reg_rw_4, name="reg_rw_4")
         with self.assertRaisesRegex(TypeError, r"Register address must be a dict, not 'foo'"):
             dut = Bridge(register_map, addr_width=1, data_width=8, register_addr="foo")
 
     def test_wrong_cluster_address(self):
-        reg_rw_4  = Register("rw", {"a": Field(field.RW, 4)})
+        reg_rw_4  = self._RWRegister(4)
         cluster_0 = RegisterMap()
         cluster_0.add_register(reg_rw_4, name="reg_rw_4")
         register_map = RegisterMap()
@@ -948,14 +999,14 @@ class BridgeTestCase(unittest.TestCase):
                          register_addr={"cluster_0": "foo"})
 
     def test_wrong_register_alignment(self):
-        reg_rw_4 = Register("rw", {"a": Field(field.RW, 4)})
+        reg_rw_4 = self._RWRegister(4)
         register_map = RegisterMap()
         register_map.add_register(reg_rw_4, name="reg_rw_4")
         with self.assertRaisesRegex(TypeError, r"Register alignment must be a dict, not 'foo'"):
             dut = Bridge(register_map, addr_width=1, data_width=8, register_alignment="foo")
 
     def test_wrong_cluster_alignment(self):
-        reg_rw_4  = Register("rw", {"a": Field(field.RW, 4)})
+        reg_rw_4  = self._RWRegister(4)
         cluster_0 = RegisterMap()
         cluster_0.add_register(reg_rw_4, name="reg_rw_4")
         register_map = RegisterMap()
@@ -966,9 +1017,9 @@ class BridgeTestCase(unittest.TestCase):
                          register_alignment={"cluster_0": "foo"})
 
     def test_sim(self):
-        reg_rw_4  = Register("rw", {"a": Field(field.RW,  4, reset=0x0)})
-        reg_rw_8  = Register("rw", {"a": Field(field.RW,  8, reset=0x11)})
-        reg_rw_16 = Register("rw", {"a": Field(field.RW, 16, reset=0x3322)})
+        reg_rw_4  = self._RWRegister( 4, reset=0x0)
+        reg_rw_8  = self._RWRegister( 8, reset=0x11)
+        reg_rw_16 = self._RWRegister(16, reset=0x3322)
 
         cluster_0 = RegisterMap()
         cluster_0.add_register(reg_rw_16, name="reg_rw_16")

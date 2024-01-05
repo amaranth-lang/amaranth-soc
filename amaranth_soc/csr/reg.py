@@ -405,12 +405,10 @@ class FieldArray(Sequence):
 
 
 class Register(wiring.Component):
-    """CSR register.
+    """Base class for CSR registers.
 
     Parameters
     ----------
-    access : :class:`Element.Access`
-        Register access mode.
     fields : :class:`dict` or :class:`list`
         Collection of register fields. If ``None`` (default), a :class:`dict` is populated from
         Python :term:`variable annotations <python:variable annotations>`. If ``fields`` is a
@@ -424,8 +422,6 @@ class Register(wiring.Component):
 
     Attributes
     ----------
-    access : :class:`Element.Access`
-        Register access mode.
     fields : :class:`FieldMap` or :class:`FieldArray`
         Collection of register fields.
     f : :class:`FieldMap` or :class:`FieldArray`
@@ -434,21 +430,31 @@ class Register(wiring.Component):
     Raises
     ------
     :exc:`TypeError`
-        If ``access`` is not a member of :class:`Element.Access`.
-    :exc:`TypeError`
         If ``fields`` is not ``None`` or a :class:`dict` or a :class:`list`.
     :exc:`ValueError`
         If ``fields`` is not ``None`` and at least one variable annotation is a :class:`Field`.
     :exc:`ValueError`
-        If ``access`` is not readable and at least one field is readable.
+        If ``element.access`` is not readable and at least one field is readable.
     :exc:`ValueError`
-        If ``access`` is not writable and at least one field is writable.
+        If ``element.access`` is not writable and at least one field is writable.
     """
-    def __init__(self, access="rw", fields=None):
-        if not isinstance(access, Element.Access) and access not in ("r", "w", "rw"):
-            raise TypeError(f"Access mode must be one of \"r\", \"w\", or \"rw\", not {access!r}")
-        self._access = Element.Access(access)
 
+    def __new__(cls, *args, **kwargs):
+        if cls is Register:
+            raise TypeError("csr.Register is a base class and cannot be directly instantiated")
+        return super().__new__(cls, *args, **kwargs)
+
+    def __init_subclass__(cls, *, access, **kwargs):
+        # TODO(py3.9): Remove this. Python 3.8 and below use cls.__name__ in the error message
+        # instead of cls.__qualname__.
+        # cls.__access = Element.Access(access)
+        try:
+            cls.__access = Element.Access(access)
+        except ValueError as e:
+            raise ValueError(f"{access!r} is not a valid Element.Access") from e
+        super().__init_subclass__(**kwargs)
+
+    def __init__(self, fields=None):
         if hasattr(self, "__annotations__"):
             def filter_dict(d):
                 fields = {}
@@ -494,18 +500,14 @@ class Register(wiring.Component):
         width = 0
         for field_path, field in self._fields.flatten():
             width += Shape.cast(field.port.shape).width
-            if field.port.access.readable() and not self._access.readable():
+            if field.port.access.readable() and not self.__access.readable():
                 raise ValueError(f"Field {'__'.join(field_path)} is readable, but register access "
-                                 f"mode is {self._access!r}")
-            if field.port.access.writable() and not self._access.writable():
+                                 f"mode is {self.__access!r}")
+            if field.port.access.writable() and not self.__access.writable():
                 raise ValueError(f"Field {'__'.join(field_path)} is writable, but register access "
-                                 f"mode is {self._access!r}")
+                                 f"mode is {self.__access!r}")
 
-        super().__init__({"element": Out(Element.Signature(width, self._access))})
-
-    @property
-    def access(self):
-        return self._access
+        super().__init__({"element": Out(Element.Signature(width, self.__access))})
 
     @property
     def fields(self):
