@@ -387,6 +387,20 @@ class RegisterTestCase(unittest.TestCase):
         self.assertEqual(reg.element.access, Element.Access.RW)
         self.assertEqual(reg.element.width, 12)
 
+    def test_access_init(self):
+        class FooRegister(Register):
+            a: Field(action.R, unsigned(1))
+
+        reg = FooRegister(access="r")
+        self.assertEqual(reg.element.access, Element.Access.R)
+
+    def test_access_same(self):
+        class FooRegister(Register, access="r"):
+            a: Field(action.R, unsigned(1))
+
+        reg = FooRegister(access="r")
+        self.assertEqual(reg.element.access, Element.Access.R)
+
     def test_fields_dict(self):
         class FooRegister(Register, access=Element.Access.RW):
             pass
@@ -426,15 +440,37 @@ class RegisterTestCase(unittest.TestCase):
         self.assertEqual(reg.element.access, Element.Access.R)
         self.assertEqual(reg.element.width, 2)
 
-    def test_subclass_requirement(self):
-        with self.assertRaisesRegex(TypeError,
-                r"csr\.Register is a base class and cannot be directly instantiated"):
-            Register()
-
     def test_wrong_access(self):
+        with self.assertRaisesRegex(ValueError, r"'foo' is not a valid Element.Access"):
+            Register({"a": Field(action.R, unsigned(1))}, access="foo")
         with self.assertRaisesRegex(ValueError, r"'foo' is not a valid Element.Access"):
             class FooRegister(Register, access="foo"):
                 pass
+
+    def test_no_access(self):
+        with self.assertRaisesRegex(ValueError,
+                r"Element access mode must be provided during class creation or instantiation"):
+            Register({"a": Field(action.R, unsigned(1))})
+
+        class FooRegister(Register, access=None):
+            pass
+        with self.assertRaisesRegex(ValueError,
+                r"Element access mode must be provided during class creation or instantiation"):
+            FooRegister({"a": Field(action.R, unsigned(1))})
+
+        class BarRegister(Register):
+            pass
+        with self.assertRaisesRegex(ValueError,
+                r"Element access mode must be provided during class creation or instantiation"):
+            BarRegister({"a": Field(action.R, unsigned(1))})
+
+    def test_access_conflict(self):
+        class FooRegister(Register, access="r"):
+            a: Field(action.R, unsigned(1))
+        with self.assertRaisesRegex(ValueError,
+                r"Element access mode Access\.RW conflicts with the value provided during class "
+                r"creation: Access\.R"):
+            FooRegister(access="rw")
 
     def test_wrong_fields(self):
         class FooRegister(Register, access="w"):
@@ -465,10 +501,10 @@ class RegisterTestCase(unittest.TestCase):
         class RRegister(Register, access="r"):
             pass
         with self.assertRaisesRegex(ValueError,
-                r"Field a__b is readable, but register access mode is \<Access\.W: 'w'\>"):
+                r"Field a__b is readable, but element access mode is Access\.W"):
             WRegister({"a": {"b": Field(action.RW, unsigned(1))}})
         with self.assertRaisesRegex(ValueError,
-                r"Field a__b is writable, but register access mode is \<Access\.R: 'r'\>"):
+                r"Field a__b is writable, but element access mode is Access\.R"):
             RRegister({"a": {"b": Field(action.RW, unsigned(1))}})
 
     def test_iter(self):
