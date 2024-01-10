@@ -411,15 +411,16 @@ class FieldArray(Sequence):
 
 
 class Register(wiring.Component):
-    """Base class for CSR registers.
+    _doc_template = """
+    A CSR register.
 
     Parameters
     ----------
     fields : :class:`dict` or :class:`list`
-        Collection of register fields. If ``None`` (default), a :class:`dict` is populated from
-        Python :term:`variable annotations <python:variable annotations>`. If ``fields`` is a
-        :class:`dict`, it is cast to a :class:`FieldMap`; if ``fields`` is a :class:`list`, it is
-        cast to a :class`FieldArray`.
+        Collection of register fields. If ``None`` (default), a dict is populated from Python
+        :term:`variable annotations <python:variable annotations>`. ``fields`` is used to populate
+        a :class:`FieldMap` or a :class:`FieldArray`, depending on its type (dict or list).
+    {parameters}
 
     Interface attributes
     --------------------
@@ -445,56 +446,58 @@ class Register(wiring.Component):
         If ``element.access`` is not writable and at least one field is writable.
     """
 
-    def __new__(cls, *args, **kwargs):
-        if cls is Register:
-            raise TypeError("csr.Register is a base class and cannot be directly instantiated")
-        return super().__new__(cls, *args, **kwargs)
+    __doc__ = _doc_template.format(parameters="""
+    access : :class:`Element.Access`
+        Element access mode.
+    """)
 
-    def __init_subclass__(cls, *, access, **kwargs):
-        # TODO(py3.9): Remove this. Python 3.8 and below use cls.__name__ in the error message
-        # instead of cls.__qualname__.
-        # cls.__access = Element.Access(access)
-        try:
-            cls.__access = Element.Access(access)
-        except ValueError as e:
-            raise ValueError(f"{access!r} is not a valid Element.Access") from e
+    def __init_subclass__(cls, *, access=None, **kwargs):
+        if access is not None:
+            # TODO(py3.9): Remove this. Python 3.8 and below use cls.__name__ in the error message
+            # instead of cls.__qualname__.
+            # cls._access = Element.Access(access)
+            try:
+                cls._access = Element.Access(access)
+            except ValueError as e:
+                raise ValueError(f"{access!r} is not a valid Element.Access") from e
+            cls.__doc__ = cls._doc_template.format(parameters="")
         super().__init_subclass__(**kwargs)
 
-    def __init__(self, fields=None):
+    def __init__(self, fields=None, access=None):
         if hasattr(self, "__annotations__"):
-            def filter_dict(d):
-                fields = {}
-                for key, value in d.items():
-                    if isinstance(value, Field):
-                        fields[key] = value
-                    elif isinstance(value, dict):
-                        if sub_fields := filter_dict(value):
-                            fields[key] = sub_fields
-                    elif isinstance(value, list):
-                        if sub_fields := filter_list(value):
-                            fields[key] = sub_fields
-                return fields
+            def filter_fields(src):
+                if isinstance(src, Field):
+                    return src
+                if isinstance(src, (dict, list)):
+                    items = enumerate(src) if isinstance(src, list) else src.items()
+                    dst   = dict()
+                    for key, value in items:
+                        if new_value := filter_fields(value):
+                            dst[key] = new_value
+                    return list(dst.values()) if isinstance(src, list) else dst
 
-            def filter_list(l):
-                fields = []
-                for item in l:
-                    if isinstance(item, Field):
-                        fields.append(item)
-                    elif isinstance(item, dict):
-                        if sub_fields := filter_dict(item):
-                            fields.append(sub_fields)
-                    elif isinstance(item, list):
-                        if sub_fields := filter_list(item):
-                            fields.append(sub_fields)
-                return fields
-
-            annot_fields = filter_dict(self.__annotations__)
+            annot_fields = filter_fields(self.__annotations__)
 
             if fields is None:
                 fields = annot_fields
             elif annot_fields:
                 raise ValueError(f"Field collection {fields} cannot be provided in addition to "
                                  f"field annotations: {', '.join(annot_fields)}")
+
+        if access is not None:
+            # TODO(py3.9): Remove this (see above).
+            try:
+                access = Element.Access(access)
+            except ValueError as e:
+                raise ValueError(f"{access!r} is not a valid Element.Access") from e
+            if hasattr(self, "_access") and access != self._access:
+                raise ValueError(f"Element access mode {access} conflicts with the value "
+                                 f"provided during class creation: {self._access}")
+        elif hasattr(self, "_access"):
+            access = self._access
+        else:
+            raise ValueError("Element access mode must be provided during class creation or "
+                             "instantiation")
 
         if isinstance(fields, dict):
             self._fields = FieldMap(fields)
@@ -506,14 +509,14 @@ class Register(wiring.Component):
         width = 0
         for field_path, field in self._fields.flatten():
             width += Shape.cast(field.port.shape).width
-            if field.port.access.readable() and not self.__access.readable():
-                raise ValueError(f"Field {'__'.join(field_path)} is readable, but register access "
-                                 f"mode is {self.__access!r}")
-            if field.port.access.writable() and not self.__access.writable():
-                raise ValueError(f"Field {'__'.join(field_path)} is writable, but register access "
-                                 f"mode is {self.__access!r}")
+            if field.port.access.readable() and not access.readable():
+                raise ValueError(f"Field {'__'.join(field_path)} is readable, but element access "
+                                 f"mode is {access}")
+            if field.port.access.writable() and not access.writable():
+                raise ValueError(f"Field {'__'.join(field_path)} is writable, but element access "
+                                 f"mode is {access}")
 
-        super().__init__({"element": Out(Element.Signature(width, self.__access))})
+        super().__init__({"element": Out(Element.Signature(width, access))})
 
     @property
     def fields(self):
