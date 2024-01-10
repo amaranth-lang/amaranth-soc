@@ -160,29 +160,33 @@ class FieldPort(wiring.PureInterface):
 class Field:
     """Register field factory.
 
+    Actions
+    -------
+
+    A field action is an Amaranth :class:`~wiring.Component` mediating access to a range of bits
+    within a :class:`Register`. Its signature must contain a :class:`FieldPort.Signature` member
+    named "port", with an :attr:`~wiring.In` direction.
+
     Parameters
     ----------
-    field_cls : :class:`type`
-        The field type instantiated by :meth:`Field.create`. It must be a :class:`wiring.Component`
-        subclass. ``field_cls`` instances must have a signature containing a member named "port",
-        which must be an input :class:`FieldPort.Signature`.
+    action_cls : :class:`type`
+        The type of field action to be instantiated by :meth:`Field.create`.
     *args : :class:`tuple`
-        Positional arguments passed to ``field_cls.__init__``.
+        Positional arguments passed to ``action_cls.__init__``.
     **kwargs : :class:`dict`
-        Keyword arguments passed to ``field_cls.__init__``.
+        Keyword arguments passed to ``action_cls.__init__``.
 
     Raises
     ------
     :exc:`TypeError`
-        If ``field_cls`` is not a subclass of :class:`wiring.Component`.
+        If ``action_cls`` is not a subclass of :class:`wiring.Component`.
     """
-    def __init__(self, field_cls, *args, **kwargs):
-        if not issubclass(field_cls, wiring.Component):
-            raise TypeError(f"{field_cls.__qualname__} must be a subclass of wiring.Component")
-
-        self._field_cls = field_cls
-        self._args      = args
-        self._kwargs    = kwargs
+    def __init__(self, action_cls, *args, **kwargs):
+        if not issubclass(action_cls, wiring.Component):
+            raise TypeError(f"{action_cls.__qualname__} must be a subclass of wiring.Component")
+        self._action_cls = action_cls
+        self._args       = args
+        self._kwargs     = kwargs
 
     def create(self):
         """Create a field instance.
@@ -190,21 +194,21 @@ class Field:
         Returns
         -------
         :class:`object`
-            The instance returned by ``field_cls(*args, **kwargs)``.
+            The instance returned by ``action_cls(*args, **kwargs)``.
 
         Raises
         ------
         :exc:`TypeError`
-            If the instance returned by ``field_cls(*args, **kwargs)`` doesn't have a signature
-            with a member named "port" that is a :class:`FieldPort.Signature` with a
-            :attr:`wiring.In` direction.
+            If the instance returned by ``action_cls(*args, **kwargs)`` doesn't have a signature
+            containing a :class:`FieldPort.Signature` member named "port", with an
+            :attr:`~wiring.In` direction.
         """
-        field = self._field_cls(*self._args, **self._kwargs)
+        field = self._action_cls(*self._args, **self._kwargs)
         if not ("port" in field.signature.members
                 and field.signature.members["port"].flow is In
                 and field.signature.members["port"].is_signature
                 and isinstance(field.signature.members["port"].signature, FieldPort.Signature)):
-            raise TypeError(f"{self._field_cls.__qualname__} instance signature must have a "
+            raise TypeError(f"{self._action_cls.__qualname__} instance signature must have a "
                             f"csr.FieldPort.Signature member named 'port' and oriented as In")
         return field
 
@@ -215,18 +219,18 @@ class FieldMap(Mapping):
     Parameters
     ----------
     fields : :class:`dict` of :class:`str` to (:class:`Field` or :class:`dict` or :class:`list`)
-        Field map members. A :class:`FieldMap` stores an instance of :class:`Field` members (see
-        :meth:`Field.create`). :class:`dict` members are cast to :class:`FieldMap`. :class:`list`
-        members are cast to :class:`FieldArray`.
+        Fields to instantiate. A :class:`FieldMap` contains instances of :class:`Field` actions
+        (returned by :meth:`Field.create`). Nested :class:`FieldMap`s are created from dicts, and
+        :class:`FieldArray`s from lists.
 
     Raises
     ------
     :exc:`TypeError`
-        If ``fields`` is not a non-empty dict.
+        If ``fields`` is not a dict, or is empty.
     :exc:`TypeError`
-        If ``fields`` has a key that is not a non-empty string.
+        If ``fields`` has a key that is not a string, or is empty.
     :exc:`TypeError`
-        If ``fields`` has a value that is neither a :class:`Field` object or a dict or list of
+        If ``fields`` has a value that is neither a :class:`Field` object, a dict or a list of
         :class:`Field` objects.
     """
     def __init__(self, fields):
@@ -235,34 +239,34 @@ class FieldMap(Mapping):
         if not isinstance(fields, dict) or len(fields) == 0:
             raise TypeError(f"Fields must be provided as a non-empty dict, not {fields!r}")
 
-        for key, field in fields.items():
+        for key, value in fields.items():
             if not isinstance(key, str) or not key:
                 raise TypeError(f"Field name must be a non-empty string, not {key!r}")
 
-            if isinstance(field, Field):
-                field_inst = field.create()
-            elif isinstance(field, dict):
-                field_inst = FieldMap(field)
-            elif isinstance(field, list):
-                field_inst = FieldArray(field)
+            if isinstance(value, Field):
+                field = value.create()
+            elif isinstance(value, dict):
+                field = FieldMap(value)
+            elif isinstance(value, list):
+                field = FieldArray(value)
             else:
-                raise TypeError(f"{field!r} must be a Field object or a collection of Field "
-                                f"objects")
+                raise TypeError(f"{value!r} must either be a Field object, a dict or a list of "
+                                f"Field objects")
 
-            self._fields[key] = field_inst
+            self._fields[key] = field
 
     def __getitem__(self, key):
         """Access a field by name or index.
 
         Returns
         --------
-        :class:`Field` or :class:`FieldMap` or :class:`FieldArray`
-            The field associated with ``key``.
+        :class:`wiring.Component` or :class:`FieldMap` or :class:`FieldArray`
+            The field instance associated with ``key``.
 
         Raises
         ------
         :exc:`KeyError`
-            If there is no field associated with ``key``.
+            If there is no field instance associated with ``key``.
         """
         return self._fields[key]
 
@@ -271,13 +275,13 @@ class FieldMap(Mapping):
 
         Returns
         -------
-        :class:`Field` or :class:`FieldMap` or :class:`FieldArray`
-            The field associated with ``name``.
+        :class:`wiring.Component` or :class:`FieldMap` or :class:`FieldArray`
+            The field instance associated with ``name``.
 
         Raises
         ------
         :exc:`AttributeError`
-            If the field map does not have a field associated with ``name``.
+            If the field map does not have a field instance associated with ``name``.
         :exc:`AttributeError`
             If ``name`` is reserved (i.e. starts with an underscore).
         """
@@ -302,7 +306,7 @@ class FieldMap(Mapping):
         yield from self._fields
 
     def __len__(self):
-        """Field map length.
+        """Field map size.
 
         Returns
         -------
@@ -317,9 +321,10 @@ class FieldMap(Mapping):
         Yields
         ------
         iter(:class:`str`)
-            Path of the field. It is prefixed by the name of every nested field collection.
+            Path of the field. It is prefixed by the name of every nested :class:`FieldMap` or
+            :class:`FieldArray`.
         :class:`wiring.Component`
-            Register field.
+            Field instance. See :meth:`Field.create`.
         """
         for key, field in self.items():
             if isinstance(field, (FieldMap, FieldArray)):
@@ -335,16 +340,16 @@ class FieldArray(Sequence):
     Parameters
     ----------
     fields : :class:`list` of (:class:`Field` or :class:`dict` or :class:`list`)
-        Field array members. A :class:`FieldArray` stores an instance of :class:`Field` members
-        (see :meth:`Field.create`). :class:`dict` members are cast to :class:`FieldMap`.
-        :class:`list` members are cast to :class:`FieldArray`.
+        Fields to instantiate. A :class:`FieldArray` contains instances of :class:`Field` actions
+        (returned by :meth:`Field.create`). Nested :class:`FieldArrays`s are created from lists,
+        and :class:`FieldMaps`s from dicts.
 
     Raises
     ------
     :exc:`TypeError`
-        If ``fields`` is not a non-empty list.
+        If ``fields`` is not a list, or is empty.
     :exc:`TypeError`
-        If ``fields`` has an item that is neither a :class:`Field` object or a dict or list of
+        If ``fields`` has an item that is neither a :class:`Field` object, a dict or a list of
         :class:`Field` objects.
     """
     def __init__(self, fields):
@@ -353,36 +358,36 @@ class FieldArray(Sequence):
         if not isinstance(fields, list) or len(fields) == 0:
             raise TypeError(f"Fields must be provided as a non-empty list, not {fields!r}")
 
-        for field in fields:
-            if isinstance(field, Field):
-                field_inst = field.create()
-            elif isinstance(field, dict):
-                field_inst = FieldMap(field)
-            elif isinstance(field, list):
-                field_inst = FieldArray(field)
+        for item in fields:
+            if isinstance(item, Field):
+                field = item.create()
+            elif isinstance(item, dict):
+                field = FieldMap(item)
+            elif isinstance(item, list):
+                field = FieldArray(item)
             else:
-                raise TypeError(f"{field!r} must be a Field object or a collection of Field "
+                raise TypeError(f"{item!r} must be a Field object or a collection of Field "
                                 f"objects")
 
-            self._fields.append(field_inst)
+            self._fields.append(field)
 
     def __getitem__(self, key):
         """Access a field by index.
 
         Returns
         -------
-        :class:`Field` or :class:`FieldMap` or :class:`FieldArray`
-            The field associated with ``key``.
+        :class:`wiring.Component` or :class:`FieldMap` or :class:`FieldArray`
+            The field instance associated with ``key``.
         """
         return self._fields[key]
 
     def __len__(self):
-        """Field array length.
+        """Field array size.
 
         Returns
         -------
         :class:`int`
-            The number of fields in the array.
+            The number of items in the array.
         """
         return len(self._fields)
 
@@ -392,9 +397,10 @@ class FieldArray(Sequence):
         Yields
         ------
         iter(:class:`str`)
-            Path of the field. It is prefixed by the name of every nested field collection.
+            Path of the field. It is prefixed by the name of every nested :class:`FieldMap` or
+            :class:`FieldArray`.
         :class:`wiring.Component`
-            Register field.
+            Field instance. See :meth:`Field.create`.
         """
         for key, field in enumerate(self._fields):
             if isinstance(field, (FieldMap, FieldArray)):
@@ -524,8 +530,8 @@ class Register(wiring.Component):
         ------
         iter(:class:`str`)
             Path of the field. It is prefixed by the name of every nested field collection.
-        :class:`Field`
-            Register field.
+        :class:`wiring.Component`
+            Register field instance.
         """
         yield from self.fields.flatten()
 

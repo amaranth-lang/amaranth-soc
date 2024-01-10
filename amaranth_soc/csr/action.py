@@ -9,7 +9,7 @@ __all__ = ["R", "W", "RW", "RW1C", "RW1S"]
 
 
 class R(wiring.Component):
-    """A read-only field.
+    """A read-only field action.
 
     Parameters
     ----------
@@ -36,7 +36,7 @@ class R(wiring.Component):
 
 
 class W(wiring.Component):
-    """A write-only field.
+    """A write-only field action.
 
     Parameters
     ----------
@@ -63,7 +63,7 @@ class W(wiring.Component):
 
 
 class RW(wiring.Component):
-    """A read/write field with built-in storage.
+    """A read/write field action, with built-in storage.
 
     Storage is updated with the value of ``port.w_data`` one clock cycle after ``port.w_stb`` is
     asserted.
@@ -109,7 +109,7 @@ class RW(wiring.Component):
 
 
 class RW1C(wiring.Component):
-    """A read/write-one-to-clear field with built-in storage.
+    """A read/write-one-to-clear field action, with built-in storage.
 
     Storage bits are:
       * cleared by high bits in ``port.w_data``, one clock cycle after ``port.w_stb`` is asserted;
@@ -164,7 +164,7 @@ class RW1C(wiring.Component):
 
 
 class RW1S(wiring.Component):
-    """A read/write-one-to-set field with built-in storage.
+    """A read/write-one-to-set field action, with built-in storage.
 
     Storage bits are:
       * set by high bits in ``port.w_data``, one clock cycle after ``port.w_stb`` is asserted;
