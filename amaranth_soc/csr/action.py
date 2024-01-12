@@ -5,7 +5,7 @@ from amaranth.lib.wiring import In, Out
 from .reg import FieldPort
 
 
-__all__ = ["R", "W", "RW", "RW1C", "RW1S"]
+__all__ = ["R", "W", "RW", "RW1C", "RW1S", "ResRAW0", "ResRAWL", "ResR0WA", "ResR0W0"]
 
 
 class R(wiring.Component):
@@ -216,3 +216,48 @@ class RW1S(wiring.Component):
         ]
 
         return m
+
+
+class _Reserved(wiring.Component):
+    _doc_template = """
+    {description}
+
+    Parameters
+    ----------
+    shape : :ref:`shape-castable <lang-shapecasting>`
+        Shape of the field.
+
+    Interface attributes
+    --------------------
+    port : :class:`FieldPort`
+        Field port.
+    """
+    def __init__(self, shape):
+        super().__init__({"port": In(FieldPort.Signature(shape, access="nc"))})
+
+    def elaborate(self, platform):
+        return Module()
+
+
+class ResRAW0(_Reserved):
+    __doc__ = _Reserved._doc_template.format(description="""
+    A reserved read-any/write-zero field action.
+    """)
+
+
+class ResRAWL(_Reserved):
+    __doc__ = _Reserved._doc_template.format(description="""
+    A reserved read-any/write-last field action.
+    """)
+
+
+class ResR0WA(_Reserved):
+    __doc__ = _Reserved._doc_template.format(description="""
+    A reserved read-zero/write-any field action.
+    """)
+
+
+class ResR0W0(_Reserved):
+    __doc__ = _Reserved._doc_template.format(description="""
+    A reserved read-zero/write-zero field action.
+    """)

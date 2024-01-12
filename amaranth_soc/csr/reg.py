@@ -16,6 +16,7 @@ class FieldPort(wiring.PureInterface):
         R  = "r"
         W  = "w"
         RW = "rw"
+        NC = "nc"
 
         def readable(self):
             return self == self.R or self == self.RW

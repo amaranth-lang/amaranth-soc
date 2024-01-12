@@ -69,6 +69,17 @@ class FieldPortSignatureTestCase(unittest.TestCase):
             "w_stb":  Out(1),
         }).members)
 
+    def test_shape_8_nc(self):
+        sig = FieldPort.Signature(8, "nc")
+        self.assertEqual(sig.shape, unsigned(8))
+        self.assertEqual(sig.access, FieldPort.Access.NC)
+        self.assertEqual(sig.members, wiring.Signature({
+            "r_data": In(unsigned(8)),
+            "r_stb":  Out(1),
+            "w_data": Out(unsigned(8)),
+            "w_stb":  Out(1),
+        }).members)
+
     def test_create(self):
         sig  = FieldPort.Signature(unsigned(8), "rw")
         port = sig.create(path=("foo", "bar"))
