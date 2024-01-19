@@ -1,14 +1,13 @@
 from amaranth import *
-from amaranth.lib import wiring
 from amaranth.lib.wiring import In, Out
 
-from .reg import FieldPort
+from .reg import FieldAction
 
 
 __all__ = ["R", "W", "RW", "RW1C", "RW1S", "ResRAW0", "ResRAWL", "ResR0WA", "ResR0W0"]
 
 
-class R(wiring.Component):
+class R(FieldAction):
     """A read-only field action.
 
     Parameters
@@ -24,8 +23,7 @@ class R(wiring.Component):
         Read data. Drives the :attr:`~FieldPort.r_data` signal of ``port``.
     """
     def __init__(self, shape):
-        super().__init__({
-            "port":   In(FieldPort.Signature(shape, access="r")),
+        super().__init__(shape, access="r", members={
             "r_data": In(shape),
         })
 
@@ -35,7 +33,7 @@ class R(wiring.Component):
         return m
 
 
-class W(wiring.Component):
+class W(FieldAction):
     """A write-only field action.
 
     Parameters
@@ -51,8 +49,7 @@ class W(wiring.Component):
         Write data. Driven by the :attr:`~FieldPort.w_data` signal of ``port``.
     """
     def __init__(self, shape):
-        super().__init__({
-            "port":   In(FieldPort.Signature(shape, access="w")),
+        super().__init__(shape, access="w", members={
             "w_data": Out(shape),
         })
 
@@ -62,7 +59,7 @@ class W(wiring.Component):
         return m
 
 
-class RW(wiring.Component):
+class RW(FieldAction):
     """A read/write field action, with built-in storage.
 
     Storage is updated with the value of ``port.w_data`` one clock cycle after ``port.w_stb`` is
@@ -83,8 +80,7 @@ class RW(wiring.Component):
         Storage output.
     """
     def __init__(self, shape, *, reset=0):
-        super().__init__({
-            "port": In(FieldPort.Signature(shape, access="rw")),
+        super().__init__(shape, access="rw", members={
             "data": Out(shape),
         })
         self._storage = Signal(shape, reset=reset)
@@ -108,7 +104,7 @@ class RW(wiring.Component):
         return m
 
 
-class RW1C(wiring.Component):
+class RW1C(FieldAction):
     """A read/write-one-to-clear field action, with built-in storage.
 
     Storage bits are:
@@ -134,8 +130,7 @@ class RW1C(wiring.Component):
         Mask to set storage bits.
     """
     def __init__(self, shape, *, reset=0):
-        super().__init__({
-            "port": In(FieldPort.Signature(shape, access="rw")),
+        super().__init__(shape, access="rw", members={
             "data": Out(shape),
             "set":  In(shape),
         })
@@ -163,7 +158,7 @@ class RW1C(wiring.Component):
         return m
 
 
-class RW1S(wiring.Component):
+class RW1S(FieldAction):
     """A read/write-one-to-set field action, with built-in storage.
 
     Storage bits are:
@@ -189,8 +184,7 @@ class RW1S(wiring.Component):
         Mask to clear storage bits.
     """
     def __init__(self, shape, *, reset=0):
-        super().__init__({
-            "port":  In(FieldPort.Signature(shape, access="rw")),
+        super().__init__(shape, access="rw", members={
             "clear": In(shape),
             "data":  Out(shape),
         })
@@ -218,7 +212,7 @@ class RW1S(wiring.Component):
         return m
 
 
-class _Reserved(wiring.Component):
+class _Reserved(FieldAction):
     _doc_template = """
     {description}
 
@@ -233,7 +227,7 @@ class _Reserved(wiring.Component):
         Field port.
     """
     def __init__(self, shape):
-        super().__init__({"port": In(FieldPort.Signature(shape, access="nc"))})
+        super().__init__(shape, access="nc")
 
     def elaborate(self, platform):
         return Module()

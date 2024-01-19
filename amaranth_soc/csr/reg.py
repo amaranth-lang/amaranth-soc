@@ -7,7 +7,11 @@ from ..memory import MemoryMap
 from .bus import Element, Signature, Multiplexer
 
 
-__all__ = ["FieldPort", "Field", "FieldMap", "FieldArray", "Register", "RegisterMap", "Bridge"]
+__all__ = [
+    "FieldPort", "Field", "FieldAction", "FieldActionMap", "FieldActionArray",
+    "Register", "RegisterMap",
+    "Bridge",
+]
 
 
 class FieldPort(wiring.PureInterface):
@@ -159,18 +163,11 @@ class FieldPort(wiring.PureInterface):
 
 
 class Field:
-    """Register field factory.
-
-    Actions
-    -------
-
-    A field action is an Amaranth :class:`~wiring.Component` mediating access to a range of bits
-    within a :class:`Register`. Its signature must contain a :class:`FieldPort.Signature` member
-    named "port", with an :attr:`~wiring.In` direction.
+    """Description of a CSR register field.
 
     Parameters
     ----------
-    action_cls : :class:`type`
+    action_cls : :class:`FieldAction` subclass
         The type of field action to be instantiated by :meth:`Field.create`.
     *args : :class:`tuple`
         Positional arguments passed to ``action_cls.__init__``.
@@ -180,49 +177,73 @@ class Field:
     Raises
     ------
     :exc:`TypeError`
-        If ``action_cls`` is not a subclass of :class:`wiring.Component`.
+        If ``action_cls`` is not a subclass of :class:`FieldAction`.
     """
     def __init__(self, action_cls, *args, **kwargs):
-        if not issubclass(action_cls, wiring.Component):
-            raise TypeError(f"{action_cls.__qualname__} must be a subclass of wiring.Component")
+        if not issubclass(action_cls, FieldAction):
+            raise TypeError(f"{action_cls.__qualname__} must be a subclass of csr.FieldAction")
         self._action_cls = action_cls
         self._args       = args
         self._kwargs     = kwargs
 
     def create(self):
-        """Create a field instance.
+        """Instantiate a field action.
 
         Returns
         -------
-        :class:`object`
-            The instance returned by ``action_cls(*args, **kwargs)``.
-
-        Raises
-        ------
-        :exc:`TypeError`
-            If the instance returned by ``action_cls(*args, **kwargs)`` doesn't have a signature
-            containing a :class:`FieldPort.Signature` member named "port", with an
-            :attr:`~wiring.In` direction.
+        :class:`FieldAction`
+            The object returned by ``action_cls(*args, **kwargs)``.
         """
-        field = self._action_cls(*self._args, **self._kwargs)
-        if not ("port" in field.signature.members
-                and field.signature.members["port"].flow is In
-                and field.signature.members["port"].is_signature
-                and isinstance(field.signature.members["port"].signature, FieldPort.Signature)):
-            raise TypeError(f"{self._action_cls.__qualname__} instance signature must have a "
-                            f"csr.FieldPort.Signature member named 'port' and oriented as In")
-        return field
+        return self._action_cls(*self._args, **self._kwargs)
 
 
-class FieldMap(Mapping):
-    """A mapping of CSR register fields.
+class FieldAction(wiring.Component):
+    """CSR register field action.
+
+    A :class:`~wiring.Component` mediating access between a CSR bus and a range of bits within a
+    :class:`Register`.
+
+    Parameters
+    ----------
+    shape : :ref:`shape-castable <lang-shapecasting>`
+        Shape of the field. See :class:`FieldPort.Signature`.
+    access : :class:`FieldPort.Access`
+        Field access mode. See :class:`FieldPort.Signature`.
+    members : iterable of (:class:`str`, :class:`wiring.Member`) key/value pairs
+        Signature members. Optional, defaults to ``()``. A :class:`FieldPort.Signature` member
+        named 'port' and oriented as input is always present in addition to these members.
+
+    Interface attributes
+    --------------------
+    port : :class:`FieldPort`
+        Field port.
+
+    Raises
+    ------
+    :exc:`ValueError`
+        If the key 'port' is used in ``members``.
+    """
+    def __init__(self, shape, access, members=()):
+        members = dict(members)
+        if "port" in members:
+            raise ValueError(f"'port' is a reserved name, which must not be assigned to "
+                             f"member {members['port']!r}")
+        super().__init__({
+            "port": In(FieldPort.Signature(shape, access)),
+            **members,
+        })
+
+
+class FieldActionMap(Mapping):
+    """A mapping of field actions.
 
     Parameters
     ----------
     fields : :class:`dict` of :class:`str` to (:class:`Field` or :class:`dict` or :class:`list`)
-        Fields to instantiate. A :class:`FieldMap` contains instances of :class:`Field` actions
-        (returned by :meth:`Field.create`). Nested :class:`FieldMap`s are created from dicts, and
-        :class:`FieldArray`s from lists.
+        Register fields. Fields are instantiated according to their type:
+          - a :class:`Field` is instantiated as a :class:`FieldAction` (see :meth:`Field.create`);
+          - a :class:`dict` is instantiated as a :class:`FieldActionMap`;
+          - a :class:`list` is instantiated as a :class:`FieldArrayMap`.
 
     Raises
     ------
@@ -247,9 +268,9 @@ class FieldMap(Mapping):
             if isinstance(value, Field):
                 field = value.create()
             elif isinstance(value, dict):
-                field = FieldMap(value)
+                field = FieldActionMap(value)
             elif isinstance(value, list):
-                field = FieldArray(value)
+                field = FieldActionArray(value)
             else:
                 raise TypeError(f"{value!r} must either be a Field object, a dict or a list of "
                                 f"Field objects")
@@ -261,7 +282,7 @@ class FieldMap(Mapping):
 
         Returns
         --------
-        :class:`wiring.Component` or :class:`FieldMap` or :class:`FieldArray`
+        :class:`FieldAction` or :class:`FieldActionMap` or :class:`FieldActionArray`
             The field instance associated with ``key``.
 
         Raises
@@ -276,7 +297,7 @@ class FieldMap(Mapping):
 
         Returns
         -------
-        :class:`wiring.Component` or :class:`FieldMap` or :class:`FieldArray`
+        :class:`FieldAction` or :class:`FieldActionMap` or :class:`FieldActionArray`
             The field instance associated with ``name``.
 
         Raises
@@ -322,28 +343,29 @@ class FieldMap(Mapping):
         Yields
         ------
         iter(:class:`str`)
-            Path of the field. It is prefixed by the name of every nested :class:`FieldMap` or
-            :class:`FieldArray`.
-        :class:`wiring.Component`
-            Field instance. See :meth:`Field.create`.
+            Path of the field. It is prefixed by the name of every nested :class:`FieldActionMap`
+            or :class:`FieldActionArray`.
+        :class:`FieldAction`
+            Field instance.
         """
         for key, field in self.items():
-            if isinstance(field, (FieldMap, FieldArray)):
+            if isinstance(field, (FieldActionMap, FieldActionArray)):
                 for sub_path, sub_field in field.flatten():
                     yield (key, *sub_path), sub_field
             else:
                 yield (key,), field
 
 
-class FieldArray(Sequence):
+class FieldActionArray(Sequence):
     """An array of CSR register fields.
 
     Parameters
     ----------
     fields : :class:`list` of (:class:`Field` or :class:`dict` or :class:`list`)
-        Fields to instantiate. A :class:`FieldArray` contains instances of :class:`Field` actions
-        (returned by :meth:`Field.create`). Nested :class:`FieldArrays`s are created from lists,
-        and :class:`FieldMaps`s from dicts.
+        Register fields. Fields are instantiated according to their type:
+          - a :class:`Field` is instantiated as a :class:`FieldAction` (see :meth:`Field.create`);
+          - a :class:`dict` is instantiated as a :class:`FieldActionMap`;
+          - a :class:`list` is instantiated as a :class:`FieldArrayMap`.
 
     Raises
     ------
@@ -363,9 +385,9 @@ class FieldArray(Sequence):
             if isinstance(item, Field):
                 field = item.create()
             elif isinstance(item, dict):
-                field = FieldMap(item)
+                field = FieldActionMap(item)
             elif isinstance(item, list):
-                field = FieldArray(item)
+                field = FieldActionArray(item)
             else:
                 raise TypeError(f"{item!r} must be a Field object or a collection of Field "
                                 f"objects")
@@ -377,7 +399,7 @@ class FieldArray(Sequence):
 
         Returns
         -------
-        :class:`wiring.Component` or :class:`FieldMap` or :class:`FieldArray`
+        :class:`FieldAction` or :class:`FieldActionMap` or :class:`FieldActionArray`
             The field instance associated with ``key``.
         """
         return self._fields[key]
@@ -398,13 +420,13 @@ class FieldArray(Sequence):
         Yields
         ------
         iter(:class:`str`)
-            Path of the field. It is prefixed by the name of every nested :class:`FieldMap` or
-            :class:`FieldArray`.
-        :class:`wiring.Component`
-            Field instance. See :meth:`Field.create`.
+            Path of the field. It is prefixed by the name of every nested :class:`FieldActionMap`
+            or :class:`FieldActionArray`.
+        :class:`FieldAction`
+            Field instance.
         """
         for key, field in enumerate(self._fields):
-            if isinstance(field, (FieldMap, FieldArray)):
+            if isinstance(field, (FieldActionMap, FieldActionArray)):
                 for sub_path, sub_field in field.flatten():
                     yield (key, *sub_path), sub_field
             else:
@@ -420,7 +442,8 @@ class Register(wiring.Component):
     fields : :class:`dict` or :class:`list`
         Collection of register fields. If ``None`` (default), a dict is populated from Python
         :term:`variable annotations <python:variable annotations>`. ``fields`` is used to populate
-        a :class:`FieldMap` or a :class:`FieldArray`, depending on its type (dict or list).
+        a :class:`FieldActionMap` or a :class:`FieldActionArray`, depending on its type (dict or
+        list).
     {parameters}
 
     Interface attributes
@@ -430,15 +453,15 @@ class Register(wiring.Component):
 
     Attributes
     ----------
-    fields : :class:`FieldMap` or :class:`FieldArray`
-        Collection of register fields.
-    f : :class:`FieldMap` or :class:`FieldArray`
+    fields : :class:`FieldActionMap` or :class:`FieldActionArray`
+        Collection of field instances.
+    f : :class:`FieldActionMap` or :class:`FieldActionArray`
         Shorthand for :attr:`Register.fields`.
 
     Raises
     ------
     :exc:`TypeError`
-        If ``fields`` is not ``None`` or a :class:`dict` or a :class:`list`.
+        If ``fields`` is neither ``None``, a :class:`dict` or a :class:`list`.
     :exc:`ValueError`
         If ``fields`` is not ``None`` and at least one variable annotation is a :class:`Field`.
     :exc:`ValueError`
@@ -501,9 +524,9 @@ class Register(wiring.Component):
                              "instantiation")
 
         if isinstance(fields, dict):
-            self._fields = FieldMap(fields)
+            self._fields = FieldActionMap(fields)
         elif isinstance(fields, list):
-            self._fields = FieldArray(fields)
+            self._fields = FieldActionArray(fields)
         else:
             raise TypeError(f"Field collection must be a dict or a list, not {fields!r}")
 
@@ -533,9 +556,10 @@ class Register(wiring.Component):
         Yields
         ------
         iter(:class:`str`)
-            Path of the field. It is prefixed by the name of every nested field collection.
-        :class:`wiring.Component`
-            Register field instance.
+            Path of the field. It is prefixed by the name of every nested :class:`FieldActionMap`
+            or :class:`FieldActionArray`.
+        :class:`FieldAction`
+            Field instance.
         """
         yield from self.fields.flatten()
 
@@ -836,26 +860,30 @@ class Bridge(wiring.Component):
         memory_map = MemoryMap(addr_width=addr_width, data_width=data_width, alignment=alignment,
                                name=name)
 
-        def get_register_param(path, root, kind):
-            node = root
-            prev = []
+        def traverse_path(path, obj):
+            progress = []
             for name in path:
-                if node is None:
+                if not isinstance(obj, dict):
                     break
-                if not isinstance(node, dict):
-                    raise TypeError(f"Register {kind}{'' if not prev else f' {tuple(prev)}'} must "
-                                    f"be a dict, not {node!r}")
-                prev.append(name)
-                node = node.get(name, None)
-            return node
+                progress.append(name)
+                obj = obj.get(name, None)
+            return obj, tuple(progress)
 
         register_map.freeze()
 
         for register, path in register_map.flatten():
+            elem_addr, assigned = traverse_path(path, register_addr)
+            if assigned != path and elem_addr is not None:
+                raise TypeError(f"Register address assignment for the cluster {tuple(assigned)} "
+                                f"must be a dict or None, not {elem_addr!r}")
+
+            elem_alignment, assigned = traverse_path(path, register_alignment)
+            if assigned != path and elem_alignment is not None:
+                raise TypeError(f"Register alignment assignment for the cluster {tuple(assigned)} "
+                                f"must be a dict or None, not {elem_alignment!r}")
+
             elem_size = (register.element.width + data_width - 1) // data_width
             elem_name = "__".join(path)
-            elem_addr = get_register_param(path, register_addr, "address")
-            elem_alignment = get_register_param(path, register_alignment, "alignment")
             memory_map.add_resource(register.element, name=elem_name, size=elem_size,
                                     addr=elem_addr, alignment=elem_alignment)
 
