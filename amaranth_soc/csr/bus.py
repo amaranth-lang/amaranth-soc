@@ -2,7 +2,7 @@ from collections import defaultdict
 from amaranth import *
 from amaranth.lib import enum, wiring
 from amaranth.lib.wiring import In, Out, flipped
-from amaranth.utils import log2_int
+from amaranth.utils import ceil_log2
 
 from ..memory import MemoryMap
 
@@ -384,13 +384,13 @@ class Multiplexer(wiring.Component):
             Arguments
             ---------
             elem_range : :class:`range`
-                Address range of a CSR :class:`Element`. It uses ``2 ** ceil(log2(elem_range.stop -
-                elem_range.start))`` chunks of the shadow register. If this amount is greater than
+                Address range of a CSR :class:`Element`. It uses ``2 ** ceil_log2(elem_range.stop -
+                elem_range.start)`` chunks of the shadow register. If this amount is greater than
                 :attr:`~Multiplexer._Shadow.size`, it replaces the latter.
             """
             assert isinstance(elem_range, range)
             self._ranges.add(elem_range)
-            elem_size  = 2 ** log2_int(elem_range.stop - elem_range.start, need_pow2=False)
+            elem_size  = 2 ** ceil_log2(elem_range.stop - elem_range.start)
             self._size = max(self._size, elem_size)
 
         def decode_address(self, addr, elem_range):
@@ -415,7 +415,7 @@ class Multiplexer(wiring.Component):
                     |0001|11|00|
                     +----+--+--+
                             │  └─ 0
-                            └──── ceil(log2(elem_range.stop - elem_range.start))
+                            └──── ceil_log2(elem_range.stop - elem_range.start)
 
                 The upper bits of the offset would be ``0b10``, extracted from ``elem_range.start``:
 
@@ -425,13 +425,13 @@ class Multiplexer(wiring.Component):
                     |0001|10|11|
                     +----+--+--+
                          │  │
-                         │  └──── ceil(log2(elem_range.stop - elem_range.start))
+                         │  └──── ceil_log2(elem_range.stop - elem_range.start)
                          └─────── log2(self.size)
 
                 The decoded offset would therefore be ``8`` (i.e. ``0b1000``).
             """
             assert elem_range in self._ranges and addr in elem_range
-            elem_size = 2 ** log2_int(elem_range.stop - elem_range.start, need_pow2=False)
+            elem_size = 2 ** ceil_log2(elem_range.stop - elem_range.start)
             self_mask = self.size - 1
             elem_mask = elem_size - 1
             return elem_range.start & self_mask & ~elem_mask | addr & elem_mask
@@ -446,7 +446,7 @@ class Multiplexer(wiring.Component):
                 located at ``offset``. See :meth:`~Multiplexer._Shadow.decode_address` for details.
             """
             assert elem_range in self._ranges and isinstance(offset, int)
-            elem_size = 2 ** log2_int(elem_range.stop - elem_range.start, need_pow2=False)
+            elem_size = 2 ** ceil_log2(elem_range.stop - elem_range.start)
             return elem_range.start + ((offset - elem_range.start) % elem_size)
 
         def prepare(self):

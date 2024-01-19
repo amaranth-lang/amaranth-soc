@@ -4,7 +4,7 @@ from math import ceil
 from amaranth import *
 from amaranth.lib import wiring
 from amaranth.lib.wiring import In, Out, flipped, connect
-from amaranth.utils import log2_int
+from amaranth.utils import ceil_log2
 
 from . import Element, Multiplexer
 from .. import event
@@ -58,7 +58,7 @@ class EventMonitor(wiring.Component):
         self._pending = Element(event_map.size, "rw")
 
         elem_size  = ceil(event_map.size / data_width)
-        addr_width = 1 + max(log2_int(elem_size, need_pow2=False), alignment)
+        addr_width = 1 + max(ceil_log2(elem_size), alignment)
         self._mux  = Multiplexer(addr_width=addr_width, data_width=data_width,
                                  alignment=alignment)
         self._mux.add(self._enable,  name="enable")

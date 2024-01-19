@@ -1,7 +1,7 @@
 from amaranth import *
 from amaranth.lib import wiring
 from amaranth.lib.wiring import In, flipped
-from amaranth.utils import log2_int
+from amaranth.utils import exact_log2
 
 from . import Interface
 from .. import wishbone
@@ -51,9 +51,10 @@ class WishboneCSRBridge(wiring.Component):
         if data_width is None:
             data_width = csr_bus.data_width
 
-        wb_sig = wishbone.Signature(addr_width=max(0, csr_bus.addr_width -
-                                                      log2_int(data_width // csr_bus.data_width)),
-                                    data_width=data_width, granularity=csr_bus.data_width)
+        ratio  = data_width // csr_bus.data_width
+        wb_sig = wishbone.Signature(addr_width=max(0, csr_bus.addr_width - exact_log2(ratio)),
+                                    data_width=data_width,
+                                    granularity=csr_bus.data_width)
 
         super().__init__({"wb_bus": In(wb_sig)})
 
@@ -76,7 +77,7 @@ class WishboneCSRBridge(wiring.Component):
         m = Module()
 
         cycle = Signal(range(len(wb_bus.sel) + 1))
-        m.d.comb += csr_bus.addr.eq(Cat(cycle[:log2_int(len(wb_bus.sel))], wb_bus.adr))
+        m.d.comb += csr_bus.addr.eq(Cat(cycle[:exact_log2(len(wb_bus.sel))], wb_bus.adr))
 
         with m.If(wb_bus.cyc & wb_bus.stb):
             with m.Switch(cycle):

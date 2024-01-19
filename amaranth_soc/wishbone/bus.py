@@ -1,7 +1,7 @@
 from amaranth import *
 from amaranth.lib import enum, wiring
 from amaranth.lib.wiring import In, Out, flipped
-from amaranth.utils import log2_int
+from amaranth.utils import exact_log2
 
 from ..memory import MemoryMap
 
@@ -273,7 +273,7 @@ class Interface(wiring.PureInterface):
         if memory_map.data_width != self.granularity:
             raise ValueError(f"Memory map has data width {memory_map.data_width}, which is "
                              f"not the same as bus interface granularity {self.granularity}")
-        granularity_bits = log2_int(self.data_width // self.granularity)
+        granularity_bits = exact_log2(self.data_width // self.granularity)
         effective_addr_width = self.addr_width + granularity_bits
         if memory_map.addr_width != max(1, effective_addr_width):
             raise ValueError(f"Memory map has address width {memory_map.addr_width}, which is "
@@ -318,7 +318,7 @@ class Decoder(wiring.Component):
         super().__init__({"bus": In(Signature(addr_width=addr_width, data_width=data_width,
                                               granularity=granularity, features=features))})
         self.bus.memory_map = MemoryMap(
-                addr_width=max(1, addr_width + log2_int(data_width // granularity)),
+                addr_width=max(1, addr_width + exact_log2(data_width // granularity)),
                 data_width=granularity, alignment=alignment, name=name)
         self._subs = dict()
 
@@ -382,7 +382,7 @@ class Decoder(wiring.Component):
                 sub_bus = self._subs[sub_map]
 
                 m.d.comb += [
-                    sub_bus.adr.eq(self.bus.adr << log2_int(sub_ratio)),
+                    sub_bus.adr.eq(self.bus.adr << exact_log2(sub_ratio)),
                     sub_bus.dat_w.eq(self.bus.dat_w),
                     sub_bus.sel.eq(Cat(sel.replicate(sub_ratio) for sel in self.bus.sel)),
                     sub_bus.we.eq(self.bus.we),
@@ -395,7 +395,7 @@ class Decoder(wiring.Component):
                 if hasattr(sub_bus, "bte"):
                     m.d.comb += sub_bus.bte.eq(getattr(self.bus, "bte", BurstTypeExt.LINEAR))
 
-                granularity_bits = log2_int(self.bus.data_width // self.bus.granularity)
+                granularity_bits = exact_log2(self.bus.data_width // self.bus.granularity)
                 with m.Case(sub_pat[:-granularity_bits if granularity_bits > 0 else None]):
                     m.d.comb += [
                         sub_bus.cyc.eq(self.bus.cyc),
