@@ -135,14 +135,13 @@ class FieldTestCase(unittest.TestCase):
         class Foo:
             pass
         with self.assertRaisesRegex(TypeError,
-                r"Foo must be a subclass of wiring.Component"):
+                r"Foo must be a subclass of csr\.FieldAction"):
             Field(Foo)
 
     def test_create(self):
-        class MockAction(wiring.Component):
+        class MockAction(FieldAction):
             def __init__(self, shape, *, reset):
-                super().__init__({
-                    "port": In(FieldPort.Signature(shape, "rw")),
+                super().__init__(shape, access="rw", members={
                     "data": Out(shape)
                 })
                 self.reset = reset
@@ -155,8 +154,9 @@ class FieldTestCase(unittest.TestCase):
         self.assertEqual(field_u8.reset, 1)
 
     def test_create_multiple(self):
-        class MockAction(wiring.Component):
-            port: In(FieldPort.Signature(unsigned(8), "rw"))
+        class MockAction(FieldAction):
+            def __init__(self):
+                super().__init__(unsigned(8), access="rw")
 
             def elaborate(self, platform):
                 return Module()
@@ -165,62 +165,24 @@ class FieldTestCase(unittest.TestCase):
         field_2 = Field(MockAction).create()
         self.assertIsNot(field_1, field_2)
 
-    def test_wrong_port_name(self):
-        class MockAction(wiring.Component):
-            foo: In(FieldPort.Signature(unsigned(1), access="rw"))
 
-            def elaborate(self, platform):
-                return Module()
-
-        field = Field(MockAction)
-        with self.assertRaisesRegex(TypeError,
-                r"MockAction instance signature must have a csr\.FieldPort\.Signature member "
-                r"named 'port' and oriented as In"):
-            field.create()
-
-    def test_wrong_port_direction(self):
-        class MockAction(wiring.Component):
-            port: Out(FieldPort.Signature(unsigned(1), access="rw"))
-
-            def elaborate(self, platform):
-                return Module()
-
-        field = Field(MockAction)
-        with self.assertRaisesRegex(TypeError,
-                r"MockAction instance signature must have a csr\.FieldPort\.Signature member "
-                r"named 'port' and oriented as In"):
-            field.create()
-
-    def test_wrong_port_type_port(self):
-        class MockAction(wiring.Component):
-            port: In(unsigned(1))
-
-            def elaborate(self, platform):
-                return Module()
-
-        field = Field(MockAction)
-        with self.assertRaisesRegex(TypeError,
-                r"MockAction instance signature must have a csr\.FieldPort\.Signature member "
-                r"named 'port' and oriented as In"):
-            field.create()
-
-    def test_wrong_port_type_signature(self):
-        class MockAction(wiring.Component):
-            port: In(wiring.Signature({"foo": Out(unsigned(1))}))
-
-            def elaborate(self, platform):
-                return Module()
-
-        field = Field(MockAction)
-        with self.assertRaisesRegex(TypeError,
-                r"MockAction instance signature must have a csr\.FieldPort\.Signature member "
-                r"named 'port' and oriented as In"):
-            field.create()
-
-
-class FieldMapTestCase(unittest.TestCase):
+class FieldActionTestCase(unittest.TestCase):
     def test_simple(self):
-        field_map = FieldMap({
+        field = FieldAction(unsigned(8), access="rw", members={"foo": Out(unsigned(1))})
+        self.assertEqual(field.signature, wiring.Signature({
+            "port": In(FieldPort.Signature(unsigned(8), "rw")),
+            "foo": Out(unsigned(1))
+        }))
+
+    def test_port_name(self):
+        with self.assertRaisesRegex(ValueError,
+                r"'port' is a reserved name, which must not be assigned to member "
+                r"Out\(unsigned\(1\)\)"):
+            FieldAction(unsigned(8), access="rw", members={"port": Out(unsigned(1))})
+
+class FieldActionMapTestCase(unittest.TestCase):
+    def test_simple(self):
+        field_map = FieldActionMap({
             "a": Field(action.R, unsigned(1)),
             "b": Field(action.RW, signed(3)),
             "c": {"d": Field(action.RW, unsigned(4))},
@@ -241,7 +203,7 @@ class FieldMapTestCase(unittest.TestCase):
         self.assertEqual(len(field_map), 3)
 
     def test_iter(self):
-        field_map = FieldMap({
+        field_map = FieldActionMap({
             "a": Field(action.R, unsigned(1)),
             "b": Field(action.RW, signed(3))
         })
@@ -251,7 +213,7 @@ class FieldMapTestCase(unittest.TestCase):
         ])
 
     def test_flatten(self):
-        field_map = FieldMap({
+        field_map = FieldActionMap({
             "a": Field(action.R, unsigned(1)),
             "b": Field(action.RW, signed(3)),
             "c": {"d": Field(action.RW, unsigned(4))},
@@ -265,56 +227,56 @@ class FieldMapTestCase(unittest.TestCase):
     def test_wrong_dict(self):
         with self.assertRaisesRegex(TypeError,
                 r"Fields must be provided as a non-empty dict, not 'foo'"):
-            FieldMap("foo")
+            FieldActionMap("foo")
 
     def test_wrong_field_key(self):
         with self.assertRaisesRegex(TypeError,
                 r"Field name must be a non-empty string, not 1"):
-            FieldMap({1: Field(action.RW, unsigned(1))})
+            FieldActionMap({1: Field(action.RW, unsigned(1))})
         with self.assertRaisesRegex(TypeError,
                 r"Field name must be a non-empty string, not ''"):
-            FieldMap({"": Field(action.RW, unsigned(1))})
+            FieldActionMap({"": Field(action.RW, unsigned(1))})
 
     def test_wrong_field_value(self):
         with self.assertRaisesRegex(TypeError,
                 r"unsigned\(1\) must either be a Field object, a dict or a list of Field objects"):
-            FieldMap({"a": unsigned(1)})
+            FieldActionMap({"a": unsigned(1)})
 
     def test_getitem_wrong_key(self):
-        field_map = FieldMap({"a": Field(action.RW, unsigned(1))})
+        field_map = FieldActionMap({"a": Field(action.RW, unsigned(1))})
         with self.assertRaises(KeyError):
             field_map["b"]
 
     def test_getitem_reserved(self):
-        field_map = FieldMap({"_reserved": Field(action.RW, unsigned(1))})
+        field_map = FieldActionMap({"_reserved": Field(action.RW, unsigned(1))})
         field_rw_u1 = Field(action.RW, unsigned(1)).create()
         self.assertTrue(_compatible_fields(field_map["_reserved"], field_rw_u1))
 
     def test_getattr_missing(self):
-        field_map = FieldMap({"a": Field(action.RW, unsigned(1)),
+        field_map = FieldActionMap({"a": Field(action.RW, unsigned(1)),
                               "b": Field(action.RW, unsigned(1))})
         with self.assertRaisesRegex(AttributeError,
                 r"Field map does not have a field 'c'; did you mean one of: 'a', 'b'?"):
             field_map.c
 
     def test_getattr_reserved(self):
-        field_map = FieldMap({"_reserved": Field(action.RW, unsigned(1))})
+        field_map = FieldActionMap({"_reserved": Field(action.RW, unsigned(1))})
         with self.assertRaisesRegex(AttributeError,
                 r"Field map field '_reserved' has a reserved name and may only be accessed by "
                 r"indexing"):
             field_map._reserved
 
 
-class FieldArrayTestCase(unittest.TestCase):
+class FieldActionArrayTestCase(unittest.TestCase):
     def test_simple(self):
-        field_array = FieldArray([Field(action.RW, unsigned(2)) for _ in range(8)])
+        field_array = FieldActionArray([Field(action.RW, unsigned(2)) for _ in range(8)])
         field_rw_u2 = Field(action.RW, unsigned(2)).create()
         self.assertEqual(len(field_array), 8)
         for i in range(8):
             self.assertTrue(_compatible_fields(field_array[i], field_rw_u2))
 
     def test_dim_2(self):
-        field_array = FieldArray([[Field(action.RW, unsigned(1)) for _ in range(4)]
+        field_array = FieldActionArray([[Field(action.RW, unsigned(1)) for _ in range(4)]
                                   for _ in range(4)])
         field_rw_u1 = Field(action.RW, unsigned(1)).create()
         self.assertEqual(len(field_array), 4)
@@ -323,7 +285,7 @@ class FieldArrayTestCase(unittest.TestCase):
                 self.assertTrue(_compatible_fields(field_array[i][j], field_rw_u1))
 
     def test_nested(self):
-        field_array = FieldArray([{"a": Field(action.RW, unsigned(4)),
+        field_array = FieldActionArray([{"a": Field(action.RW, unsigned(4)),
                                    "b": [Field(action.RW, unsigned(1)) for _ in range(4)]}
                                   for _ in range(4)])
         field_rw_u4 = Field(action.RW, unsigned(4)).create()
@@ -335,13 +297,13 @@ class FieldArrayTestCase(unittest.TestCase):
                 self.assertTrue(_compatible_fields(field_array[i]["b"][j], field_rw_u1))
 
     def test_iter(self):
-        field_array = FieldArray([Field(action.RW, 1) for _ in range(3)])
+        field_array = FieldActionArray([Field(action.RW, 1) for _ in range(3)])
         self.assertEqual(list(field_array), [
             field_array[i] for i in range(3)
         ])
 
     def test_flatten(self):
-        field_array = FieldArray([{"a": Field(action.RW, 4),
+        field_array = FieldActionArray([{"a": Field(action.RW, 4),
                                    "b": [Field(action.RW, 1) for _ in range(2)]}
                                   for _ in range(2)])
         self.assertEqual(list(field_array.flatten()), [
@@ -356,15 +318,15 @@ class FieldArrayTestCase(unittest.TestCase):
     def test_wrong_fields(self):
         with self.assertRaisesRegex(TypeError,
                 r"Fields must be provided as a non-empty list, not 'foo'"):
-            FieldArray("foo")
+            FieldActionArray("foo")
         with self.assertRaisesRegex(TypeError,
                 r"Fields must be provided as a non-empty list, not \[\]"):
-            FieldArray([])
+            FieldActionArray([])
 
     def test_wrong_field(self):
         with self.assertRaisesRegex(TypeError,
                 r"'foo' must be a Field object or a collection of Field objects"):
-            FieldArray(["foo", Field(action.RW, 1)])
+            FieldActionArray(["foo", Field(action.RW, 1)])
 
 
 class RegisterTestCase(unittest.TestCase):
@@ -1031,7 +993,9 @@ class BridgeTestCase(unittest.TestCase):
         reg_rw_4 = self._RWRegister(4)
         register_map = RegisterMap()
         register_map.add_register(reg_rw_4, name="reg_rw_4")
-        with self.assertRaisesRegex(TypeError, r"Register address must be a dict, not 'foo'"):
+        with self.assertRaisesRegex(TypeError,
+                r"Register address assignment for the cluster \(\) must be a dict or None, not "
+                r"'foo'"):
             dut = Bridge(register_map, addr_width=1, data_width=8, register_addr="foo")
 
     def test_wrong_cluster_address(self):
@@ -1041,7 +1005,8 @@ class BridgeTestCase(unittest.TestCase):
         register_map = RegisterMap()
         register_map.add_cluster(cluster_0, name="cluster_0")
         with self.assertRaisesRegex(TypeError,
-                r"Register address \('cluster_0',\) must be a dict, not 'foo'"):
+                r"Register address assignment for the cluster \('cluster_0',\) must be a dict or "
+                r"None, not 'foo'"):
             dut = Bridge(register_map, addr_width=1, data_width=8,
                          register_addr={"cluster_0": "foo"})
 
@@ -1049,7 +1014,9 @@ class BridgeTestCase(unittest.TestCase):
         reg_rw_4 = self._RWRegister(4)
         register_map = RegisterMap()
         register_map.add_register(reg_rw_4, name="reg_rw_4")
-        with self.assertRaisesRegex(TypeError, r"Register alignment must be a dict, not 'foo'"):
+        with self.assertRaisesRegex(TypeError,
+                r"Register alignment assignment for the cluster \(\) must be a dict or None, not "
+                r"'foo'"):
             dut = Bridge(register_map, addr_width=1, data_width=8, register_alignment="foo")
 
     def test_wrong_cluster_alignment(self):
@@ -1059,7 +1026,8 @@ class BridgeTestCase(unittest.TestCase):
         register_map = RegisterMap()
         register_map.add_cluster(cluster_0, name="cluster_0")
         with self.assertRaisesRegex(TypeError,
-                r"Register alignment \('cluster_0',\) must be a dict, not 'foo'"):
+                r"Register alignment assignment for the cluster \('cluster_0',\) must be a dict "
+                r"or None, not 'foo'"):
             dut = Bridge(register_map, addr_width=1, data_width=8,
                          register_alignment={"cluster_0": "foo"})
 
