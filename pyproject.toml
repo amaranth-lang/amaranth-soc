@@ -48,4 +48,7 @@ test-code.cmd = "python -m coverage run -m unittest discover -t . -s tests -v"
 test-docs.cmd = "sphinx-build -b doctest docs docs/_build"
 
 document.cmd = "sphinx-build docs docs/_build"
-document-live.cmd = "sphinx-autobuild docs docs/_build --watch amaranth"
+document-live.cmd = "sphinx-autobuild docs docs/_build --watch amaranth_soc"
+
+coverage-text.cmd = "python -m coverage report"
+coverage-html.cmd = "python -m coverage html"
