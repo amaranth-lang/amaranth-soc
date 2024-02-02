@@ -1,5 +1,6 @@
 import bisect
 
+from amaranth.lib import wiring
 from amaranth.utils import bits_for
 
 
@@ -50,12 +51,12 @@ class _RangeMap:
 class ResourceInfo:
     """Resource metadata.
 
-    A wrapper class for resource objects, with their assigned path and address range.
+    A description of a memory map resource with its assigned path and address range.
 
     Parameters
     ----------
-    resource : object
-        Arbitrary object representing a resource. See :meth:`MemoryMap.add_resource` for details.
+    resource : :class:`wiring.Component`
+        A resource located in the memory map. See :meth:`MemoryMap.add_resource` for details.
     path : iter(str)
         Path of the resource. It is composed of the names of each window sitting between
         the resource and the memory map from which this :class:`ResourceInfo` was obtained.
@@ -263,8 +264,8 @@ class MemoryMap:
 
         Arguments
         ---------
-        resource : object
-            Arbitrary object representing a resource.
+        resource : :class:`wiring.Component`
+            The resource to be added.
         name : str
             Name of the resource. It must not collide with the name of other resources or windows
             present in this memory map.
@@ -284,17 +285,24 @@ class MemoryMap:
 
         Exceptions
         ----------
-        Raises :exn:`ValueError` if one of the following occurs:
-
-        - this memory map is frozen;
-        - the requested address and size, after alignment, would overlap with any resources or
-        windows that have already been added, or would be out of bounds;
-        - the resource has already been added to this memory map;
-        - the name of the resource is already present in the namespace of this memory map;
+        :exc:`ValueError`
+            If the memory map is frozen.
+        :exc:`TypeError`
+            If the resource is not a :class:`wiring.Component`.
+        :exc:`ValueError`
+            If the requested address and size, after alignment, would overlap with any resources or
+            windows that have already been added, or would be out of bounds.
+        :exc:`ValueError`
+            If the resource has already been added to this memory map.
+        :exc:`ValueError`
+            If the name of the resource is already present in the namespace of this memory map.
         """
         if self._frozen:
             raise ValueError("Memory map has been frozen. Cannot add resource {!r}"
                              .format(resource))
+
+        if not isinstance(resource, wiring.Component):
+            raise TypeError(f"Resource must be a wiring.Component, not {resource!r}")
 
         if id(resource) in self._resources:
             _, _, addr_range = self._resources[id(resource)]

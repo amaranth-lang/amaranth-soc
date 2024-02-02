@@ -2,11 +2,17 @@
 
 import unittest
 from amaranth import *
-from amaranth.lib.wiring import *
+from amaranth.lib import wiring
+from amaranth.lib.wiring import In, Out
 from amaranth.sim import *
 
 from amaranth_soc import csr
 from amaranth_soc.memory import MemoryMap
+
+
+class _MockRegister(wiring.Component):
+    def __init__(self, width, access):
+        super().__init__({"element": Out(csr.Element.Signature(width, access))})
 
 
 class ElementSignatureTestCase(unittest.TestCase):
@@ -14,7 +20,7 @@ class ElementSignatureTestCase(unittest.TestCase):
         sig = csr.Element.Signature(1, "r")
         self.assertEqual(sig.width, 1)
         self.assertEqual(sig.access, csr.Element.Access.R)
-        self.assertEqual(sig.members, Signature({
+        self.assertEqual(sig.members, wiring.Signature({
             "r_data": In(1),
             "r_stb":  Out(1),
         }).members)
@@ -23,7 +29,7 @@ class ElementSignatureTestCase(unittest.TestCase):
         sig = csr.Element.Signature(8, access="rw")
         self.assertEqual(sig.width, 8)
         self.assertEqual(sig.access, csr.Element.Access.RW)
-        self.assertEqual(sig.members, Signature({
+        self.assertEqual(sig.members, wiring.Signature({
             "r_data": In(8),
             "r_stb":  Out(1),
             "w_data": Out(8),
@@ -34,7 +40,7 @@ class ElementSignatureTestCase(unittest.TestCase):
         sig = csr.Element.Signature(10, "w")
         self.assertEqual(sig.width, 10)
         self.assertEqual(sig.access, csr.Element.Access.W)
-        self.assertEqual(sig.members, Signature({
+        self.assertEqual(sig.members, wiring.Signature({
             "w_data": Out(10),
             "w_stb":  Out(1),
         }).members)
@@ -43,7 +49,7 @@ class ElementSignatureTestCase(unittest.TestCase):
         sig = csr.Element.Signature(0, access=csr.Element.Access.RW)
         self.assertEqual(sig.width, 0)
         self.assertEqual(sig.access, csr.Element.Access.RW)
-        self.assertEqual(sig.members, Signature({
+        self.assertEqual(sig.members, wiring.Signature({
             "r_data": In(0),
             "r_stb":  Out(1),
             "w_data": Out(0),
@@ -94,7 +100,7 @@ class SignatureTestCase(unittest.TestCase):
         sig = csr.Signature(addr_width=16, data_width=8)
         self.assertEqual(sig.addr_width, 16)
         self.assertEqual(sig.data_width, 8)
-        self.assertEqual(sig.members, Signature({
+        self.assertEqual(sig.members, wiring.Signature({
             "addr":   Out(16),
             "r_data": In(8),
             "r_stb":  Out(1),
@@ -177,12 +183,12 @@ class InterfaceTestCase(unittest.TestCase):
 
 class MultiplexerTestCase(unittest.TestCase):
     def test_memory_map(self):
-        elem_4_rw  = csr.Element(4, "rw", path=("elem_4_rw",))
-        elem_8_rw  = csr.Element(8, "rw", path=("elem_8_rw",))
+        reg_4_rw = _MockRegister(4, "rw")
+        reg_8_rw = _MockRegister(8, "rw")
 
         memory_map = MemoryMap(addr_width=2, data_width=4)
-        memory_map.add_resource(elem_4_rw, name="elem_4_rw", size=1)
-        memory_map.add_resource(elem_8_rw, name="elem_8_rw", size=2)
+        memory_map.add_resource(reg_4_rw, name="reg_4_rw", size=1)
+        memory_map.add_resource(reg_8_rw, name="reg_8_rw", size=2)
         memory_map.freeze()
 
         dut = csr.Multiplexer(memory_map)
@@ -193,59 +199,84 @@ class MultiplexerTestCase(unittest.TestCase):
 
     def test_wrong_memory_map(self):
         with self.assertRaisesRegex(TypeError,
-                r"Memory map must be an instance of MemoryMap, not 'foo'"):
+                r"CSR multiplexer memory map must be an instance of MemoryMap, not 'foo'"):
             csr.Multiplexer("foo")
 
     def test_wrong_memory_map_resource(self):
-        memory_map = MemoryMap(addr_width=1, data_width=8)
-        memory_map.add_resource("foo", name="foo", size=1)
-        with self.assertRaisesRegex(TypeError,
-                r"Memory map resource must be an instance of csr\.Element, not 'foo'"):
-            csr.Multiplexer(memory_map)
+        class _Reg(wiring.Component):
+            pass
+        # wrong name
+        map_0 = MemoryMap(addr_width=1, data_width=8)
+        map_0.add_resource(_Reg({"foo": Out(csr.Element.Signature(8, "rw"))}), name="a", size=1)
+        with self.assertRaisesRegex(AttributeError,
+                r"Signature of CSR register 'a' must have a csr\.Element\.Signature member "
+                r"named 'element' and oriented as wiring\.Out"):
+            csr.Multiplexer(map_0)
+        # wrong direction
+        map_1 = MemoryMap(addr_width=1, data_width=8)
+        map_1.add_resource(_Reg({"element": In(csr.Element.Signature(8, "rw"))}), name="a", size=1)
+        with self.assertRaisesRegex(AttributeError,
+                r"Signature of CSR register 'a' must have a csr\.Element\.Signature member "
+                r"named 'element' and oriented as wiring\.Out"):
+            csr.Multiplexer(map_1)
+        # wrong member type
+        map_2 = MemoryMap(addr_width=1, data_width=8)
+        map_2.add_resource(_Reg({"element": Out(unsigned(8))}), name="a", size=1)
+        with self.assertRaisesRegex(AttributeError,
+                r"Signature of CSR register 'a' must have a csr\.Element\.Signature member "
+                r"named 'element' and oriented as wiring\.Out"):
+            csr.Multiplexer(map_2)
+        # wrong member signature
+        map_3 = MemoryMap(addr_width=1, data_width=8)
+        map_3.add_resource(_Reg({"element": Out(wiring.Signature({}))}), name="a", size=1)
+        with self.assertRaisesRegex(AttributeError,
+                r"Signature of CSR register 'a' must have a csr\.Element\.Signature member "
+                r"named 'element' and oriented as wiring\.Out"):
+            csr.Multiplexer(map_3)
 
     def test_wrong_memory_map_windows(self):
         memory_map_0 = MemoryMap(addr_width=1, data_width=8)
         memory_map_1 = MemoryMap(addr_width=1, data_width=8)
         memory_map_0.add_window(memory_map_1)
-        with self.assertRaisesRegex(ValueError, r"Memory map cannot have windows"):
+        with self.assertRaisesRegex(ValueError, r"CSR multiplexer memory map cannot have windows"):
             csr.Multiplexer(memory_map_0)
 
     def test_sim(self):
         for shadow_overlaps in [None, 0, 1]:
             with self.subTest(shadow_overlaps=shadow_overlaps):
-                elem_4_r   = csr.Element( 4, "r",  path=("elem_4_r",))
-                elem_8_w   = csr.Element( 8, "w",  path=("elem_8_w",))
-                elem_16_rw = csr.Element(16, "rw", path=("elem_16_rw",))
+                reg_4_r   = _MockRegister( 4, "r")
+                reg_8_w   = _MockRegister( 8, "w")
+                reg_16_rw = _MockRegister(16, "rw")
 
                 memory_map = MemoryMap(addr_width=16, data_width=8)
-                memory_map.add_resource(elem_4_r,   name="elem_4_r",   size=1)
-                memory_map.add_resource(elem_8_w,   name="elem_8_w",   size=1)
-                memory_map.add_resource(elem_16_rw, name="elem_16_rw", size=2)
+                memory_map.add_resource(reg_4_r,   name="reg_4_r",   size=1)
+                memory_map.add_resource(reg_8_w,   name="reg_8_w",   size=1)
+                memory_map.add_resource(reg_16_rw, name="reg_16_rw", size=2)
 
                 dut = csr.Multiplexer(memory_map, shadow_overlaps=shadow_overlaps)
                 bus = dut.bus
 
                 def sim_test():
-                    yield elem_4_r.r_data.eq(0xa)
-                    yield elem_16_rw.r_data.eq(0x5aa5)
+                    yield reg_4_r.element.r_data.eq(0xa)
+                    yield reg_16_rw.element.r_data.eq(0x5aa5)
 
                     yield bus.addr.eq(0)
                     yield bus.r_stb.eq(1)
                     yield Tick()
-                    self.assertEqual((yield elem_4_r.r_stb), 1)
-                    self.assertEqual((yield elem_16_rw.r_stb), 0)
+                    self.assertEqual((yield reg_4_r.element.r_stb), 1)
+                    self.assertEqual((yield reg_16_rw.element.r_stb), 0)
                     self.assertEqual((yield bus.r_data), 0xa)
 
                     yield bus.addr.eq(2)
                     yield Tick()
-                    self.assertEqual((yield elem_4_r.r_stb), 0)
-                    self.assertEqual((yield elem_16_rw.r_stb), 1)
+                    self.assertEqual((yield reg_4_r.element.r_stb), 0)
+                    self.assertEqual((yield reg_16_rw.element.r_stb), 1)
                     self.assertEqual((yield bus.r_data), 0xa5)
 
                     yield bus.addr.eq(3) # pipeline a read
                     yield Tick()
-                    self.assertEqual((yield elem_4_r.r_stb), 0)
-                    self.assertEqual((yield elem_16_rw.r_stb), 0)
+                    self.assertEqual((yield reg_4_r.element.r_stb), 0)
+                    self.assertEqual((yield reg_16_rw.element.r_stb), 0)
                     self.assertEqual((yield bus.r_data), 0x5a)
                     yield bus.r_stb.eq(0)
                     yield Delay()
@@ -254,43 +285,43 @@ class MultiplexerTestCase(unittest.TestCase):
                     yield bus.w_data.eq(0x3d)
                     yield bus.w_stb.eq(1)
                     yield Tick()
-                    self.assertEqual((yield elem_8_w.w_stb), 1)
-                    self.assertEqual((yield elem_8_w.w_data), 0x3d)
-                    self.assertEqual((yield elem_16_rw.w_stb), 0)
+                    self.assertEqual((yield reg_8_w.element.w_stb), 1)
+                    self.assertEqual((yield reg_8_w.element.w_data), 0x3d)
+                    self.assertEqual((yield reg_16_rw.element.w_stb), 0)
 
                     yield bus.w_stb.eq(0)
                     yield bus.addr.eq(2) # change address
                     yield Tick()
-                    self.assertEqual((yield elem_8_w.w_stb), 0)
+                    self.assertEqual((yield reg_8_w.element.w_stb), 0)
 
                     yield bus.addr.eq(2)
                     yield bus.w_data.eq(0x55)
                     yield bus.w_stb.eq(1)
                     yield Tick()
-                    self.assertEqual((yield elem_8_w.w_stb), 0)
-                    self.assertEqual((yield elem_16_rw.w_stb), 0)
+                    self.assertEqual((yield reg_8_w.element.w_stb), 0)
+                    self.assertEqual((yield reg_16_rw.element.w_stb), 0)
                     yield bus.addr.eq(3) # pipeline a write
                     yield bus.w_data.eq(0xaa)
                     yield Tick()
-                    self.assertEqual((yield elem_8_w.w_stb), 0)
-                    self.assertEqual((yield elem_16_rw.w_stb), 1)
-                    self.assertEqual((yield elem_16_rw.w_data), 0xaa55)
+                    self.assertEqual((yield reg_8_w.element.w_stb), 0)
+                    self.assertEqual((yield reg_16_rw.element.w_stb), 1)
+                    self.assertEqual((yield reg_16_rw.element.w_data), 0xaa55)
 
                     yield bus.addr.eq(2)
                     yield bus.r_stb.eq(1)
                     yield bus.w_data.eq(0x66)
                     yield bus.w_stb.eq(1)
                     yield Tick()
-                    self.assertEqual((yield elem_16_rw.r_stb), 1)
-                    self.assertEqual((yield elem_16_rw.w_stb), 0)
+                    self.assertEqual((yield reg_16_rw.element.r_stb), 1)
+                    self.assertEqual((yield reg_16_rw.element.w_stb), 0)
                     self.assertEqual((yield bus.r_data), 0xa5)
                     yield bus.addr.eq(3) # pipeline a read and a write
                     yield bus.w_data.eq(0xbb)
                     yield Tick()
                     self.assertEqual((yield bus.r_data), 0x5a)
-                    self.assertEqual((yield elem_16_rw.r_stb), 0)
-                    self.assertEqual((yield elem_16_rw.w_stb), 1)
-                    self.assertEqual((yield elem_16_rw.w_data), 0xbb66)
+                    self.assertEqual((yield reg_16_rw.element.r_stb), 0)
+                    self.assertEqual((yield reg_16_rw.element.w_stb), 1)
+                    self.assertEqual((yield reg_16_rw.element.w_data), 0xbb66)
 
                 sim = Simulator(dut)
                 sim.add_clock(1e-6)
@@ -303,9 +334,9 @@ class MultiplexerAlignedTestCase(unittest.TestCase):
     def test_sim(self):
         for shadow_overlaps in [None, 0, 1]:
             with self.subTest(shadow_overlaps=shadow_overlaps):
-                elem_20_rw = csr.Element(20, "rw", path=("elem_20_rw",))
+                reg_20_rw = _MockRegister(20, "rw")
                 memory_map = MemoryMap(addr_width=16, data_width=8, alignment=2)
-                memory_map.add_resource(elem_20_rw, name="elem_20_rw", size=3)
+                memory_map.add_resource(reg_20_rw, name="reg_20_rw", size=3)
 
                 dut = csr.Multiplexer(memory_map, shadow_overlaps=shadow_overlaps)
                 bus = dut.bus
@@ -315,20 +346,20 @@ class MultiplexerAlignedTestCase(unittest.TestCase):
                     yield bus.addr.eq(0)
                     yield bus.w_data.eq(0x55)
                     yield Tick()
-                    self.assertEqual((yield elem_20_rw.w_stb), 0)
+                    self.assertEqual((yield reg_20_rw.element.w_stb), 0)
                     yield bus.addr.eq(1)
                     yield bus.w_data.eq(0xaa)
                     yield Tick()
-                    self.assertEqual((yield elem_20_rw.w_stb), 0)
+                    self.assertEqual((yield reg_20_rw.element.w_stb), 0)
                     yield bus.addr.eq(2)
                     yield bus.w_data.eq(0x33)
                     yield Tick()
-                    self.assertEqual((yield elem_20_rw.w_stb), 0)
+                    self.assertEqual((yield reg_20_rw.element.w_stb), 0)
                     yield bus.addr.eq(3)
                     yield bus.w_data.eq(0xdd)
                     yield Tick()
-                    self.assertEqual((yield elem_20_rw.w_stb), 1)
-                    self.assertEqual((yield elem_20_rw.w_data), 0x3aa55)
+                    self.assertEqual((yield reg_20_rw.element.w_stb), 1)
+                    self.assertEqual((yield reg_20_rw.element.w_data), 0x3aa55)
 
                 sim = Simulator(dut)
                 sim.add_clock(1e-6)
@@ -376,14 +407,14 @@ class DecoderTestCase(unittest.TestCase):
             self.dut.add(iface)
 
     def test_sim(self):
-        elem_1 = csr.Element(8, "rw", path=("elem_1",))
-        elem_2 = csr.Element(8, "rw", path=("elem_2",))
+        reg_1 = _MockRegister(8, "rw")
+        reg_2 = _MockRegister(8, "rw")
 
         memory_map_1 = MemoryMap(addr_width=10, data_width=8)
-        memory_map_1.add_resource(elem_1, name="elem_1", size=1)
+        memory_map_1.add_resource(reg_1, name="reg_1", size=1)
 
         memory_map_2 = MemoryMap(addr_width=10, data_width=8)
-        memory_map_2.add_resource(elem_2, name="elem_2", size=1, addr=2)
+        memory_map_2.add_resource(reg_2, name="reg_2", size=1, addr=2)
 
         mux_1 = csr.Multiplexer(memory_map_1)
         mux_2 = csr.Multiplexer(memory_map_2)
@@ -391,39 +422,39 @@ class DecoderTestCase(unittest.TestCase):
         self.dut.add(mux_1.bus)
         self.dut.add(mux_2.bus)
 
-        elem_1_info = self.dut.bus.memory_map.find_resource(elem_1)
-        elem_2_info = self.dut.bus.memory_map.find_resource(elem_2)
-        elem_1_addr = elem_1_info.start
-        elem_2_addr = elem_2_info.start
-        self.assertEqual(elem_1_addr, 0x0000)
-        self.assertEqual(elem_2_addr, 0x0402)
+        reg_1_info = self.dut.bus.memory_map.find_resource(reg_1)
+        reg_2_info = self.dut.bus.memory_map.find_resource(reg_2)
+        reg_1_addr = reg_1_info.start
+        reg_2_addr = reg_2_info.start
+        self.assertEqual(reg_1_addr, 0x0000)
+        self.assertEqual(reg_2_addr, 0x0402)
 
         bus = self.dut.bus
 
         def sim_test():
-            yield bus.addr.eq(elem_1_addr)
+            yield bus.addr.eq(reg_1_addr)
             yield bus.w_stb.eq(1)
             yield bus.w_data.eq(0x55)
             yield Tick()
             yield bus.w_stb.eq(0)
             yield Tick()
-            self.assertEqual((yield elem_1.w_data), 0x55)
+            self.assertEqual((yield reg_1.element.w_data), 0x55)
 
-            yield bus.addr.eq(elem_2_addr)
+            yield bus.addr.eq(reg_2_addr)
             yield bus.w_stb.eq(1)
             yield bus.w_data.eq(0xaa)
             yield Tick()
             yield bus.w_stb.eq(0)
             yield Tick()
-            self.assertEqual((yield elem_2.w_data), 0xaa)
+            self.assertEqual((yield reg_2.element.w_data), 0xaa)
 
-            yield elem_1.r_data.eq(0x55)
-            yield elem_2.r_data.eq(0xaa)
+            yield reg_1.element.r_data.eq(0x55)
+            yield reg_2.element.r_data.eq(0xaa)
 
-            yield bus.addr.eq(elem_1_addr)
+            yield bus.addr.eq(reg_1_addr)
             yield bus.r_stb.eq(1)
             yield Tick()
-            yield bus.addr.eq(elem_2_addr)
+            yield bus.addr.eq(reg_2_addr)
             yield Delay()
             self.assertEqual((yield bus.r_data), 0x55)
             yield Tick()
