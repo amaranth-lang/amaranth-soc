@@ -6,12 +6,18 @@ from amaranth.lib import wiring
 from amaranth.lib.wiring import In, Out, flipped, connect
 from amaranth.utils import ceil_log2
 
-from . import Element, Multiplexer
+from . import Multiplexer
+from .reg import Register, Field, FieldAction
 from .. import event
 from ..memory import MemoryMap
 
 
 __all__ = ["EventMonitor"]
+
+
+class _EventMaskRegister(Register, access="rw"):
+    def __init__(self, width):
+        super().__init__({"mask": Field(FieldAction, width, access="rw")})
 
 
 class EventMonitor(wiring.Component):
@@ -54,15 +60,15 @@ class EventMonitor(wiring.Component):
             raise ValueError(f"Alignment must be a non-negative integer, not {alignment!r}")
 
         self._monitor = event.Monitor(event_map, trigger=trigger)
-        self._enable  = Element(event_map.size, "rw")
-        self._pending = Element(event_map.size, "rw")
+        self._enable  = _EventMaskRegister(event_map.size)
+        self._pending = _EventMaskRegister(event_map.size)
 
-        elem_size  = ceil(event_map.size / data_width)
-        addr_width = 1 + max(ceil_log2(elem_size), alignment)
+        reg_size   = (event_map.size + data_width - 1) // data_width
+        addr_width = 1 + max(ceil_log2(reg_size), alignment)
         memory_map = MemoryMap(addr_width=addr_width, data_width=data_width, alignment=alignment)
+        memory_map.add_resource(self._enable,  size=reg_size, name="enable")
+        memory_map.add_resource(self._pending, size=reg_size, name="pending")
 
-        self._enable .add_to(memory_map, name="enable")
-        self._pending.add_to(memory_map, name="pending")
         self._mux = Multiplexer(memory_map)
 
         super().__init__({
@@ -81,12 +87,12 @@ class EventMonitor(wiring.Component):
         connect(m, flipped(self.src), self._monitor.src)
         connect(m, self.bus, self._mux.bus)
 
-        with m.If(self._enable.w_stb):
-            m.d.sync += self._monitor.enable.eq(self._enable.w_data)
-        m.d.comb += self._enable.r_data.eq(self._monitor.enable)
+        with m.If(self._enable.element.w_stb):
+            m.d.sync += self._monitor.enable.eq(self._enable.element.w_data)
+        m.d.comb += self._enable.element.r_data.eq(self._monitor.enable)
 
-        with m.If(self._pending.w_stb):
-            m.d.comb += self._monitor.clear.eq(self._pending.w_data)
-        m.d.comb += self._pending.r_data.eq(self._monitor.pending)
+        with m.If(self._pending.element.w_stb):
+            m.d.comb += self._monitor.clear.eq(self._pending.element.w_data)
+        m.d.comb += self._pending.element.r_data.eq(self._monitor.pending)
 
         return m

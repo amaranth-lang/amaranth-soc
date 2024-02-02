@@ -872,20 +872,20 @@ class Bridge(wiring.Component):
         register_map.freeze()
 
         for register, path in register_map.flatten():
-            elem_addr, assigned = traverse_path(path, register_addr)
-            if assigned != path and elem_addr is not None:
+            reg_addr, assigned = traverse_path(path, register_addr)
+            if assigned != path and reg_addr is not None:
                 raise TypeError(f"Register address assignment for the cluster {tuple(assigned)} "
-                                f"must be a dict or None, not {elem_addr!r}")
+                                f"must be a dict or None, not {reg_addr!r}")
 
-            elem_alignment, assigned = traverse_path(path, register_alignment)
-            if assigned != path and elem_alignment is not None:
+            reg_alignment, assigned = traverse_path(path, register_alignment)
+            if assigned != path and reg_alignment is not None:
                 raise TypeError(f"Register alignment assignment for the cluster {tuple(assigned)} "
-                                f"must be a dict or None, not {elem_alignment!r}")
+                                f"must be a dict or None, not {reg_alignment!r}")
 
-            elem_size = (register.element.width + data_width - 1) // data_width
-            elem_name = "__".join(path)
-            memory_map.add_resource(register.element, name=elem_name, size=elem_size,
-                                    addr=elem_addr, alignment=elem_alignment)
+            reg_size = (register.element.width + data_width - 1) // data_width
+            reg_name = "__".join(path)
+            memory_map.add_resource(register, name=reg_name, size=reg_size, addr=reg_addr,
+                                    alignment=reg_alignment)
 
         self._map = register_map
         self._mux = Multiplexer(memory_map)

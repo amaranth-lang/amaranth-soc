@@ -2,6 +2,8 @@
 
 import unittest
 from amaranth import *
+from amaranth.lib import wiring
+from amaranth.lib.wiring import In, Out
 from amaranth.sim import *
 
 from amaranth_soc import csr
@@ -9,12 +11,15 @@ from amaranth_soc.csr.wishbone import *
 from amaranth_soc.memory import MemoryMap
 
 
-class MockRegister(Elaboratable):
+class _MockRegister(wiring.Component):
     def __init__(self, width, name):
-        self.element = csr.Element.Signature(width, "rw").create(path=(name,))
-        self.r_count = Signal(8)
-        self.w_count = Signal(8)
-        self.data    = Signal(width)
+        super().__init__({
+            "element": Out(csr.Element.Signature(width, "rw")),
+            "r_count": Out(unsigned(8)),
+            "w_count": Out(unsigned(8)),
+            "data":    Out(width)
+        })
+        self._name = name
 
     def elaborate(self, platform):
         m = Module()
@@ -28,6 +33,9 @@ class MockRegister(Elaboratable):
             m.d.sync += self.data.eq(self.element.w_data)
 
         return m
+
+    def __repr__(self):
+        return f"_MockRegister('{self._name}')"
 
 
 class WishboneCSRBridgeTestCase(unittest.TestCase):
@@ -43,12 +51,12 @@ class WishboneCSRBridgeTestCase(unittest.TestCase):
             WishboneCSRBridge(csr_bus)
 
     def test_narrow(self):
-        reg_1 = MockRegister( 8, name="reg_1")
-        reg_2 = MockRegister(16, name="reg_2")
+        reg_1 = _MockRegister( 8, name="reg_1")
+        reg_2 = _MockRegister(16, name="reg_2")
 
         memory_map = MemoryMap(addr_width=10, data_width=8)
-        reg_1.element.add_to(memory_map, name="reg_1")
-        reg_2.element.add_to(memory_map, name="reg_2")
+        memory_map.add_resource(reg_1, name="reg_1", size=1)
+        memory_map.add_resource(reg_2, name="reg_2", size=2)
 
         mux = csr.Multiplexer(memory_map)
         dut = WishboneCSRBridge(mux.bus)
@@ -147,10 +155,10 @@ class WishboneCSRBridgeTestCase(unittest.TestCase):
             sim.run()
 
     def test_wide(self):
-        reg = MockRegister(32, name="reg")
+        reg = _MockRegister(32, name="reg")
 
         memory_map = MemoryMap(addr_width=10, data_width=8)
-        reg.element.add_to(memory_map, name="reg")
+        memory_map.add_resource(reg, name="reg", size=4)
 
         mux = csr.Multiplexer(memory_map)
         dut = WishboneCSRBridge(mux.bus, data_width=32)

@@ -879,19 +879,19 @@ class BridgeTestCase(unittest.TestCase):
         dut = Bridge(register_map, addr_width=16, data_width=8)
         registers = list(dut.bus.memory_map.resources())
 
-        self.assertIs(registers[0][0], reg_rw_4.element)
+        self.assertIs(registers[0][0], reg_rw_4)
         self.assertEqual(registers[0][1], "reg_rw_4")
         self.assertEqual(registers[0][2], (0, 1))
 
-        self.assertIs(registers[1][0], reg_rw_8.element)
+        self.assertIs(registers[1][0], reg_rw_8)
         self.assertEqual(registers[1][1], "reg_rw_8")
         self.assertEqual(registers[1][2], (1, 2))
 
-        self.assertIs(registers[2][0], reg_rw_12.element)
+        self.assertIs(registers[2][0], reg_rw_12)
         self.assertEqual(registers[2][1], "cluster_0__reg_rw_12")
         self.assertEqual(registers[2][2], (2, 4))
 
-        self.assertIs(registers[3][0], reg_rw_16.element)
+        self.assertIs(registers[3][0], reg_rw_16)
         self.assertEqual(registers[3][1], "cluster_0__reg_rw_16")
         self.assertEqual(registers[3][2], (4, 6))
 

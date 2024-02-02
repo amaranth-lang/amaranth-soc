@@ -155,18 +155,6 @@ class Element(wiring.PureInterface):
     def access(self):
         return self.signature.access
 
-    def add_to(self, memory_map, *, name, addr=None, alignment=None):
-        """Add register to memory map.
-
-        See :meth:`MemoryMap.add_resource` for details.
-        """
-        if not isinstance(memory_map, MemoryMap):
-            raise TypeError("Memory map must be an instance of MemoryMap, not {!r}"
-                            .format(memory_map))
-        size = (self.width + memory_map.data_width - 1) // memory_map.data_width
-        return memory_map.add_resource(self, size=size, addr=addr, alignment=alignment,
-                                       name=name)
-
     def __repr__(self):
         return f"csr.Element({self.signature!r})"
 
@@ -344,16 +332,16 @@ class Multiplexer(wiring.Component):
     class _Shadow:
         class Chunk:
             """The interface between a CSR multiplexer and a shadow register chunk."""
-            def __init__(self, shadow, offset, elements):
+            def __init__(self, shadow, offset, registers):
                 self.name = f"{shadow.name}__{offset}"
                 self.data = Signal(shadow.granularity, name=f"{self.name}__data")
                 self.r_en = Signal(name=f"{self.name}__r_en")
                 self.w_en = Signal(name=f"{self.name}__w_en")
-                self._elements = tuple(elements)
+                self._registers = tuple(registers)
 
-            def elements(self):
-                """Iterate the address ranges of CSR elements using this chunk."""
-                yield from self._elements
+            def registers(self):
+                """Iterate the address ranges of CSR registers using this chunk."""
+                yield from self._registers
 
         """CSR multiplexer shadow register.
 
@@ -364,7 +352,7 @@ class Multiplexer(wiring.Component):
         granularity : :class:`int`
             Amount of bits stored in a chunk of the shadow register.
         overlaps : :class:`int`
-            Maximum number of CSR elements that can share a chunk of the shadow register. Optional.
+            Maximum number of CSR registers that can share a shadow register chunk. Optional.
             If ``None``, it is implicitly set by :meth:`Multiplexer._Shadow.prepare`.
         """
         def __init__(self, granularity, overlaps, *, name):
@@ -390,23 +378,23 @@ class Multiplexer(wiring.Component):
             """
             return self._size
 
-        def add(self, elem_range):
-            """Add a CSR element to the shadow.
+        def add(self, reg_range):
+            """Add a CSR register to the shadow.
 
             Arguments
             ---------
-            elem_range : :class:`range`
-                Address range of a CSR :class:`Element`. It uses ``2 ** ceil_log2(elem_range.stop -
-                elem_range.start)`` chunks of the shadow register. If this amount is greater than
+            reg_range : :class:`range`
+                Address range of a CSR register. It uses ``2 ** ceil_log2(reg_range.stop -
+                reg_range.start)`` chunks of the shadow register. If this amount is greater than
                 :attr:`~Multiplexer._Shadow.size`, it replaces the latter.
             """
-            assert isinstance(elem_range, range)
-            self._ranges.add(elem_range)
-            elem_size  = 2 ** ceil_log2(elem_range.stop - elem_range.start)
-            self._size = max(self._size, elem_size)
+            assert isinstance(reg_range, range)
+            self._ranges.add(reg_range)
+            reg_size   = 2 ** ceil_log2(reg_range.stop - reg_range.start)
+            self._size = max(self._size, reg_size)
 
-        def decode_address(self, addr, elem_range):
-            """Decode a bus address into a shadow register offset.
+        def decode_address(self, addr, reg_range):
+            """Decode a CSR bus address into a shadow register offset.
 
             Returns
             -------
@@ -416,7 +404,7 @@ class Multiplexer(wiring.Component):
 
                 The address decoding scheme is illustrated by the following example:
                     * ``addr`` is ``0x1c``;
-                    * ``elem_range`` is ``range(0x1b, 0x1f)``;
+                    * ``reg_range`` is ``range(0x1b, 0x1f)``;
                     * the :attr:`~Multiplexer._Shadow.size` of the shadow is ``16``.
 
                 The lower bits of the offset would be ``0b00``, extracted from ``addr``:
@@ -427,9 +415,9 @@ class Multiplexer(wiring.Component):
                     |0001|11|00|
                     +----+--+--+
                             │  └─ 0
-                            └──── ceil_log2(elem_range.stop - elem_range.start)
+                            └──── ceil_log2(reg_range.stop - reg_range.start)
 
-                The upper bits of the offset would be ``0b10``, extracted from ``elem_range.start``:
+                The upper bits of the offset would be ``0b10``, extracted from ``reg_range.start``:
 
                 .. code-block::
 
@@ -437,29 +425,29 @@ class Multiplexer(wiring.Component):
                     |0001|10|11|
                     +----+--+--+
                          │  │
-                         │  └──── ceil_log2(elem_range.stop - elem_range.start)
+                         │  └──── ceil_log2(reg_range.stop - reg_range.start)
                          └─────── log2(self.size)
 
                 The decoded offset would therefore be ``8`` (i.e. ``0b1000``).
             """
-            assert elem_range in self._ranges and addr in elem_range
-            elem_size = 2 ** ceil_log2(elem_range.stop - elem_range.start)
+            assert reg_range in self._ranges and addr in reg_range
+            reg_size  = 2 ** ceil_log2(reg_range.stop - reg_range.start)
             self_mask = self.size - 1
-            elem_mask = elem_size - 1
-            return elem_range.start & self_mask & ~elem_mask | addr & elem_mask
+            reg_mask  = reg_size - 1
+            return reg_range.start & self_mask & ~reg_mask | addr & reg_mask
 
-        def encode_offset(self, offset, elem_range):
-            """Encode a shadow register offset into a bus address.
+        def encode_offset(self, offset, reg_range):
+            """Encode a shadow register offset into a CSR bus address.
 
             Returns
             -------
             :class:`int`
-                The bus address in ``elem_range`` using the :class:`Multiplexer._Shadow.Chunk`
+                The bus address in ``reg_range`` using the :class:`Multiplexer._Shadow.Chunk`
                 located at ``offset``. See :meth:`~Multiplexer._Shadow.decode_address` for details.
             """
-            assert elem_range in self._ranges and isinstance(offset, int)
-            elem_size = 2 ** ceil_log2(elem_range.stop - elem_range.start)
-            return elem_range.start + ((offset - elem_range.start) % elem_size)
+            assert reg_range in self._ranges and isinstance(offset, int)
+            reg_size = 2 ** ceil_log2(reg_range.stop - reg_range.start)
+            return reg_range.start + ((offset - reg_range.start) % reg_size)
 
         def prepare(self):
             """Balance out and instantiate the shadow register chunks.
@@ -481,29 +469,29 @@ class Multiplexer(wiring.Component):
             if self.overlaps is None:
                 self.overlaps = len(self._ranges)
 
-            elements = defaultdict(list)
-            balanced = True
+            registers = defaultdict(list)
+            balanced  = True
 
-            for elem_range in self._ranges:
-                for chunk_addr in elem_range:
-                    chunk_offset = self.decode_address(chunk_addr, elem_range)
-                    if len(elements[chunk_offset]) > self.overlaps:
+            for reg_range in self._ranges:
+                for chunk_addr in reg_range:
+                    chunk_offset = self.decode_address(chunk_addr, reg_range)
+                    if len(registers[chunk_offset]) > self.overlaps:
                         balanced = False
                         break
-                    elements[chunk_offset].append(elem_range)
+                    registers[chunk_offset].append(reg_range)
 
             if balanced:
                 self._ranges = frozenset(self._ranges)
                 self._chunks = dict()
-                for chunk_offset, chunk_elements in elements.items():
-                    chunk = Multiplexer._Shadow.Chunk(self, chunk_offset, chunk_elements)
+                for chunk_offset, chunk_registers in registers.items():
+                    chunk = Multiplexer._Shadow.Chunk(self, chunk_offset, chunk_registers)
                     self._chunks[chunk_offset] = chunk
             else:
                 self._size *= 2
                 self.prepare()
 
         def chunks(self):
-            """Iterate shadow register chunks used by at least one CSR element."""
+            """Iterate shadow register chunks used by at least one CSR register."""
             for chunk_offset, chunk in self._chunks.items():
                 yield chunk_offset, chunk
 
@@ -549,7 +537,7 @@ class Multiplexer(wiring.Component):
     Parameters
     ----------
     memory_map : :class:`..memory.MemoryMap`
-        Memory map of the CSR bus.
+        Memory map of CSR registers.
     shadow_overlaps : int
         Maximum number of CSR registers that can share a chunk of a shadow register.
         Optional. If ``None``, any number of CSR registers can share a shadow chunk.
@@ -561,33 +549,39 @@ class Multiplexer(wiring.Component):
         CSR bus providing access to registers.
     """
     def __init__(self, memory_map, *, shadow_overlaps=None):
-        if not isinstance(memory_map, MemoryMap):
-            raise TypeError("Memory map must be an instance of MemoryMap, not {!r}"
-                            .format(memory_map))
-        for elem, elem_name, (elem_start, elem_end) in memory_map.resources():
-            if not isinstance(elem, Element):
-                raise TypeError("Memory map resource must be an instance of csr.Element, not {!r}"
-                                .format(elem))
-        if list(memory_map.windows()):
-            raise ValueError("Memory map cannot have windows")
-
+        self._check_memory_map(memory_map)
+        self._r_shadow = self._Shadow(memory_map.data_width, shadow_overlaps, name="r_shadow")
+        self._w_shadow = self._Shadow(memory_map.data_width, shadow_overlaps, name="w_shadow")
         super().__init__({
             "bus": In(Signature(addr_width=memory_map.addr_width,
                                 data_width=memory_map.data_width))
         })
         self.bus.memory_map = memory_map
-        self._r_shadow = self._Shadow(memory_map.data_width, shadow_overlaps, name="r_shadow")
-        self._w_shadow = self._Shadow(memory_map.data_width, shadow_overlaps, name="w_shadow")
+
+    def _check_memory_map(self, memory_map):
+        if not isinstance(memory_map, MemoryMap):
+            raise TypeError(f"CSR multiplexer memory map must be an instance of MemoryMap, not "
+                            f"{memory_map!r}")
+        if list(memory_map.windows()):
+            raise ValueError("CSR multiplexer memory map cannot have windows")
+        for reg, reg_name, (reg_start, reg_end) in memory_map.resources():
+            if not ("element" in reg.signature.members and
+                    reg.signature.members["element"].flow == Out and
+                    reg.signature.members["element"].is_signature and
+                    isinstance(reg.signature.members["element"].signature, Element.Signature)):
+                raise AttributeError(f"Signature of CSR register '{reg_name}' must have a "
+                                     f"csr.Element.Signature member named 'element' and oriented "
+                                     f"as wiring.Out")
 
     def elaborate(self, platform):
         m = Module()
 
-        for elem, _, (elem_start, elem_end) in self.bus.memory_map.resources():
-            elem_range = range(elem_start, elem_end)
-            if elem.access.readable():
-                self._r_shadow.add(elem_range)
-            if elem.access.writable():
-                self._w_shadow.add(elem_range)
+        for reg, _, (reg_start, reg_end) in self.bus.memory_map.resources():
+            reg_range = range(reg_start, reg_end)
+            if reg.element.access.readable():
+                self._r_shadow.add(reg_range)
+            if reg.element.access.writable():
+                self._w_shadow.add(reg_range)
 
         self._r_shadow.prepare()
         self._w_shadow.prepare()
@@ -600,27 +594,27 @@ class Multiplexer(wiring.Component):
         r_data_fanin = 0
 
         for chunk_offset, r_chunk in self._r_shadow.chunks():
-            # Use the same trick to select which element is read into a shadow register chunk.
+            # Use the same trick to select which CSR register is read into a shadow register chunk.
             r_chunk_w_en_fanin = 0
             r_chunk_data_fanin = 0
 
             m.d.sync += r_chunk.r_en.eq(0)
 
             with m.Switch(self.bus.addr):
-                for elem_range in r_chunk.elements():
-                    chunk_addr  = self._r_shadow.encode_offset(chunk_offset, elem_range)
-                    elem        = self.bus.memory_map.decode_address(elem_range.start)
-                    elem_offset = chunk_addr - elem_range.start
-                    elem_slice  = elem.r_data.word_select(elem_offset, self.bus.data_width)
+                for reg_range in r_chunk.registers():
+                    chunk_addr = self._r_shadow.encode_offset(chunk_offset, reg_range)
+                    reg        = self.bus.memory_map.decode_address(reg_range.start)
+                    reg_offset = chunk_addr - reg_range.start
+                    reg_r_data = reg.element.r_data.word_select(reg_offset, self.bus.data_width)
 
                     with m.Case(chunk_addr):
-                        if chunk_addr == elem_range.start:
-                            m.d.comb += elem.r_stb.eq(self.bus.r_stb)
+                        if chunk_addr == reg_range.start:
+                            m.d.comb += reg.element.r_stb.eq(self.bus.r_stb)
                         # Delay by 1 cycle, allowing reads to be pipelined.
                         m.d.sync += r_chunk.r_en.eq(self.bus.r_stb)
 
-                    r_chunk_w_en_fanin |= elem.r_stb
-                    r_chunk_data_fanin |= Mux(elem.r_stb, elem_slice, 0)
+                    r_chunk_w_en_fanin |= reg.element.r_stb
+                    r_chunk_data_fanin |= Mux(reg.element.r_stb, reg_r_data, 0)
 
             m.d.comb += r_chunk.w_en.eq(r_chunk_w_en_fanin)
             with m.If(r_chunk.w_en):
@@ -632,23 +626,23 @@ class Multiplexer(wiring.Component):
 
         for chunk_offset, w_chunk in self._w_shadow.chunks():
             with m.Switch(self.bus.addr):
-                for elem_range in w_chunk.elements():
-                    chunk_addr  = self._w_shadow.encode_offset(chunk_offset, elem_range)
-                    elem        = self.bus.memory_map.decode_address(elem_range.start)
-                    elem_offset = chunk_addr - elem_range.start
-                    elem_slice  = elem.w_data.word_select(elem_offset, self.bus.data_width)
+                for reg_range in w_chunk.registers():
+                    chunk_addr = self._w_shadow.encode_offset(chunk_offset, reg_range)
+                    reg        = self.bus.memory_map.decode_address(reg_range.start)
+                    reg_offset = chunk_addr - reg_range.start
+                    reg_w_data = reg.element.w_data.word_select(reg_offset, self.bus.data_width)
 
-                    if chunk_addr == elem_range.stop - 1:
-                        m.d.sync += elem.w_stb.eq(0)
+                    if chunk_addr == reg_range.stop - 1:
+                        m.d.sync += reg.element.w_stb.eq(0)
 
                     with m.Case(chunk_addr):
-                        if chunk_addr == elem_range.stop - 1:
+                        if chunk_addr == reg_range.stop - 1:
                             # Delay by 1 cycle, avoiding combinatorial paths through
                             # the CSR bus and into CSR registers.
-                            m.d.sync += elem.w_stb.eq(self.bus.w_stb)
+                            m.d.sync += reg.element.w_stb.eq(self.bus.w_stb)
                         m.d.comb += w_chunk.w_en.eq(self.bus.w_stb)
 
-                    m.d.comb += elem_slice.eq(w_chunk.data)
+                    m.d.comb += reg_w_data.eq(w_chunk.data)
 
             with m.If(w_chunk.w_en):
                 m.d.sync += w_chunk.data.eq(self.bus.w_data)

@@ -57,11 +57,11 @@ class EventMonitorTestCase(unittest.TestCase):
         enable,   enable_range = resources[0].resource, (resources[0].start, resources[0].end)
         pending, pending_range = resources[1].resource, (resources[1].start, resources[1].end)
         self.assertEqual(
-            (enable.width, enable.access, enable_range),
+            (enable.element.width, enable.element.access, enable_range),
             (2, Element.Access.RW, (0, 1))
         )
         self.assertEqual(
-            (pending.width, pending.access, pending_range),
+            (pending.element.width, pending.element.access, pending_range),
             (2, Element.Access.RW, (1, 2))
         )
 
