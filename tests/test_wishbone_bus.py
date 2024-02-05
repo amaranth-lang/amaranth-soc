@@ -79,6 +79,40 @@ class SignatureTestCase(unittest.TestCase):
         self.assertEqual(iface.granularity, 8)
         self.assertEqual(iface.signature, sig)
 
+    def test_annotations(self):
+        sig = wishbone.Signature(addr_width=30, data_width=32, granularity=8,
+                                 features={"bte", "cti"})
+        iface = sig.create()
+        self.assertEqual([a.as_json() for a in sig.annotations(iface)], [
+            {
+                "addr_width": 30,
+                "data_width": 32,
+                "granularity": 8,
+                "features": [ "bte", "cti" ],
+            },
+        ])
+
+    def test_annotations_memory_map(self):
+        sig = wishbone.Signature(addr_width=30, data_width=32, granularity=8,
+                                 features={"bte", "cti"})
+        iface = sig.create()
+        iface.memory_map = MemoryMap(addr_width=32, data_width=8)
+        self.assertEqual([a.as_json() for a in sig.annotations(iface)], [
+            {
+                "addr_width": 30,
+                "data_width": 32,
+                "granularity": 8,
+                "features": [ "bte", "cti" ],
+            },
+            {
+                "addr_width": 32,
+                "data_width": 8,
+                "alignment": 0,
+                "windows": [],
+                "resources": [],
+            },
+        ])
+
     def test_eq(self):
         self.assertEqual(wishbone.Signature(addr_width=32, data_width=8, features={"err"}),
                          wishbone.Signature(addr_width=32, data_width=8, features={"err"}))
@@ -144,6 +178,38 @@ class SignatureTestCase(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, r"'foo' is not a valid Feature"):
             wishbone.Signature.check_parameters(addr_width=0, data_width=8, granularity=8,
                                                 features={"foo"})
+
+    def test_annotations_wrong_type(self):
+        sig = wishbone.Signature(addr_width=30, data_width=32, granularity=8)
+        with self.assertRaisesRegex(TypeError,
+                r"Interface must be a wishbone\.Interface object, not 'foo'"):
+            sig.annotations("foo")
+
+    def test_annotations_incompatible(self):
+        sig1  = wishbone.Signature(addr_width=30, data_width=32, granularity=8)
+        iface = sig1.create()
+        sig2  = wishbone.Signature(addr_width=32, data_width=8)
+        with self.assertRaisesRegex(ValueError,
+                r"Interface signature is not equal to this signature"):
+            sig2.annotations(iface)
+
+
+class AnnotationTestCase(unittest.TestCase):
+    def test_as_json(self):
+        sig = wishbone.Signature(addr_width=30, data_width=32, granularity=8,
+                                 features={"cti", "bte"})
+        annotation = wishbone.Annotation(sig)
+        self.assertEqual(annotation.as_json(), {
+            "addr_width": 30,
+            "data_width": 32,
+            "granularity": 8,
+            "features": [ "bte", "cti" ],
+        })
+
+    def test_wrong_origin(self):
+        with self.assertRaisesRegex(TypeError,
+                r"Origin must be a wishbone.Signature object, not 'foo'"):
+            wishbone.Annotation("foo")
 
 
 class InterfaceTestCase(unittest.TestCase):

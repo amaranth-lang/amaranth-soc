@@ -1,12 +1,15 @@
 from amaranth import *
-from amaranth.lib import enum, wiring
+from amaranth.lib import enum, wiring, meta
 from amaranth.lib.wiring import In, Out, flipped
 from amaranth.utils import exact_log2
 
 from ..memory import MemoryMap
 
 
-__all__ = ["CycleType", "BurstTypeExt", "Feature", "Signature", "Interface", "Decoder", "Arbiter"]
+__all__ = [
+    "CycleType", "BurstTypeExt", "Feature", "Signature", "Annotation", "Interface",
+    "Decoder", "Arbiter"
+]
 
 
 class CycleType(enum.Enum):
@@ -192,6 +195,35 @@ class Signature(wiring.Signature):
                          granularity=self.granularity, features=self.features,
                          path=path, src_loc_at=1 + src_loc_at)
 
+    def annotations(self, interface, /):
+        """Get annotations of a compatible Wishbone bus interface.
+
+        Parameters
+        ----------
+        interface : :class:`Interface`
+            A Wishbone bus interface compatible with this signature.
+
+        Returns
+        -------
+        iterator of :class:`meta.Annotation`
+            Annotations attached to ``interface``.
+
+        Raises
+        ------
+        :exc:`TypeError`
+            If ``interface`` is not an :class:`Interface` object.
+        :exc:`ValueError`
+            If ``interface.signature`` is not equal to ``self``.
+        """
+        if not isinstance(interface, Interface):
+            raise TypeError(f"Interface must be a wishbone.Interface object, not {interface!r}")
+        if interface.signature != self:
+            raise ValueError(f"Interface signature is not equal to this signature")
+        annotations = [*super().annotations(interface), Annotation(interface.signature)]
+        if interface._memory_map is not None:
+            annotations.append(interface._memory_map.annotation)
+        return annotations
+
     def __eq__(self, other):
         """Compare signatures.
 
@@ -206,6 +238,79 @@ class Signature(wiring.Signature):
 
     def __repr__(self):
         return f"wishbone.Signature({self.members!r})"
+
+
+class Annotation(meta.Annotation):
+    schema = {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$id": "https://amaranth-lang.org/schema/amaranth-soc/0.1/wishbone/bus.json",
+        "type": "object",
+        "properties": {
+            "addr_width": {
+                "type": "integer",
+                "minimum": 0,
+            },
+            "data_width": {
+                "enum": [8, 16, 32, 64],
+            },
+            "granularity": {
+                "enum": [8, 16, 32, 64],
+            },
+            "features": {
+                "type": "array",
+                "items": {
+                    "enum": ["err", "rty", "stall", "lock", "cti", "bte"],
+                },
+                "uniqueItems": True,
+            },
+        },
+        "additionalProperties": False,
+        "required": [
+            "addr_width",
+            "data_width",
+            "granularity",
+            "features",
+        ],
+    }
+
+    """Wishbone bus signature annotation.
+
+    Parameters
+    ----------
+    origin : :class:`Signature`
+        The signature described by this annotation instance.
+
+    Raises
+    ------
+    :exc:`TypeError`
+        If ``origin`` is not a :class:`Signature`.
+    """
+    def __init__(self, origin):
+        if not isinstance(origin, Signature):
+            raise TypeError(f"Origin must be a wishbone.Signature object, not {origin!r}")
+        self._origin = origin
+
+    @property
+    def origin(self):
+        return self._origin
+
+    def as_json(self):
+        """Translate to JSON.
+
+        Returns
+        -------
+        :class:`dict`
+            A JSON representation of :attr:`~Annotation.origin`, describing its address width,
+            data width, granularity and features.
+        """
+        instance = {
+            "addr_width": self.origin.addr_width,
+            "data_width": self.origin.data_width,
+            "granularity": self.origin.granularity,
+            "features": sorted(feature.value for feature in self.origin.features),
+        }
+        self.validate(instance)
+        return instance
 
 
 class Interface(wiring.PureInterface):

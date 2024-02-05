@@ -59,6 +59,13 @@ class ElementSignatureTestCase(unittest.TestCase):
         self.assertEqual(elem.r_stb.name, "foo__bar__r_stb")
         self.assertEqual(elem.signature, sig)
 
+    def test_annotations(self):
+        sig  = csr.Element.Signature(8, csr.Element.Access.RW)
+        elem = sig.create()
+        self.assertEqual([a.as_json() for a in sig.annotations(elem)], [
+            { "width": 8, "access": "rw" },
+        ]),
+
     def test_eq(self):
         self.assertEqual(csr.Element.Signature(8, "r"), csr.Element.Signature(8, "r"))
         self.assertEqual(csr.Element.Signature(8, "r"),
@@ -79,6 +86,35 @@ class ElementSignatureTestCase(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,
                 r"'wo' is not a valid Element.Access"):
             csr.Element.Signature(width=1, access="wo")
+
+    def test_annotations_wrong_type(self):
+        sig = csr.Element.Signature(8, "rw")
+        with self.assertRaisesRegex(TypeError,
+                r"Element must be a csr\.Element object, not 'foo'"):
+            sig.annotations("foo")
+
+    def test_annotations_incompatible(self):
+        sig1 = csr.Element.Signature(8, "rw")
+        elem = sig1.create()
+        sig2 = csr.Element.Signature(4, "rw")
+        with self.assertRaisesRegex(ValueError,
+                r"Element signature is not equal to this signature"):
+            sig2.annotations(elem)
+
+
+class ElementAnnotationTestCase(unittest.TestCase):
+    def test_as_json(self):
+        sig = csr.Element.Signature(8, access="rw")
+        annotation = csr.Element.Annotation(sig)
+        self.assertEqual(annotation.as_json(), {
+            "width": 8,
+            "access": "rw",
+        })
+
+    def test_wrong_origin(self):
+        with self.assertRaisesRegex(TypeError,
+                r"Origin must be a csr.Element.Signature object, not 'foo'"):
+            csr.Element.Annotation("foo")
 
 
 class ElementTestCase(unittest.TestCase):
@@ -111,6 +147,22 @@ class SignatureTestCase(unittest.TestCase):
         self.assertEqual(iface.r_stb.name, "foo__bar__r_stb")
         self.assertEqual(iface.signature, sig)
 
+    def test_annotations(self):
+        sig = csr.Signature(addr_width=16, data_width=8)
+        iface = sig.create()
+        self.assertEqual([a.as_json() for a in sig.annotations(iface)], [
+            { "addr_width": 16, "data_width": 8 },
+        ])
+
+    def test_annotations_memory_map(self):
+        sig = csr.Signature(addr_width=16, data_width=8)
+        iface = sig.create()
+        iface.memory_map = MemoryMap(addr_width=16, data_width=8)
+        self.assertEqual([a.as_json() for a in sig.annotations(iface)], [
+            { "addr_width": 16, "data_width": 8 },
+            { "addr_width": 16, "data_width": 8, "alignment": 0, "windows": [], "resources": [] }
+        ])
+
     def test_eq(self):
         self.assertEqual(csr.Signature(addr_width=32, data_width=8),
                          csr.Signature(addr_width=32, data_width=8))
@@ -133,6 +185,35 @@ class SignatureTestCase(unittest.TestCase):
         with self.assertRaisesRegex(TypeError,
                 r"Data width must be a positive integer, not -1"):
             csr.Signature.check_parameters(addr_width=16, data_width=-1)
+
+    def test_annotations_wrong_type(self):
+        sig = csr.Signature(addr_width=8, data_width=8)
+        with self.assertRaisesRegex(TypeError,
+                r"Interface must be a csr\.Interface object, not 'foo'"):
+            sig.annotations("foo")
+
+    def test_annotations_incompatible(self):
+        sig1  = csr.Signature(addr_width=8, data_width=8)
+        iface = sig1.create()
+        sig2  = csr.Signature(addr_width=4, data_width=8)
+        with self.assertRaisesRegex(ValueError,
+                r"Interface signature is not equal to this signature"):
+            sig2.annotations(iface)
+
+
+class AnnotationTestCase(unittest.TestCase):
+    def test_as_json(self):
+        sig = csr.Signature(addr_width=16, data_width=8)
+        annotation = csr.Annotation(sig)
+        self.assertEqual(annotation.as_json(), {
+            "addr_width": 16,
+            "data_width": 8,
+        })
+
+    def test_wrong_origin(self):
+        with self.assertRaisesRegex(TypeError,
+                r"Origin must be a csr.Signature object, not 'foo'"):
+            csr.Annotation("foo")
 
 
 class InterfaceTestCase(unittest.TestCase):

@@ -1,6 +1,20 @@
-import unittest
+# amaranth: UnusedElaboratable=no
 
-from amaranth_soc.memory import _RangeMap, ResourceInfo, MemoryMap
+import unittest
+from types import SimpleNamespace
+from amaranth.lib import wiring
+
+from amaranth_soc.memory import _RangeMap, ResourceInfo, MemoryMap, MemoryMapAnnotation
+from amaranth_soc import csr
+
+
+class _MockResource(wiring.PureInterface):
+    def __init__(self, name):
+        super().__init__(wiring.Signature({}))
+        self._name = name
+
+    def __repr__(self):
+        return f"_MockResource({self._name!r})"
 
 
 class RangeMapTestCase(unittest.TestCase):
@@ -118,114 +132,158 @@ class MemoryMapTestCase(unittest.TestCase):
 
     def test_add_resource(self):
         memory_map = MemoryMap(addr_width=16, data_width=8)
-        self.assertEqual(memory_map.add_resource("a", name="foo", size=1), (0, 1))
-        self.assertEqual(memory_map.add_resource(resource="b", name="bar", size=2), (1, 3))
+        res1 = _MockResource("res1")
+        res2 = _MockResource("res2")
+        self.assertEqual(memory_map.add_resource(res1, name="foo", size=1), (0, 1))
+        self.assertEqual(memory_map.add_resource(resource=res2, name="bar", size=2), (1, 3))
 
     def test_add_resource_map_aligned(self):
         memory_map = MemoryMap(addr_width=16, data_width=8, alignment=1)
-        self.assertEqual(memory_map.add_resource("a", name="foo", size=1), (0, 2))
-        self.assertEqual(memory_map.add_resource("b", name="bar", size=2), (2, 4))
+        res1 = _MockResource("res1")
+        res2 = _MockResource("res2")
+        self.assertEqual(memory_map.add_resource(res1, name="foo", size=1), (0, 2))
+        self.assertEqual(memory_map.add_resource(res2, name="bar", size=2), (2, 4))
 
     def test_add_resource_explicit_aligned(self):
         memory_map = MemoryMap(addr_width=16, data_width=8)
-        self.assertEqual(memory_map.add_resource("a", name="foo", size=1), (0, 1))
-        self.assertEqual(memory_map.add_resource("b", name="bar", size=1, alignment=1), (2, 4))
-        self.assertEqual(memory_map.add_resource("c", name="baz", size=2), (4, 6))
+        res1 = _MockResource("res1")
+        res2 = _MockResource("res2")
+        res3 = _MockResource("res3")
+        self.assertEqual(memory_map.add_resource(res1, name="foo", size=1), (0, 1))
+        self.assertEqual(memory_map.add_resource(res2, name="bar", size=1, alignment=1), (2, 4))
+        self.assertEqual(memory_map.add_resource(res3, name="baz", size=2), (4, 6))
 
     def test_add_resource_addr(self):
         memory_map = MemoryMap(addr_width=16, data_width=8)
-        self.assertEqual(memory_map.add_resource("a", name="foo", size=1, addr=10), (10, 11))
-        self.assertEqual(memory_map.add_resource("b", name="bar", size=2), (11, 13))
+        res1 = _MockResource("res1")
+        res2 = _MockResource("res2")
+        self.assertEqual(memory_map.add_resource(res1, name="foo", size=1, addr=10), (10, 11))
+        self.assertEqual(memory_map.add_resource(res2, name="bar", size=2), (11, 13))
 
     def test_add_resource_size_zero(self):
         memory_map = MemoryMap(addr_width=1, data_width=8)
-        self.assertEqual(memory_map.add_resource("a", name="foo", size=0), (0, 1))
-        self.assertEqual(memory_map.add_resource("b", name="bar", size=0), (1, 2))
+        res1 = _MockResource("res1")
+        res2 = _MockResource("res2")
+        self.assertEqual(memory_map.add_resource(res1, name="foo", size=0), (0, 1))
+        self.assertEqual(memory_map.add_resource(res2, name="bar", size=0), (1, 2))
 
     def test_add_resource_wrong_frozen(self):
         memory_map = MemoryMap(addr_width=2, data_width=8)
         memory_map.freeze()
+        res = _MockResource("res")
         with self.assertRaisesRegex(ValueError,
-                r"Memory map has been frozen. Cannot add resource 'a'"):
-            memory_map.add_resource("a", name="foo", size=0)
+                r"Memory map has been frozen. Cannot add resource _MockResource\('res'\)"):
+            memory_map.add_resource(res, name="foo", size=0)
+
+    def test_add_resource_wrong_signature_attr(self):
+        memory_map = MemoryMap(addr_width=2, data_width=8)
+        res = SimpleNamespace()
+        with self.assertRaisesRegex(AttributeError,
+                r"Resource namespace\(\) must have a 'signature' attribute"):
+            memory_map.add_resource(res, name="foo", size=0)
+
+    def test_add_resource_wrong_signature_type(self):
+        memory_map = MemoryMap(addr_width=2, data_width=8)
+        res = SimpleNamespace(signature=1)
+        with self.assertRaisesRegex(TypeError,
+                r"Signature of resource namespace\(signature=1\) must be a wiring.Signature "
+                r"object, not 1"):
+            memory_map.add_resource(res, name="foo", size=0)
 
     def test_add_resource_wrong_name(self):
         memory_map = MemoryMap(addr_width=1, data_width=8)
+        res = _MockResource("res")
         with self.assertRaisesRegex(TypeError, r"Name must be a non-empty string, not 1"):
-            memory_map.add_resource("a", name=1, size=0)
+            memory_map.add_resource(res, name=1, size=0)
         with self.assertRaisesRegex(TypeError, r"Name must be a non-empty string, not ''"):
-            memory_map.add_resource("a", name="", size=0)
+            memory_map.add_resource(res, name="", size=0)
 
     def test_add_resource_wrong_name_conflict(self):
         memory_map = MemoryMap(addr_width=1, data_width=8)
-        memory_map.add_resource("a", name="foo", size=0)
-        with self.assertRaisesRegex(ValueError, r"Name foo is already used by 'a'"):
-            memory_map.add_resource("b", name="foo", size=0)
+        res1 = _MockResource("res1")
+        res2 = _MockResource("res2")
+        memory_map.add_resource(res1, name="foo", size=0)
+        with self.assertRaisesRegex(ValueError,
+                r"Name foo is already used by _MockResource\('res1'\)"):
+            memory_map.add_resource(res2, name="foo", size=0)
 
     def test_add_resource_wrong_address(self):
         memory_map = MemoryMap(addr_width=16, data_width=8)
+        res = _MockResource("res")
         with self.assertRaisesRegex(ValueError,
                 r"Address must be a non-negative integer, not -1"):
-            memory_map.add_resource("a", name="foo", size=1, addr=-1)
+            memory_map.add_resource(res, name="foo", size=1, addr=-1)
 
     def test_add_resource_wrong_address_unaligned(self):
         memory_map = MemoryMap(addr_width=16, data_width=8, alignment=1)
+        res = _MockResource("res")
         with self.assertRaisesRegex(ValueError,
                 r"Explicitly specified address 0x1 must be a multiple of 0x2 bytes"):
-            memory_map.add_resource("a", name="foo", size=1, addr=1)
+            memory_map.add_resource(res, name="foo", size=1, addr=1)
 
     def test_add_resource_wrong_size(self):
         memory_map = MemoryMap(addr_width=16, data_width=8)
+        res = _MockResource("res")
         with self.assertRaisesRegex(ValueError,
                 r"Size must be a non-negative integer, not -1"):
-            memory_map.add_resource("a", name="foo", size=-1)
+            memory_map.add_resource(res, name="foo", size=-1)
 
     def test_add_resource_wrong_alignment(self):
         memory_map = MemoryMap(addr_width=16, data_width=8)
+        res = _MockResource("res")
         with self.assertRaisesRegex(ValueError,
                 r"Alignment must be a non-negative integer, not -1"):
-            memory_map.add_resource("a", name="foo", size=1, alignment=-1)
+            memory_map.add_resource(res, name="foo", size=1, alignment=-1)
 
     def test_add_resource_wrong_out_of_bounds(self):
         memory_map = MemoryMap(addr_width=16, data_width=8)
+        res = _MockResource("res")
         with self.assertRaisesRegex(ValueError,
                 r"Address range 0x10000\.\.0x10001 out of bounds for memory map spanning "
                 r"range 0x0\.\.0x10000 \(16 address bits\)"):
-            memory_map.add_resource("a", name="foo", addr=0x10000, size=1)
+            memory_map.add_resource(res, name="foo", addr=0x10000, size=1)
         with self.assertRaisesRegex(ValueError,
                 r"Address range 0x0\.\.0x10001 out of bounds for memory map spanning "
                 r"range 0x0\.\.0x10000 \(16 address bits\)"):
-            memory_map.add_resource("a", name="foo", size=0x10001)
+            memory_map.add_resource(res, name="foo", size=0x10001)
 
     def test_add_resource_wrong_overlap(self):
         memory_map = MemoryMap(addr_width=16, data_width=8)
-        memory_map.add_resource("a", name="foo", size=16)
+        res1 = _MockResource("res1")
+        res2 = _MockResource("res2")
+        memory_map.add_resource(res1, name="foo", size=16)
         with self.assertRaisesRegex(ValueError,
-                r"Address range 0xa\.\.0xb overlaps with resource 'a' at 0x0\.\.0x10"):
-            memory_map.add_resource("b", name="bar", size=1, addr=10)
+                r"Address range 0xa\.\.0xb overlaps with resource _MockResource\('res1'\) at "
+                r"0x0\.\.0x10"):
+            memory_map.add_resource(res2, name="bar", size=1, addr=10)
 
     def test_add_resource_wrong_twice(self):
         memory_map = MemoryMap(addr_width=16, data_width=8)
-        memory_map.add_resource("a", name="foo", size=16)
+        res = _MockResource("res")
+        memory_map.add_resource(res, name="foo", size=16)
         with self.assertRaisesRegex(ValueError,
-                r"Resource 'a' is already added at address range 0x0..0x10"):
-            memory_map.add_resource("a", name="bar", size=16)
+                r"Resource _MockResource\('res'\) is already added at address range 0x0..0x10"):
+            memory_map.add_resource(res, name="bar", size=16)
 
     def test_iter_resources(self):
         memory_map = MemoryMap(addr_width=16, data_width=8)
-        memory_map.add_resource("a", name="foo", size=1)
-        memory_map.add_resource("b", name="bar", size=2)
+        res1 = _MockResource("res1")
+        res2 = _MockResource("res2")
+        memory_map.add_resource(res1, name="foo", size=1)
+        memory_map.add_resource(res2, name="bar", size=2)
         self.assertEqual(list(memory_map.resources()), [
-            ("a", "foo", (0, 1)),
-            ("b", "bar", (1, 3)),
+            (res1, "foo", (0, 1)),
+            (res2, "bar", (1, 3)),
         ])
 
     def test_add_window(self):
         memory_map = MemoryMap(addr_width=16, data_width=8)
-        self.assertEqual(memory_map.add_resource("a", name="foo", size=1), (0, 1))
+        res1 = _MockResource("res1")
+        res2 = _MockResource("res2")
+        self.assertEqual(memory_map.add_resource(res1, name="foo", size=1), (0, 1))
         self.assertEqual(memory_map.add_window(MemoryMap(addr_width=10, data_width=8)),
                          (0x400, 0x800, 1))
-        self.assertEqual(memory_map.add_resource("b", name="bar", size=1), (0x800, 0x801))
+        self.assertEqual(memory_map.add_resource(res2, name="bar", size=1), (0x800, 0x801))
 
     def test_add_window_sparse(self):
         memory_map = MemoryMap(addr_width=16, data_width=32)
@@ -300,22 +358,28 @@ class MemoryMapTestCase(unittest.TestCase):
 
     def test_add_window_wrong_name_conflict(self):
         memory_map = MemoryMap(addr_width=2, data_width=8)
-        memory_map.add_resource("a", name="foo", size=0)
+        res = _MockResource("res")
+        memory_map.add_resource(res, name="foo", size=0)
         window = MemoryMap(addr_width=1, data_width=8, name="foo")
-        with self.assertRaisesRegex(ValueError, r"Name foo is already used by 'a'"):
+        with self.assertRaisesRegex(ValueError,
+                r"Name foo is already used by _MockResource\('res'\)"):
             memory_map.add_window(window)
 
     def test_add_window_wrong_name_conflict_subordinate(self):
         memory_map = MemoryMap(addr_width=2, data_width=8)
-        memory_map.add_resource("a", name="foo", size=0)
-        memory_map.add_resource("b", name="bar", size=0)
+        res1 = _MockResource("res1")
+        res2 = _MockResource("res2")
+        res3 = _MockResource("res3")
+        res4 = _MockResource("res4")
+        memory_map.add_resource(res1, name="foo", size=0)
+        memory_map.add_resource(res2, name="bar", size=0)
         window = MemoryMap(addr_width=1, data_width=8, name=None)
-        window.add_resource("c", name="foo", size=0)
-        window.add_resource("d", name="bar", size=0)
+        window.add_resource(res3, name="foo", size=0)
+        window.add_resource(res4, name="bar", size=0)
         with self.assertRaisesRegex(ValueError,
                 r"The following names are already used: "
-                r"bar is used by 'b'; "
-                r"foo is used by 'a'"):
+                r"bar is used by _MockResource\('res2'\); "
+                r"foo is used by _MockResource\('res1'\)"):
             memory_map.add_window(window)
 
     def test_iter_windows(self):
@@ -350,9 +414,11 @@ class MemoryMapTestCase(unittest.TestCase):
 
     def test_align_to(self):
         memory_map = MemoryMap(addr_width=16, data_width=8)
-        self.assertEqual(memory_map.add_resource("a", name="foo", size=1), (0, 1))
+        res1 = _MockResource("res1")
+        res2 = _MockResource("res2")
+        self.assertEqual(memory_map.add_resource(res1, name="foo", size=1), (0, 1))
         self.assertEqual(memory_map.align_to(10), 0x400)
-        self.assertEqual(memory_map.add_resource("b", name="bar", size=16), (0x400, 0x410))
+        self.assertEqual(memory_map.add_resource(res2, name="bar", size=16), (0x400, 0x410))
 
     def test_align_to_wrong(self):
         memory_map = MemoryMap(addr_width=16, data_width=8)
@@ -364,22 +430,22 @@ class MemoryMapTestCase(unittest.TestCase):
 class MemoryMapDiscoveryTestCase(unittest.TestCase):
     def setUp(self):
         self.root = MemoryMap(addr_width=32, data_width=32)
-        self.res1 = "res1"
+        self.res1 = _MockResource("res1")
         self.root.add_resource(self.res1, name="name1", size=16)
         self.win1 = MemoryMap(addr_width=16, data_width=32)
-        self.res2 = "res2"
+        self.res2 = _MockResource("res2")
         self.win1.add_resource(self.res2, name="name2", size=32)
-        self.res3 = "res3"
+        self.res3 = _MockResource("res3")
         self.win1.add_resource(self.res3, name="name3", size=32)
         self.root.add_window(self.win1)
-        self.res4 = "res4"
+        self.res4 = _MockResource("res4")
         self.root.add_resource(self.res4, name="name4", size=1)
         self.win2 = MemoryMap(addr_width=16, data_width=8)
-        self.res5 = "res5"
+        self.res5 = _MockResource("res5")
         self.win2.add_resource(self.res5, name="name5", size=16)
         self.root.add_window(self.win2, sparse=True)
         self.win3 = MemoryMap(addr_width=16, data_width=8, name="win3")
-        self.res6 = "res6"
+        self.res6 = _MockResource("res6")
         self.win3.add_resource(self.res6, name="name6", size=16)
         self.root.add_window(self.win3, sparse=False)
 
@@ -443,3 +509,121 @@ class MemoryMapDiscoveryTestCase(unittest.TestCase):
 
     def test_decode_address_missing(self):
         self.assertIsNone(self.root.decode_address(address=0x00000100))
+
+
+class MemoryMapAnnotationTestCase(unittest.TestCase):
+    def test_origin_freeze(self):
+        memory_map = MemoryMap(addr_width=2, data_width=8)
+        res = _MockResource("res")
+        MemoryMapAnnotation(memory_map)
+        with self.assertRaisesRegex(ValueError,
+                r"Memory map has been frozen. Cannot add resource _MockResource\('res'\)"):
+            memory_map.add_resource(res, name="foo", size=0)
+
+    def test_as_json(self):
+        elem_1_1 = csr.Element(8, "rw")
+        elem_1_2 = csr.Element(4, "r")
+        mux_1 = csr.Multiplexer(addr_width=1, data_width=8, name="mux_1")
+        mux_1.add(elem_1_1, name="elem_1")
+        mux_1.add(elem_1_2, name="elem_2")
+
+        elem_2_1 = csr.Element(4, "rw")
+        elem_2_2 = csr.Element(8, "w")
+        mux_2 = csr.Multiplexer(addr_width=1, data_width=8, name="mux_2")
+        mux_2.add(elem_2_1, name="elem_1")
+        mux_2.add(elem_2_2, name="elem_2")
+
+        decoder = csr.Decoder(addr_width=2, data_width=8)
+        decoder.add(mux_1.bus)
+        decoder.add(mux_2.bus)
+
+        annotation = MemoryMapAnnotation(decoder.bus.memory_map)
+        self.assertEqual(annotation.as_json(), {
+            "addr_width": 2,
+            "data_width": 8,
+            "alignment":  0,
+            "windows": [
+                {
+                    "start": 0,
+                    "end": 2,
+                    "ratio": 1,
+                    "annotations": {
+                        "https://amaranth-lang.org/schema/amaranth-soc/0.1/memory/memory-map.json": {
+                            "name": "mux_1",
+                            "addr_width": 1,
+                            "data_width": 8,
+                            "alignment": 0,
+                            "windows": [],
+                            "resources": [
+                                {
+                                    "name": "elem_1",
+                                    "start": 0,
+                                    "end": 1,
+                                    "annotations": {
+                                        "https://amaranth-lang.org/schema/amaranth-soc/0.1/csr/element.json": {
+                                            "width": 8,
+                                            "access": "rw",
+                                        },
+                                    },
+                                },
+                                {
+                                    "name": "elem_2",
+                                    "start": 1,
+                                    "end": 2,
+                                    "annotations": {
+                                        "https://amaranth-lang.org/schema/amaranth-soc/0.1/csr/element.json": {
+                                            "width": 4,
+                                            "access": "r",
+                                        },
+                                    },
+                                }
+                            ],
+                        },
+                    },
+                },
+                {
+                    "start": 2,
+                    "end": 4,
+                    "ratio": 1,
+                    "annotations": {
+                        "https://amaranth-lang.org/schema/amaranth-soc/0.1/memory/memory-map.json": {
+                            "name": "mux_2",
+                            "addr_width": 1,
+                            "data_width": 8,
+                            "alignment": 0,
+                            "windows": [],
+                            "resources": [
+                                {
+                                    "name": "elem_1",
+                                    "start": 0,
+                                    "end": 1,
+                                    "annotations": {
+                                        "https://amaranth-lang.org/schema/amaranth-soc/0.1/csr/element.json": {
+                                            "width": 4,
+                                            "access": "rw",
+                                        },
+                                    },
+                                },
+                                {
+                                    "name": "elem_2",
+                                    "start": 1,
+                                    "end": 2,
+                                    "annotations": {
+                                        "https://amaranth-lang.org/schema/amaranth-soc/0.1/csr/element.json": {
+                                            "width": 8,
+                                            "access": "w",
+                                        },
+                                    },
+                                }
+                            ],
+                        },
+                    },
+                },
+            ],
+            "resources": []
+        })
+
+    def test_wrong_origin(self):
+        with self.assertRaisesRegex(TypeError,
+                r"Origin must be a MemoryMap object, not 'foo'"):
+            MemoryMapAnnotation("foo")
