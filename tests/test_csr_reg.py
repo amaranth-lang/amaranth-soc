@@ -8,6 +8,7 @@ from amaranth.sim import *
 
 from amaranth_soc.csr.reg import *
 from amaranth_soc.csr import action, Element
+from amaranth_soc.memory import MemoryMap
 
 
 # The `amaranth: UnusedElaboratable=no` modeline isn't enough here.
@@ -630,230 +631,260 @@ class RegisterTestCase(unittest.TestCase):
             sim.run()
 
 
-class RegisterMapTestCase(unittest.TestCase):
-    def setUp(self):
-        self.map = RegisterMap()
+class _MockRegister(Register, access="rw"):
+    def __init__(self, name, width=1):
+        super().__init__({"a": Field(action.RW, unsigned(width))})
+        self._name = name
 
-    def test_add_register(self):
-        class FooRegister(Register, access="rw"):
-            a: Field(action.RW, 1)
-        reg_rw_a = FooRegister()
-        self.assertIs(self.map.add_register(reg_rw_a, name="reg_rw_a"), reg_rw_a)
+    def __repr__(self):
+        return f"_MockRegister({self._name!r})"
 
-    def test_add_register_frozen(self):
-        class FooRegister(Register, access="rw"):
-            a: Field(action.RW, 1)
-        reg_rw_a = FooRegister()
-        self.map.freeze()
-        with self.assertRaisesRegex(ValueError, r"Register map is frozen"):
-            self.map.add_register(reg_rw_a, name="reg_rw_a")
 
-    def test_add_register_wrong_type(self):
+class BuilderTestCase(unittest.TestCase):
+    def test_init(self):
+        # default name & granularity
+        regs_0 = Builder(addr_width=30, data_width=32)
+        self.assertEqual(regs_0.addr_width, 30)
+        self.assertEqual(regs_0.data_width, 32)
+        self.assertEqual(regs_0.granularity, 8)
+        self.assertEqual(regs_0.name, None)
+        # custom name & granularity
+        regs_1 = Builder(addr_width=31, data_width=32, granularity=16, name="periph")
+        self.assertEqual(regs_1.addr_width, 31)
+        self.assertEqual(regs_1.data_width, 32)
+        self.assertEqual(regs_1.granularity, 16)
+        self.assertEqual(regs_1.name, "periph")
+
+    def test_init_wrong_addr_width(self):
         with self.assertRaisesRegex(TypeError,
-                r"Register must be an instance of csr\.Register, not 'foo'"):
-            self.map.add_register("foo", name="foo")
+                r"Address width must be a positive integer, not 'foo'"):
+            Builder(addr_width="foo", data_width=32)
 
-    def test_add_register_wrong_name(self):
-        class FooRegister(Register, access="rw"):
-            a: Field(action.RW, 1)
-        reg_rw_a = FooRegister()
+    def test_init_wrong_data_width(self):
         with self.assertRaisesRegex(TypeError,
-                r"Name must be a non-empty string, not None"):
-            self.map.add_register(reg_rw_a, name=None)
+                r"Data width must be a positive integer, not 'foo'"):
+            Builder(addr_width=30, data_width="foo")
 
-    def test_add_register_empty_name(self):
-        class FooRegister(Register, access="rw"):
-            a: Field(action.RW, 1)
-        reg_rw_a = FooRegister()
+    def test_init_wrong_granularity(self):
+        with self.assertRaisesRegex(TypeError,
+                r"Granularity must be a positive integer, not 'foo'"):
+            Builder(addr_width=30, data_width=32, granularity="foo")
+
+    def test_init_granularity_divisor(self):
+        with self.assertRaisesRegex(ValueError,
+                r"Granularity 7 is not a divisor of data width 32"):
+            Builder(addr_width=30, data_width=32, granularity=7)
+
+    def test_init_wrong_name(self):
+        with self.assertRaisesRegex(TypeError,
+                r"Name must be a non-empty string, not 8"):
+            Builder(addr_width=30, data_width=32, name=8)
         with self.assertRaisesRegex(TypeError,
                 r"Name must be a non-empty string, not ''"):
-            self.map.add_register(reg_rw_a, name="")
+            Builder(addr_width=30, data_width=32, name="")
+
+    def test_add(self):
+        regs = Builder(addr_width=30, data_width=32)
+        ra = regs.add("a", _MockRegister("a"))
+        rb = regs.add("b", _MockRegister("b"), offset=4)
+        self.assertEqual(list(regs._registers.values()), [
+            (ra, ('a',), None),
+            (rb, ('b',), 4),
+        ])
 
     def test_add_cluster(self):
-        cluster = RegisterMap()
-        self.assertIs(self.map.add_cluster(cluster, name="cluster"), cluster)
+        regs = Builder(addr_width=30, data_width=32)
+        with regs.Cluster("a"):
+            rb = regs.add("b", _MockRegister("b"))
+        rc = regs.add("c", _MockRegister("c"))
+        self.assertEqual(list(regs._registers.values()), [
+            (rb, ('a', 'b'), None),
+            (rc, ('c',),     None),
+        ])
 
-    def test_add_cluster_frozen(self):
-        self.map.freeze()
-        cluster = RegisterMap()
-        with self.assertRaisesRegex(ValueError, r"Register map is frozen"):
-            self.map.add_cluster(cluster, name="cluster")
+    def test_add_array(self):
+        regs = Builder(addr_width=30, data_width=32)
+        with regs.Index(10):
+            ra = regs.add("a", _MockRegister("a"))
+        rb = regs.add("b", _MockRegister("b"))
+        self.assertEqual(list(regs._registers.values()), [
+            (ra, (10, 'a'), None),
+            (rb, ('b',),    None),
+        ])
 
-    def test_add_cluster_wrong_type(self):
+    def test_add_nested(self):
+        # cluster -> cluster & index
+        regs_0 = Builder(addr_width=30, data_width=32)
+        with regs_0.Cluster("foo"):
+            with regs_0.Cluster("bar"):
+                ra = regs_0.add("a", _MockRegister("a"))
+            with regs_0.Index(10):
+                rb = regs_0.add("b", _MockRegister("b"))
+            rc = regs_0.add("c", _MockRegister("c"))
+        self.assertEqual(list(regs_0._registers.values()), [
+            (ra, ("foo", "bar", "a"), None),
+            (rb, ("foo", 10, "b"),    None),
+            (rc, ("foo", "c"),        None),
+        ])
+        # index -> index & cluster
+        regs_1 = Builder(addr_width=8, data_width=8)
+        with regs_1.Index(3):
+            with regs_1.Index(7):
+                rd = regs_1.add("d", _MockRegister("d"))
+                re = regs_1.add("e", _MockRegister("e"))
+            with regs_1.Cluster("foo"):
+                rf = regs_1.add("f", _MockRegister("f"))
+
+    def test_add_wrong_reg(self):
+        regs = Builder(addr_width=8, data_width=8)
         with self.assertRaisesRegex(TypeError,
-                r"Cluster must be an instance of csr\.RegisterMap, not 'foo'"):
-            self.map.add_cluster("foo", name="foo")
+                r"Register must be an instance of csr\.Register, not 'bar'"):
+            regs.add("foo", "bar")
 
-    def test_add_cluster_wrong_name(self):
-        cluster = RegisterMap()
+    def test_add_frozen(self):
+        regs = Builder(addr_width=8, data_width=8)
+        regs.freeze()
+        with self.assertRaisesRegex(ValueError,
+                r"Builder is frozen. Cannot add register _MockRegister\('a'\)"):
+            regs.add("a", _MockRegister("a"))
+
+    def test_add_wrong_name(self):
+        regs = Builder(addr_width=8, data_width=8)
         with self.assertRaisesRegex(TypeError,
-                r"Name must be a non-empty string, not None"):
-            self.map.add_cluster(cluster, name=None)
-
-    def test_add_cluster_empty_name(self):
-        cluster = RegisterMap()
+                r"Register name must be a non-empty string, not 1"):
+            regs.add(1, _MockRegister("a"))
         with self.assertRaisesRegex(TypeError,
-                r"Name must be a non-empty string, not ''"):
-            self.map.add_cluster(cluster, name="")
-
-    def test_namespace_collision(self):
-        class FooRegister(Register, access="rw"):
-            a: Field(action.RW, 1)
-        class BarRegister(Register, access="rw"):
-            b: Field(action.RW, 1)
-
-        reg_rw_a  = FooRegister()
-        reg_rw_b  = BarRegister()
-        cluster_0 = RegisterMap()
-        cluster_1 = RegisterMap()
-
-        self.map.add_register(reg_rw_a, name="reg_rw_a")
-        self.map.add_cluster(cluster_0, name="cluster_0")
-
-        with self.assertRaisesRegex(ValueError, # register/register
-                r"Name 'reg_rw_a' is already used by *"):
-            self.map.add_register(reg_rw_b, name="reg_rw_a")
-        with self.assertRaisesRegex(ValueError, # register/cluster
-                r"Name 'reg_rw_a' is already used by *"):
-            self.map.add_cluster(cluster_1, name="reg_rw_a")
-        with self.assertRaisesRegex(ValueError, # cluster/cluster
-                r"Name 'cluster_0' is already used by *"):
-            self.map.add_cluster(cluster_1, name="cluster_0")
-        with self.assertRaisesRegex(ValueError, # cluster/register
-                r"Name 'cluster_0' is already used by *"):
-            self.map.add_register(reg_rw_b, name="cluster_0")
-
-    def test_iter_registers(self):
-        class FooRegister(Register, access="rw"):
-            a: Field(action.RW, 1)
-        class BarRegister(Register, access="rw"):
-            b: Field(action.RW, 1)
-
-        reg_rw_a = FooRegister()
-        reg_rw_b = BarRegister()
-        self.map.add_register(reg_rw_a, name="reg_rw_a")
-        self.map.add_register(reg_rw_b, name="reg_rw_b")
-
-        registers = list(self.map.registers())
-
-        self.assertEqual(len(registers), 2)
-        self.assertIs(registers[0][0], reg_rw_a)
-        self.assertEqual(registers[0][1], "reg_rw_a")
-        self.assertIs(registers[1][0], reg_rw_b)
-        self.assertEqual(registers[1][1], "reg_rw_b")
-
-    def test_iter_clusters(self):
-        cluster_0 = RegisterMap()
-        cluster_1 = RegisterMap()
-        self.map.add_cluster(cluster_0, name="cluster_0")
-        self.map.add_cluster(cluster_1, name="cluster_1")
-
-        clusters = list(self.map.clusters())
-
-        self.assertEqual(len(clusters), 2)
-        self.assertIs(clusters[0][0], cluster_0)
-        self.assertEqual(clusters[0][1], "cluster_0")
-        self.assertIs(clusters[1][0], cluster_1)
-        self.assertEqual(clusters[1][1], "cluster_1")
-
-    def test_iter_flatten(self):
-        class FooRegister(Register, access="rw"):
-            a: Field(action.RW, 1)
-        class BarRegister(Register, access="rw"):
-            b: Field(action.RW, 1)
-
-        reg_rw_a  = FooRegister()
-        reg_rw_b  = BarRegister()
-        cluster_0 = RegisterMap()
-        cluster_1 = RegisterMap()
-
-        cluster_0.add_register(reg_rw_a, name="reg_rw_a")
-        cluster_1.add_register(reg_rw_b, name="reg_rw_b")
-
-        self.map.add_cluster(cluster_0, name="cluster_0")
-        self.map.add_cluster(cluster_1, name="cluster_1")
-
-        registers = list(self.map.flatten())
-
-        self.assertEqual(len(registers), 2)
-        self.assertIs(registers[0][0], reg_rw_a)
-        self.assertEqual(registers[0][1], ("cluster_0", "reg_rw_a"))
-        self.assertIs(registers[1][0], reg_rw_b)
-        self.assertEqual(registers[1][1], ("cluster_1", "reg_rw_b"))
-
-    def test_get_path(self):
-        class FooRegister(Register, access="rw"):
-            a: Field(action.RW, 1)
-        class BarRegister(Register, access="rw"):
-            b: Field(action.RW, 1)
-        class BazRegister(Register, access="rw"):
-            c: Field(action.RW, 1)
-
-        reg_rw_a = FooRegister()
-        reg_rw_b = BarRegister()
-        reg_rw_c = BazRegister()
-
-        cluster_0 = RegisterMap()
-        cluster_0.add_register(reg_rw_a, name="reg_rw_a")
-
-        cluster_1 = RegisterMap()
-        cluster_1.add_register(reg_rw_c, name="reg_rw_c")
-
-        self.map.add_cluster(cluster_0, name="cluster_0")
-        self.map.add_register(reg_rw_b, name="reg_rw_b")
-        self.map.add_cluster(cluster_1, name="cluster_1")
-
-        self.assertEqual(self.map.get_path(reg_rw_a), ("cluster_0", "reg_rw_a"))
-        self.assertEqual(self.map.get_path(reg_rw_b), ("reg_rw_b",))
-        self.assertEqual(self.map.get_path(reg_rw_c), ("cluster_1", "reg_rw_c"))
-
-    def test_get_path_wrong_register(self):
+                r"Register name must be a non-empty string, not ''"):
+            regs.add('', _MockRegister("a"))
         with self.assertRaisesRegex(TypeError,
-                r"Register must be an instance of csr\.Register, not 'foo'"):
-            self.map.get_path("foo")
+                r"Register name must be a non-empty string, not \(\)"):
+            regs.add((), _MockRegister("a"))
 
-    def test_get_path_unknown_register(self):
-        class FooRegister(Register, access="rw"):
-            a: Field(action.RW, 1)
-        reg_rw_a = FooRegister()
-        with self.assertRaises(KeyError):
-            self.map.get_path(reg_rw_a)
-
-    def test_get_register(self):
-        class FooRegister(Register, access="rw"):
-            a: Field(action.RW, 1)
-        class BarRegister(Register, access="rw"):
-            b: Field(action.RW, 1)
-
-        reg_rw_a  = FooRegister()
-        reg_rw_b  = BarRegister()
-        cluster_0 = RegisterMap()
-
-        cluster_0.add_register(reg_rw_a, name="reg_rw_a")
-        self.map.add_cluster(cluster_0, name="cluster_0")
-        self.map.add_register(reg_rw_b, name="reg_rw_b")
-
-        self.assertIs(self.map.get_register(("cluster_0", "reg_rw_a")), reg_rw_a)
-        self.assertIs(self.map.get_register(("reg_rw_b",)), reg_rw_b)
-
-    def test_get_register_empty_path(self):
-        with self.assertRaisesRegex(ValueError, r"Path must be a non-empty iterable"):
-            self.map.get_register(())
-
-    def test_get_register_wrong_path(self):
+    def test_add_wrong_offset(self):
+        regs = Builder(addr_width=8, data_width=8)
         with self.assertRaisesRegex(TypeError,
-                r"Path must contain non-empty strings, not 0"):
-            self.map.get_register(("cluster_0", 0))
+                r"Offset must be a non-negative integer, not 'foo'"):
+            regs.add("a", _MockRegister("a"), offset="foo")
         with self.assertRaisesRegex(TypeError,
-                r"Path must contain non-empty strings, not ''"):
-            self.map.get_register(("", "reg_rw_a"))
+                r"Offset must be a non-negative integer, not -1"):
+            regs.add("a", _MockRegister("a"), offset=-1)
 
-    def test_get_register_unknown_path(self):
-        self.map.add_cluster(RegisterMap(), name="cluster_0")
-        with self.assertRaises(KeyError):
-            self.map.get_register(("reg_rw_a",))
-        with self.assertRaises(KeyError):
-            self.map.get_register(("cluster_0", "reg_rw_a"))
+    def test_add_misaligned_offset(self):
+        regs = Builder(addr_width=30, data_width=32, granularity=8)
+        with self.assertRaisesRegex(ValueError, r"Offset 0x1 must be a multiple of 0x4 bytes"):
+            regs.add("a", _MockRegister("a"), offset=1)
+
+    def test_add_twice(self):
+        regs = Builder(addr_width=8, data_width=8)
+        ra = regs.add("a", _MockRegister("a"))
+        rb = regs.add("b", _MockRegister("b"), offset=1)
+        with self.assertRaisesRegex(ValueError,
+                r"Register _MockRegister\('a'\) is already added with name \('a',\) at an "
+                r"implicit offset"):
+            regs.add("aa", ra)
+        with self.assertRaisesRegex(ValueError,
+                r"Register _MockRegister\('b'\) is already added with name \('b',\) at an "
+                r"explicit offset 0x1"):
+            regs.add("bb", rb)
+
+    def test_cluster_wrong_name(self):
+        regs = Builder(addr_width=8, data_width=8)
+        with self.assertRaisesRegex(TypeError,
+                r"Cluster name must be a non-empty string, not -1"):
+            with regs.Cluster(-1):
+                pass
+        with self.assertRaisesRegex(TypeError,
+                r"Cluster name must be a non-empty string, not ''"):
+            with regs.Cluster(""):
+                pass
+        with self.assertRaisesRegex(TypeError,
+                r"Cluster name must be a non-empty string, not \(\)"):
+            with regs.Cluster(()):
+                pass
+
+    def test_array_wrong_index(self):
+        regs = Builder(addr_width=8, data_width=8)
+        with self.assertRaisesRegex(TypeError,
+                r"Array index must be a non-negative integer, not 'foo'"):
+            with regs.Index("foo"):
+                pass
+        with self.assertRaisesRegex(TypeError,
+                r"Array index must be a non-negative integer, not -1"):
+            with regs.Index(-1):
+                pass
+
+    def test_memory_map(self):
+        regs = Builder(addr_width=30, data_width=32, name="foo")
+        ra = regs.add("a", _MockRegister("ra")) # offset=0x0
+        with regs.Cluster("b"):
+            rc = regs.add("c", _MockRegister("rc"), offset=0xc)
+            rd = regs.add("d", _MockRegister("rd"), offset=0x4)
+            re = regs.add("e", _MockRegister("re")) # offset=0x8
+            with regs.Index(0):
+                rf = regs.add("f", _MockRegister("rf", width=32), offset=0x10)
+            with regs.Index(1):
+                rg = regs.add("g", _MockRegister("rg", width=48)) # offset=0x18
+
+        memory_map = regs.as_memory_map()
+        self.assertEqual(memory_map.name, "foo")
+        self.assertEqual(memory_map.addr_width, 30)
+        self.assertEqual(memory_map.data_width, 32)
+        self.assertEqual(memory_map.alignment, 0)
+
+        self.assertFalse(list(memory_map.windows()))
+
+        results = list(memory_map.resources())
+        self.assertIs(results[0][0], ra)
+        self.assertEqual(results[0][1], ("a",))
+        self.assertEqual(results[0][2], (0, 1))
+
+        self.assertIs(results[1][0], rc)
+        self.assertEqual(results[1][1], ("b", "c"))
+        self.assertEqual(results[1][2], (3, 4))
+
+        self.assertIs(results[2][0], rd)
+        self.assertEqual(results[2][1], ("b", "d"))
+        self.assertEqual(results[2][2], (1, 2))
+
+        self.assertIs(results[3][0], re)
+        self.assertEqual(results[3][1], ("b", "e"))
+        self.assertEqual(results[3][2], (2, 3))
+
+        self.assertIs(results[4][0], rf)
+        self.assertEqual(results[4][1], ("b", "0", "f"))
+        self.assertEqual(results[4][2], (4, 5))
+
+        self.assertIs(results[5][0], rg)
+        self.assertEqual(results[5][1], ("b", "1", "g"))
+        self.assertEqual(results[5][2], (6, 8))
+
+    def test_memory_map_name_conflicts(self):
+        # register/register
+        regs_0 = Builder(addr_width=8, data_width=32)
+        regs_0.add("a", _MockRegister("foo"))
+        regs_0.add("a", _MockRegister("bar"))
+        with self.assertRaisesRegex(ValueError,
+                r"Resource _MockRegister\('bar'\) cannot be added to the local namespace:"
+                r"\n- \('a',\) conflicts with local name \('a',\) assigned to _MockRegister\('foo'\)"):
+            regs_0.as_memory_map()
+        # register/cluster
+        regs_1 = Builder(addr_width=8, data_width=32)
+        regs_1.add("a", _MockRegister("foo"))
+        with regs_1.Cluster("a"):
+            regs_1.add("b", _MockRegister("bar"))
+        with self.assertRaisesRegex(ValueError,
+                r"Resource _MockRegister\('bar'\) cannot be added to the local namespace:"
+                r"\n- \('a', 'b'\) conflicts with local name \('a',\) assigned to _MockRegister\('foo'\)"):
+            regs_1.as_memory_map()
+        # cluster/register
+        regs_2 = Builder(addr_width=8, data_width=32)
+        with regs_2.Cluster("a"):
+            regs_2.add("b", _MockRegister("foo"))
+        regs_2.add("a", _MockRegister("bar"))
+        with self.assertRaisesRegex(ValueError,
+                r"Resource _MockRegister\('bar'\) cannot be added to the local namespace:"
+                r"\n- \('a',\) conflicts with local name \('a', 'b'\) assigned to _MockRegister\('foo'\)"):
+            regs_2.as_memory_map()
 
 
 class BridgeTestCase(unittest.TestCase):
@@ -861,190 +892,38 @@ class BridgeTestCase(unittest.TestCase):
         def __init__(self, width, reset=0):
             super().__init__({"a": Field(action.RW, width, reset=reset)})
 
-    def test_memory_map(self):
-        reg_rw_4  = self._RWRegister( 4)
-        reg_rw_8  = self._RWRegister( 8)
-        reg_rw_12 = self._RWRegister(12)
-        reg_rw_16 = self._RWRegister(16)
-
-        cluster_0 = RegisterMap()
-        cluster_0.add_register(reg_rw_12, name="reg_rw_12")
-        cluster_0.add_register(reg_rw_16, name="reg_rw_16")
-
-        register_map = RegisterMap()
-        register_map.add_register(reg_rw_4, name="reg_rw_4")
-        register_map.add_register(reg_rw_8, name="reg_rw_8")
-        register_map.add_cluster(cluster_0, name="cluster_0")
-
-        dut = Bridge(register_map, addr_width=16, data_width=8)
-        registers = list(dut.bus.memory_map.resources())
-
-        self.assertIs(registers[0][0], reg_rw_4)
-        self.assertEqual(registers[0][1], ("reg_rw_4",))
-        self.assertEqual(registers[0][2], (0, 1))
-
-        self.assertIs(registers[1][0], reg_rw_8)
-        self.assertEqual(registers[1][1], ("reg_rw_8",))
-        self.assertEqual(registers[1][2], (1, 2))
-
-        self.assertIs(registers[2][0], reg_rw_12)
-        self.assertEqual(registers[2][1], ("cluster_0__reg_rw_12",))
-        self.assertEqual(registers[2][2], (2, 4))
-
-        self.assertIs(registers[3][0], reg_rw_16)
-        self.assertEqual(registers[3][1], ("cluster_0__reg_rw_16",))
-        self.assertEqual(registers[3][2], (4, 6))
-
-    def test_wrong_register_map(self):
+    def test_wrong_memory_map(self):
         with self.assertRaisesRegex(TypeError,
-                r"Register map must be an instance of RegisterMap, not 'foo'"):
-            dut = Bridge("foo", addr_width=16, data_width=8)
+                r"CSR bridge memory map must be an instance of MemoryMap, not 'foo'"):
+            Bridge("foo")
 
-    def test_register_addr(self):
-        reg_rw_4  = self._RWRegister( 4)
-        reg_rw_8  = self._RWRegister( 8)
-        reg_rw_12 = self._RWRegister(12)
-        reg_rw_16 = self._RWRegister(16)
-
-        cluster_0 = RegisterMap()
-        cluster_0.add_register(reg_rw_12, name="reg_rw_12")
-        cluster_0.add_register(reg_rw_16, name="reg_rw_16")
-
-        register_map = RegisterMap()
-        register_map.add_register(reg_rw_4, name="reg_rw_4")
-        register_map.add_register(reg_rw_8, name="reg_rw_8")
-        register_map.add_cluster(cluster_0, name="cluster_0")
-
-        register_addr = {
-            "reg_rw_4": 0x10,
-            "reg_rw_8": None,
-            "cluster_0": {
-                "reg_rw_12": 0x20,
-                "reg_rw_16": None,
-            },
-        }
-
-        dut = Bridge(register_map, addr_width=16, data_width=8,
-                     register_addr=register_addr)
-        registers = list(dut.bus.memory_map.resources())
-
-        self.assertEqual(registers[0][1], ("reg_rw_4",))
-        self.assertEqual(registers[0][2], (0x10, 0x11))
-
-        self.assertEqual(registers[1][1], ("reg_rw_8",))
-        self.assertEqual(registers[1][2], (0x11, 0x12))
-
-        self.assertEqual(registers[2][1], ("cluster_0__reg_rw_12",))
-        self.assertEqual(registers[2][2], (0x20, 0x22))
-
-        self.assertEqual(registers[3][1], ("cluster_0__reg_rw_16",))
-        self.assertEqual(registers[3][2], (0x22, 0x24))
-
-    def test_register_alignment(self):
-        reg_rw_4  = self._RWRegister( 4)
-        reg_rw_8  = self._RWRegister( 8)
-        reg_rw_12 = self._RWRegister(12)
-        reg_rw_16 = self._RWRegister(16)
-
-        cluster_0 = RegisterMap()
-        cluster_0.add_register(reg_rw_12, name="reg_rw_12")
-        cluster_0.add_register(reg_rw_16, name="reg_rw_16")
-
-        register_map = RegisterMap()
-        register_map.add_register(reg_rw_4, name="reg_rw_4")
-        register_map.add_register(reg_rw_8, name="reg_rw_8")
-        register_map.add_cluster(cluster_0, name="cluster_0")
-
-        register_alignment = {
-            "reg_rw_4": None,
-            "reg_rw_8": None,
-            "cluster_0": {
-                "reg_rw_12": 3,
-                "reg_rw_16": None,
-            },
-        }
-
-        dut = Bridge(register_map, addr_width=16, data_width=8, alignment=1,
-                     register_alignment=register_alignment)
-        registers = list(dut.bus.memory_map.resources())
-
-        self.assertEqual(registers[0][1], ("reg_rw_4",))
-        self.assertEqual(registers[0][2], (0, 2))
-
-        self.assertEqual(registers[1][1], ("reg_rw_8",))
-        self.assertEqual(registers[1][2], (2, 4)),
-
-        self.assertEqual(registers[2][1], ("cluster_0__reg_rw_12",))
-        self.assertEqual(registers[2][2], (8, 16))
-
-        self.assertEqual(registers[3][1], ("cluster_0__reg_rw_16",))
-        self.assertEqual(registers[3][2], (16, 18))
-
-    def test_register_out_of_bounds(self):
-        reg_rw_24 = self._RWRegister(24)
-        register_map = RegisterMap()
-        register_map.add_register(reg_rw_24, name="reg_rw_24")
+    def test_wrong_memory_map_windows(self):
+        memory_map_0 = MemoryMap(addr_width=1, data_width=8)
+        memory_map_1 = MemoryMap(addr_width=1, data_width=8)
+        memory_map_0.add_window(memory_map_1)
         with self.assertRaisesRegex(ValueError,
-                r"Address range 0x0\.\.0x3 out of bounds for memory map spanning "
-                r"range 0x0\.\.0x2 \(1 address bits\)"):
-            dut = Bridge(register_map, addr_width=1, data_width=8)
+                r"CSR bridge memory map cannot have windows"):
+            Bridge(memory_map_0)
 
-    def test_wrong_register_address(self):
-        reg_rw_4 = self._RWRegister(4)
-        register_map = RegisterMap()
-        register_map.add_register(reg_rw_4, name="reg_rw_4")
+    def test_wrong_memory_map_resource(self):
+        class _Reg(wiring.Component):
+            def __repr__(self):
+                return "_Reg()"
+        memory_map = MemoryMap(addr_width=1, data_width=8)
+        memory_map.add_resource(_Reg({}), name=("a",), size=1)
         with self.assertRaisesRegex(TypeError,
-                r"Register address assignment for the cluster \(\) must be a dict or None, not "
-                r"'foo'"):
-            dut = Bridge(register_map, addr_width=1, data_width=8, register_addr="foo")
-
-    def test_wrong_cluster_address(self):
-        reg_rw_4  = self._RWRegister(4)
-        cluster_0 = RegisterMap()
-        cluster_0.add_register(reg_rw_4, name="reg_rw_4")
-        register_map = RegisterMap()
-        register_map.add_cluster(cluster_0, name="cluster_0")
-        with self.assertRaisesRegex(TypeError,
-                r"Register address assignment for the cluster \('cluster_0',\) must be a dict or "
-                r"None, not 'foo'"):
-            dut = Bridge(register_map, addr_width=1, data_width=8,
-                         register_addr={"cluster_0": "foo"})
-
-    def test_wrong_register_alignment(self):
-        reg_rw_4 = self._RWRegister(4)
-        register_map = RegisterMap()
-        register_map.add_register(reg_rw_4, name="reg_rw_4")
-        with self.assertRaisesRegex(TypeError,
-                r"Register alignment assignment for the cluster \(\) must be a dict or None, not "
-                r"'foo'"):
-            dut = Bridge(register_map, addr_width=1, data_width=8, register_alignment="foo")
-
-    def test_wrong_cluster_alignment(self):
-        reg_rw_4  = self._RWRegister(4)
-        cluster_0 = RegisterMap()
-        cluster_0.add_register(reg_rw_4, name="reg_rw_4")
-        register_map = RegisterMap()
-        register_map.add_cluster(cluster_0, name="cluster_0")
-        with self.assertRaisesRegex(TypeError,
-                r"Register alignment assignment for the cluster \('cluster_0',\) must be a dict "
-                r"or None, not 'foo'"):
-            dut = Bridge(register_map, addr_width=1, data_width=8,
-                         register_alignment={"cluster_0": "foo"})
+                r"CSR register must be an instance of csr\.Register, not _Reg\(\)"):
+            Bridge(memory_map)
 
     def test_sim(self):
-        reg_rw_4  = self._RWRegister( 4, reset=0x0)
-        reg_rw_8  = self._RWRegister( 8, reset=0x11)
-        reg_rw_16 = self._RWRegister(16, reset=0x3322)
+        regs = Builder(addr_width=16, data_width=8)
 
-        cluster_0 = RegisterMap()
-        cluster_0.add_register(reg_rw_16, name="reg_rw_16")
+        reg_rw_4 = regs.add("reg_rw_4", self._RWRegister(4, reset=0x0))
+        reg_rw_8 = regs.add("reg_rw_8", self._RWRegister(8, reset=0x11))
+        with regs.Cluster("cluster_0"):
+            reg_rw_16 = regs.add("reg_rw_16", self._RWRegister(16, reset=0x3322))
 
-        register_map = RegisterMap()
-        register_map.add_register(reg_rw_4, name="reg_rw_4")
-        register_map.add_register(reg_rw_8, name="reg_rw_8")
-        register_map.add_cluster(cluster_0, name="cluster_0")
-
-        dut = Bridge(register_map, addr_width=16, data_width=8)
+        dut = Bridge(regs.as_memory_map())
 
         def process():
             yield dut.bus.addr.eq(0)

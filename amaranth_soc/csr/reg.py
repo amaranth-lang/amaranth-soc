@@ -1,7 +1,9 @@
 from collections.abc import Mapping, Sequence
+from contextlib import contextmanager
 from amaranth import *
 from amaranth.lib import enum, wiring
 from amaranth.lib.wiring import In, Out, connect, flipped
+from amaranth.utils import ceil_log2
 
 from ..memory import MemoryMap
 from .bus import Element, Signature, Multiplexer
@@ -9,8 +11,7 @@ from .bus import Element, Signature, Multiplexer
 
 __all__ = [
     "FieldPort", "Field", "FieldAction", "FieldActionMap", "FieldActionArray",
-    "Register", "RegisterMap",
-    "Bridge",
+    "Register", "Builder", "Bridge",
 ]
 
 
@@ -590,229 +591,203 @@ class Register(wiring.Component):
         return m
 
 
-class RegisterMap:
-    """A collection of CSR registers."""
-    def __init__(self):
-        self._registers = dict()
-        self._clusters  = dict()
-        self._namespace = dict()
-        self._frozen    = False
+class Builder:
+    """CSR builder.
+
+    A CSR builder can organize a group of registers within an address range and convert it to a
+    :class:`MemoryMap` for consumption by other SoC primitives.
+
+    Parameters
+    ----------
+    addr_width : :class:`int`
+        Address width.
+    data_width : :class:`int`
+        Data width.
+    granularity : :class:`int`
+        Granularity. Optional, defaults to 8 bits.
+    name : :class:`str`
+        Name of the address range. Optional.
+
+    Raises
+    ------
+    :exc:`TypeError`
+        If ``addr_width`` is not a positive integer.
+    :exc:`TypeError`
+        If ``data_width`` is not a positive integer.
+    :exc:`TypeError`
+        If ``granularity`` is not a positive integer.
+    :exc:`ValueError`
+        If ``granularity`` is not a divisor of ``data_width``
+    :exc:`TypeError`
+        If ``name`` is not a string, or is empty.
+    """
+    def __init__(self, *, addr_width, data_width, granularity=8, name=None):
+        if not isinstance(addr_width, int) or addr_width <= 0:
+            raise TypeError(f"Address width must be a positive integer, not {addr_width!r}")
+        if not isinstance(data_width, int) or data_width <= 0:
+            raise TypeError(f"Data width must be a positive integer, not {data_width!r}")
+        if not isinstance(granularity, int) or granularity <= 0:
+            raise TypeError(f"Granularity must be a positive integer, not {granularity!r}")
+
+        if data_width != (data_width // granularity) * granularity:
+            raise ValueError(f"Granularity {granularity} is not a divisor of data width "
+                             f"{data_width}")
+
+        if name is not None and not (isinstance(name, str) and name):
+            raise TypeError(f"Name must be a non-empty string, not {name!r}")
+
+        self._addr_width  = addr_width
+        self._data_width  = data_width
+        self._granularity = granularity
+        self._name        = name
+
+        self._registers   = dict()
+        self._scope_stack = []
+        self._frozen      = False
+
+    @property
+    def addr_width(self):
+        return self._addr_width
+
+    @property
+    def data_width(self):
+        return self._data_width
+
+    @property
+    def granularity(self):
+        return self._granularity
+
+    @property
+    def name(self):
+        return self._name
 
     def freeze(self):
-        """Freeze the cluster.
+        """Freeze the builder.
 
-        Once the cluster is frozen, its visible state becomes immutable. Registers and clusters
-        cannot be added anymore.
+        Once the builder is frozen, CSR registers cannot be added anymore.
         """
         self._frozen = True
 
-    def add_register(self, register, *, name):
-        """Add a register.
+    def add(self, name, reg, *, offset=None):
+        """Add a CSR register.
 
         Arguments
         ---------
-        register : :class:`Register`
-            Register.
         name : :class:`str`
-            Name of the register.
+            Register name.
+        reg : :class:`Register`
+            Register.
+        offset : :class:`int`
+            Register offset. Optional.
 
         Returns
         -------
         :class:`Register`
-            ``register``, which is added to the register map.
+            ``reg``, which is added to the builder. Its name is ``name``, prefixed by the names and
+            indices of any parent :meth:`~Builder.Cluster` and :meth:`~Builder.Index`.
 
         Raises
         ------
         :exc:`ValueError`
-            If the register map is frozen.
+            If the builder is frozen.
         :exc:`TypeError`
-            If ``register` is not an instance of :class:`Register`.
+            If ``name`` is not a string, or is empty.
         :exc:`TypeError`
-            If ``name`` is not a string.
+            If ``reg` is not an instance of :class:`Register`.
         :exc:`ValueError`
-            If ``name`` is already used.
+            If ``reg`` is already added to the builder.
+        :exc:`TypeError`
+            If ``offset`` is not an integer, or is negative.
+        :exc:`ValueError`
+            If ``offset`` is not a multiple of ``self.data_width // self.granularity``.
         """
+        if not isinstance(reg, Register):
+            raise TypeError(f"Register must be an instance of csr.Register, not {reg!r}")
         if self._frozen:
-            raise ValueError("Register map is frozen")
-        if not isinstance(register, Register):
-            raise TypeError(f"Register must be an instance of csr.Register, not {register!r}")
+            raise ValueError(f"Builder is frozen. Cannot add register {reg!r}")
 
-        if not isinstance(name, str) or not name:
-            raise TypeError(f"Name must be a non-empty string, not {name!r}")
-        if name in self._namespace:
-            raise ValueError(f"Name '{name}' is already used by {self._namespace[name]!r}")
+        if name is None or not (isinstance(name, str) and name):
+            raise TypeError(f"Register name must be a non-empty string, not {name!r}")
 
-        self._registers[id(register)] = register, name
-        self._namespace[name] = register
-        return register
+        if offset is not None:
+            if not (isinstance(offset, int) and offset >= 0):
+                raise TypeError(f"Offset must be a non-negative integer, not {offset!r}")
+            ratio = self.data_width // self.granularity
+            if offset % ratio != 0:
+                raise ValueError(f"Offset {offset:#x} must be a multiple of {ratio:#x} bytes")
 
-    def registers(self):
-        """Iterate local registers.
+        if id(reg) in self._registers:
+            _, other_name, other_offset = self._registers[id(reg)]
+            error_msg = f"Register {reg!r} is already added with name {other_name}"
+            if other_offset is None:
+                error_msg += " at an implicit offset"
+            else:
+                error_msg += f" at an explicit offset {other_offset:#x}"
+            raise ValueError(error_msg)
 
-        Yields
-        ------
-        :class:`Register`
-            Register.
-        :class:`str`
-            Name of the register.
-        """
-        for register, name in self._registers.values():
-            yield register, name
+        self._registers[id(reg)] = reg, (*self._scope_stack, name), offset
+        return reg
 
-    def add_cluster(self, cluster, *, name):
-        """Add a cluster of registers.
+    @contextmanager
+    def Cluster(self, name):
+        """Define a cluster.
 
         Arguments
         ---------
-        cluster : :class:`RegisterMap`
-            Cluster of registers.
         name : :class:`str`
-            Name of the cluster.
-
-        Returns
-        -------
-        :class:`RegisterMap`
-            ``cluster``, which is added to the register map.
+            Cluster name.
 
         Raises
         ------
-        :exc:`ValueError`
-            If the register map is frozen.
         :exc:`TypeError`
-            If ``cluster` is not an instance of :class:`RegisterMap`.
-        :exc:`TypeError`
-            If ``name`` is not a string.
-        :exc:`ValueError`
-            If ``name`` is already used.
+            If ``name`` is not a string, or is empty.
         """
-        if self._frozen:
-            raise ValueError("Register map is frozen")
-        if not isinstance(cluster, RegisterMap):
-            raise TypeError(f"Cluster must be an instance of csr.RegisterMap, not {cluster!r}")
+        if not (isinstance(name, str) and name):
+            raise TypeError(f"Cluster name must be a non-empty string, not {name!r}")
+        self._scope_stack.append(name)
+        try:
+            yield
+        finally:
+            assert self._scope_stack.pop() == name
 
-        if not isinstance(name, str) or not name:
-            raise TypeError(f"Name must be a non-empty string, not {name!r}")
-        if name in self._namespace:
-            raise ValueError(f"Name '{name}' is already used by {self._namespace[name]!r}")
-
-        self._clusters[id(cluster)] = cluster, name
-        self._namespace[name] = cluster
-        return cluster
-
-    def clusters(self):
-        """Iterate local clusters of registers.
-
-        Yields
-        ------
-        :class:`RegisterMap`
-            Cluster of registers.
-        :class:`str`
-            Name of the cluster.
-        """
-        for cluster, name in self._clusters.values():
-            yield cluster, name
-
-    def flatten(self, *, _path=()):
-        """Recursively iterate over all registers.
-
-        Yields
-        ------
-        :class:`Register`
-            Register.
-        iter(:class:`str`)
-            Path of the register. It contains its name, prefixed by the name of parent clusters up
-            to this register map.
-        """
-        for name, assignment in self._namespace.items():
-            path = (*_path, name)
-            if id(assignment) in self._registers:
-                yield assignment, path
-            elif id(assignment) in self._clusters:
-                yield from assignment.flatten(_path=path)
-            else:
-                assert False # :nocov:
-
-    def get_path(self, register, *, _path=()):
-        """Get the path of a register.
+    @contextmanager
+    def Index(self, index):
+        """Define an array index.
 
         Arguments
         ---------
-        register : :class:`Register`
-            A register of the register map.
-
-        Returns
-        -------
-        iter(:class:`str`)
-            Path of the register. It contains its name, prefixed by the name of parent clusters up
-            to this register map.
+        index : :class:`int`
+            Array index.
 
         Raises
         ------
         :exc:`TypeError`
-            If ``register` is not an instance of :class:`Register`.
-        :exc:`KeyError`
-            If ``register` is not in the register map.
+            If ``index`` is not an integer, or is negative.
         """
-        if not isinstance(register, Register):
-            raise TypeError(f"Register must be an instance of csr.Register, not {register!r}")
+        if not (isinstance(index, int) and index >= 0):
+            raise TypeError(f"Array index must be a non-negative integer, not {index!r}")
+        self._scope_stack.append(index)
+        try:
+            yield
+        finally:
+            assert self._scope_stack.pop() == index
 
-        if id(register) in self._registers:
-            _, name = self._registers[id(register)]
-            return (*_path, name)
-
-        for cluster, name in self._clusters.values():
-            try:
-                return cluster.get_path(register, _path=(*_path, name))
-            except KeyError:
-                pass
-
-        raise KeyError(register)
-
-    def get_register(self, path):
-        """Get a register.
-
-        Arguments
-        ---------
-        path : iter(:class:`str`)
-            Path of the register. It contains its name, prefixed by the name of parent clusters up
-            to this register map.
-
-        Returns
-        -------
-        :class:`Register`
-            The register assigned to ``path``.
-
-        Raises
-        ------
-        :exc:`ValueError`
-            If ``path`` is empty.
-        :exc:`TypeError`
-            If ``path`` is not composed of non-empty strings.
-        :exc:`KeyError`
-            If ``path`` is not assigned to a register.
-        """
-        path = tuple(path)
-        if not path:
-            raise ValueError("Path must be a non-empty iterable")
-        for name in path:
-            if not isinstance(name, str) or not name:
-                raise TypeError(f"Path must contain non-empty strings, not {name!r}")
-
-        name, *rest = path
-
-        if name in self._namespace:
-            assignment = self._namespace[name]
-            if not rest:
-                assert id(assignment) in self._registers
-                return assignment
+    def as_memory_map(self):
+        self.freeze()
+        memory_map = MemoryMap(addr_width=self.addr_width, data_width=self.data_width,
+                               name=self.name)
+        for reg, reg_name, reg_offset in self._registers.values():
+            if reg_offset is not None:
+                reg_addr = (reg_offset * self.granularity) // self.data_width
             else:
-                assert id(assignment) in self._clusters
-                try:
-                    return assignment.get_register(rest)
-                except KeyError:
-                    pass
-
-        raise KeyError(path)
+                reg_addr = None
+            reg_size = (reg.element.width + self.data_width - 1) // self.data_width
+            # TBD: should integers be allowed inside resource names?
+            reg_name = tuple(str(part) for part in reg_name)
+            memory_map.add_resource(reg, name=reg_name, addr=reg_addr, size=reg_size,
+                                    alignment=ceil_log2(reg_size))
+        memory_map.freeze()
+        return memory_map
 
 
 class Bridge(wiring.Component):
@@ -820,89 +795,46 @@ class Bridge(wiring.Component):
 
     Parameters
     ----------
-    register_map : :class:`RegisterMap`
-        Register map.
-    addr_width : :class:`int`
-        Address width. See :class:`Interface`.
-    data_width : :class:`int`
-        Data width. See :class:`Interface`.
-    alignment : log2 of :class:`int`
-        Register alignment. Optional, defaults to ``0``. See :class:`..memory.MemoryMap`.
-    name : :class:`str`
-        Window name. Optional.
-    register_addr : :class:`dict`
-        Register address assignments. Optional, defaults to ``None``.
-    register_alignment : :class:`dict`
-        Register alignment assignments. Optional, defaults to ``None``.
+    memory_map : :class:`MemoryMap`
+        Memory map of CSR registers.
 
-    Attributes
-    ----------
-    register_map : :class:`RegisterMap`
-        Register map.
+    Interface attributes
+    --------------------
     bus : :class:`Interface`
-        CSR bus providing access to registers.
+        CSR bus providing access to the contents of ``memory_map``.
 
     Raises
     ------
     :exc:`TypeError`
-        If ``register_map`` is not an instance of :class:`RegisterMap`.
+        If ``memory_map`` is not a :class:`MemoryMap` object.
+    :exc:`ValueError`
+        If ``memory_map`` has windows.
     :exc:`TypeError`
-        If ``register_addr`` is a not a dict.
-    :exc:`TypeError`
-        If ``register_alignment`` is a not a dict.
+        If ``memory_map`` has resources that are not :class:`Register` objects.
     """
-    def __init__(self, register_map, *, addr_width, data_width, alignment=0, name=None,
-                 register_addr=None, register_alignment=None):
-        if not isinstance(register_map, RegisterMap):
-            raise TypeError(f"Register map must be an instance of RegisterMap, not "
-                            f"{register_map!r}")
+    def __init__(self, memory_map):
+        if not isinstance(memory_map, MemoryMap):
+            raise TypeError(f"CSR bridge memory map must be an instance of MemoryMap, not {memory_map!r}")
+        if list(memory_map.windows()):
+            raise ValueError("CSR bridge memory map cannot have windows")
+        for reg, reg_name, (reg_start, reg_end) in memory_map.resources():
+            if not isinstance(reg, Register):
+                raise TypeError(f"CSR register must be an instance of csr.Register, not {reg!r}")
 
-        memory_map = MemoryMap(addr_width=addr_width, data_width=data_width, alignment=alignment,
-                               name=name)
-
-        def traverse_path(path, obj):
-            progress = []
-            for name in path:
-                if not isinstance(obj, dict):
-                    break
-                progress.append(name)
-                obj = obj.get(name, None)
-            return obj, tuple(progress)
-
-        register_map.freeze()
-
-        for register, path in register_map.flatten():
-            reg_addr, assigned = traverse_path(path, register_addr)
-            if assigned != path and reg_addr is not None:
-                raise TypeError(f"Register address assignment for the cluster {tuple(assigned)} "
-                                f"must be a dict or None, not {reg_addr!r}")
-
-            reg_alignment, assigned = traverse_path(path, register_alignment)
-            if assigned != path and reg_alignment is not None:
-                raise TypeError(f"Register alignment assignment for the cluster {tuple(assigned)} "
-                                f"must be a dict or None, not {reg_alignment!r}")
-
-            reg_size = (register.element.width + data_width - 1) // data_width
-            reg_name = "__".join(path)
-            memory_map.add_resource(register, name=(reg_name,), size=reg_size, addr=reg_addr,
-                                    alignment=reg_alignment)
-
-        self._map = register_map
+        memory_map.freeze()
         self._mux = Multiplexer(memory_map)
-
-        super().__init__({"bus": In(Signature(addr_width=addr_width, data_width=data_width))})
-        self.bus.memory_map = self._mux.bus.memory_map
-
-    @property
-    def register_map(self):
-        return self._map
+        super().__init__({
+            "bus": In(Signature(addr_width=memory_map.addr_width,
+                                data_width=memory_map.data_width))
+        })
+        self.bus.memory_map = memory_map
 
     def elaborate(self, platform):
         m = Module()
 
         m.submodules.mux = self._mux
-        for register, path in self.register_map.flatten():
-            m.submodules["__".join(path)] = register
+        for reg, reg_name, _ in self.bus.memory_map.resources():
+            m.submodules["__".join(reg_name)] = reg
 
         connect(m, flipped(self.bus), self._mux.bus)
 
