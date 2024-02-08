@@ -884,7 +884,7 @@ class Bridge(wiring.Component):
 
             reg_size = (register.element.width + data_width - 1) // data_width
             reg_name = "__".join(path)
-            memory_map.add_resource(register, name=reg_name, size=reg_size, addr=reg_addr,
+            memory_map.add_resource(register, name=(reg_name,), size=reg_size, addr=reg_addr,
                                     alignment=reg_alignment)
 
         self._map = register_map

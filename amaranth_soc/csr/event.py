@@ -66,8 +66,8 @@ class EventMonitor(wiring.Component):
         reg_size   = (event_map.size + data_width - 1) // data_width
         addr_width = 1 + max(ceil_log2(reg_size), alignment)
         memory_map = MemoryMap(addr_width=addr_width, data_width=data_width, alignment=alignment)
-        memory_map.add_resource(self._enable,  size=reg_size, name="enable")
-        memory_map.add_resource(self._pending, size=reg_size, name="pending")
+        memory_map.add_resource(self._enable,  size=reg_size, name=("enable",))
+        memory_map.add_resource(self._pending, size=reg_size, name=("pending",))
 
         self._mux = Multiplexer(memory_map)
 

@@ -880,19 +880,19 @@ class BridgeTestCase(unittest.TestCase):
         registers = list(dut.bus.memory_map.resources())
 
         self.assertIs(registers[0][0], reg_rw_4)
-        self.assertEqual(registers[0][1], "reg_rw_4")
+        self.assertEqual(registers[0][1], ("reg_rw_4",))
         self.assertEqual(registers[0][2], (0, 1))
 
         self.assertIs(registers[1][0], reg_rw_8)
-        self.assertEqual(registers[1][1], "reg_rw_8")
+        self.assertEqual(registers[1][1], ("reg_rw_8",))
         self.assertEqual(registers[1][2], (1, 2))
 
         self.assertIs(registers[2][0], reg_rw_12)
-        self.assertEqual(registers[2][1], "cluster_0__reg_rw_12")
+        self.assertEqual(registers[2][1], ("cluster_0__reg_rw_12",))
         self.assertEqual(registers[2][2], (2, 4))
 
         self.assertIs(registers[3][0], reg_rw_16)
-        self.assertEqual(registers[3][1], "cluster_0__reg_rw_16")
+        self.assertEqual(registers[3][1], ("cluster_0__reg_rw_16",))
         self.assertEqual(registers[3][2], (4, 6))
 
     def test_wrong_register_map(self):
@@ -928,16 +928,16 @@ class BridgeTestCase(unittest.TestCase):
                      register_addr=register_addr)
         registers = list(dut.bus.memory_map.resources())
 
-        self.assertEqual(registers[0][1], "reg_rw_4")
+        self.assertEqual(registers[0][1], ("reg_rw_4",))
         self.assertEqual(registers[0][2], (0x10, 0x11))
 
-        self.assertEqual(registers[1][1], "reg_rw_8")
+        self.assertEqual(registers[1][1], ("reg_rw_8",))
         self.assertEqual(registers[1][2], (0x11, 0x12))
 
-        self.assertEqual(registers[2][1], "cluster_0__reg_rw_12")
+        self.assertEqual(registers[2][1], ("cluster_0__reg_rw_12",))
         self.assertEqual(registers[2][2], (0x20, 0x22))
 
-        self.assertEqual(registers[3][1], "cluster_0__reg_rw_16")
+        self.assertEqual(registers[3][1], ("cluster_0__reg_rw_16",))
         self.assertEqual(registers[3][2], (0x22, 0x24))
 
     def test_register_alignment(self):
@@ -968,16 +968,16 @@ class BridgeTestCase(unittest.TestCase):
                      register_alignment=register_alignment)
         registers = list(dut.bus.memory_map.resources())
 
-        self.assertEqual(registers[0][1], "reg_rw_4")
+        self.assertEqual(registers[0][1], ("reg_rw_4",))
         self.assertEqual(registers[0][2], (0, 2))
 
-        self.assertEqual(registers[1][1], "reg_rw_8")
+        self.assertEqual(registers[1][1], ("reg_rw_8",))
         self.assertEqual(registers[1][2], (2, 4)),
 
-        self.assertEqual(registers[2][1], "cluster_0__reg_rw_12")
+        self.assertEqual(registers[2][1], ("cluster_0__reg_rw_12",))
         self.assertEqual(registers[2][2], (8, 16))
 
-        self.assertEqual(registers[3][1], "cluster_0__reg_rw_16")
+        self.assertEqual(registers[3][1], ("cluster_0__reg_rw_16",))
         self.assertEqual(registers[3][2], (16, 18))
 
     def test_register_out_of_bounds(self):

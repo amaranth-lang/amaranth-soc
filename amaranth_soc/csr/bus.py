@@ -569,7 +569,7 @@ class Multiplexer(wiring.Component):
                     reg.signature.members["element"].flow == Out and
                     reg.signature.members["element"].is_signature and
                     isinstance(reg.signature.members["element"].signature, Element.Signature)):
-                raise AttributeError(f"Signature of CSR register '{reg_name}' must have a "
+                raise AttributeError(f"Signature of CSR register {reg_name} must have a "
                                      f"csr.Element.Signature member named 'element' and oriented "
                                      f"as wiring.Out")
 

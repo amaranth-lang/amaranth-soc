@@ -187,8 +187,8 @@ class MultiplexerTestCase(unittest.TestCase):
         reg_8_rw = _MockRegister(8, "rw")
 
         memory_map = MemoryMap(addr_width=2, data_width=4)
-        memory_map.add_resource(reg_4_rw, name="reg_4_rw", size=1)
-        memory_map.add_resource(reg_8_rw, name="reg_8_rw", size=2)
+        memory_map.add_resource(reg_4_rw, name=("reg_4_rw",), size=1)
+        memory_map.add_resource(reg_8_rw, name=("reg_8_rw",), size=2)
         memory_map.freeze()
 
         dut = csr.Multiplexer(memory_map)
@@ -207,30 +207,31 @@ class MultiplexerTestCase(unittest.TestCase):
             pass
         # wrong name
         map_0 = MemoryMap(addr_width=1, data_width=8)
-        map_0.add_resource(_Reg({"foo": Out(csr.Element.Signature(8, "rw"))}), name="a", size=1)
+        map_0.add_resource(_Reg({"foo": Out(csr.Element.Signature(8, "rw"))}), name=("a",), size=1)
         with self.assertRaisesRegex(AttributeError,
-                r"Signature of CSR register 'a' must have a csr\.Element\.Signature member "
+                r"Signature of CSR register \('a',\) must have a csr\.Element\.Signature member "
                 r"named 'element' and oriented as wiring\.Out"):
             csr.Multiplexer(map_0)
         # wrong direction
         map_1 = MemoryMap(addr_width=1, data_width=8)
-        map_1.add_resource(_Reg({"element": In(csr.Element.Signature(8, "rw"))}), name="a", size=1)
+        map_1.add_resource(_Reg({"element": In(csr.Element.Signature(8, "rw"))}), name=("a",),
+                           size=1)
         with self.assertRaisesRegex(AttributeError,
-                r"Signature of CSR register 'a' must have a csr\.Element\.Signature member "
+                r"Signature of CSR register \('a',\) must have a csr\.Element\.Signature member "
                 r"named 'element' and oriented as wiring\.Out"):
             csr.Multiplexer(map_1)
         # wrong member type
         map_2 = MemoryMap(addr_width=1, data_width=8)
-        map_2.add_resource(_Reg({"element": Out(unsigned(8))}), name="a", size=1)
+        map_2.add_resource(_Reg({"element": Out(unsigned(8))}), name=("a",), size=1)
         with self.assertRaisesRegex(AttributeError,
-                r"Signature of CSR register 'a' must have a csr\.Element\.Signature member "
+                r"Signature of CSR register \('a',\) must have a csr\.Element\.Signature member "
                 r"named 'element' and oriented as wiring\.Out"):
             csr.Multiplexer(map_2)
         # wrong member signature
         map_3 = MemoryMap(addr_width=1, data_width=8)
-        map_3.add_resource(_Reg({"element": Out(wiring.Signature({}))}), name="a", size=1)
+        map_3.add_resource(_Reg({"element": Out(wiring.Signature({}))}), name=("a",), size=1)
         with self.assertRaisesRegex(AttributeError,
-                r"Signature of CSR register 'a' must have a csr\.Element\.Signature member "
+                r"Signature of CSR register \('a',\) must have a csr\.Element\.Signature member "
                 r"named 'element' and oriented as wiring\.Out"):
             csr.Multiplexer(map_3)
 
@@ -249,9 +250,9 @@ class MultiplexerTestCase(unittest.TestCase):
                 reg_16_rw = _MockRegister(16, "rw")
 
                 memory_map = MemoryMap(addr_width=16, data_width=8)
-                memory_map.add_resource(reg_4_r,   name="reg_4_r",   size=1)
-                memory_map.add_resource(reg_8_w,   name="reg_8_w",   size=1)
-                memory_map.add_resource(reg_16_rw, name="reg_16_rw", size=2)
+                memory_map.add_resource(reg_4_r,   name=("reg_4_r",),   size=1)
+                memory_map.add_resource(reg_8_w,   name=("reg_8_w",),   size=1)
+                memory_map.add_resource(reg_16_rw, name=("reg_16_rw",), size=2)
 
                 dut = csr.Multiplexer(memory_map, shadow_overlaps=shadow_overlaps)
                 bus = dut.bus
@@ -336,7 +337,7 @@ class MultiplexerAlignedTestCase(unittest.TestCase):
             with self.subTest(shadow_overlaps=shadow_overlaps):
                 reg_20_rw = _MockRegister(20, "rw")
                 memory_map = MemoryMap(addr_width=16, data_width=8, alignment=2)
-                memory_map.add_resource(reg_20_rw, name="reg_20_rw", size=3)
+                memory_map.add_resource(reg_20_rw, name=("reg_20_rw",), size=3)
 
                 dut = csr.Multiplexer(memory_map, shadow_overlaps=shadow_overlaps)
                 bus = dut.bus
@@ -411,10 +412,10 @@ class DecoderTestCase(unittest.TestCase):
         reg_2 = _MockRegister(8, "rw")
 
         memory_map_1 = MemoryMap(addr_width=10, data_width=8)
-        memory_map_1.add_resource(reg_1, name="reg_1", size=1)
+        memory_map_1.add_resource(reg_1, name=("reg_1",), size=1)
 
         memory_map_2 = MemoryMap(addr_width=10, data_width=8)
-        memory_map_2.add_resource(reg_2, name="reg_2", size=1, addr=2)
+        memory_map_2.add_resource(reg_2, name=("reg_2",), size=1, addr=2)
 
         mux_1 = csr.Multiplexer(memory_map_1)
         mux_2 = csr.Multiplexer(memory_map_2)
