@@ -19,8 +19,10 @@ class RTestCase(unittest.TestCase):
 
         def process():
             yield dut.r_data.eq(0xa)
+            yield dut.port.r_stb.eq(1)
             yield Settle()
             self.assertEqual((yield dut.port.r_data), 0xa)
+            self.assertEqual((yield dut.r_stb), 1)
 
         sim = Simulator(dut)
         sim.add_process(process)
@@ -40,8 +42,10 @@ class WTestCase(unittest.TestCase):
 
         def process():
             yield dut.port.w_data.eq(0xa)
+            yield dut.port.w_stb.eq(1)
             yield Settle()
             self.assertEqual((yield dut.w_data), 0xa)
+            self.assertEqual((yield dut.w_stb), 1)
 
         sim = Simulator(dut)
         sim.add_process(process)

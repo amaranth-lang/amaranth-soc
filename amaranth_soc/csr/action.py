@@ -20,16 +20,22 @@ class R(FieldAction):
     port : :class:`FieldPort`
         Field port.
     r_data : Signal(shape)
-        Read data. Drives the :attr:`~FieldPort.r_data` signal of ``port``.
+        Read data. Drives ``port.r_data``. See :class:`FieldPort`.
+    r_stb : Signal()
+        Read strobe. Driven by ``port.r_stb``. See :class:`FieldPort`.
     """
     def __init__(self, shape):
         super().__init__(shape, access="r", members={
             "r_data": In(shape),
+            "r_stb":  Out(1)
         })
 
     def elaborate(self, platform):
         m = Module()
-        m.d.comb += self.port.r_data.eq(self.r_data)
+        m.d.comb += [
+            self.port.r_data.eq(self.r_data),
+            self.r_stb.eq(self.port.r_stb),
+        ]
         return m
 
 
@@ -46,16 +52,22 @@ class W(FieldAction):
     port : :class:`FieldPort`
         Field port.
     w_data : Signal(shape)
-        Write data. Driven by the :attr:`~FieldPort.w_data` signal of ``port``.
+        Write data. Driven by ``port.w_data``. See :class:`FieldPort`.
+    w_stb : Signal()
+        Write strobe. Driven by ``port.w_stb``. See :class:`FieldPort`.
     """
     def __init__(self, shape):
         super().__init__(shape, access="w", members={
             "w_data": Out(shape),
+            "w_stb":  Out(1),
         })
 
     def elaborate(self, platform):
         m = Module()
-        m.d.comb += self.w_data.eq(self.port.w_data)
+        m.d.comb += [
+            self.w_data.eq(self.port.w_data),
+            self.w_stb.eq(self.port.w_stb),
+        ]
         return m
 
 
