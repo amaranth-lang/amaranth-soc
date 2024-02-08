@@ -1,7 +1,6 @@
 import bisect
 
 from amaranth.lib import wiring
-from amaranth.utils import bits_for
 
 
 __all__ = ["ResourceInfo", "MemoryMap"]
@@ -48,6 +47,60 @@ class _RangeMap:
             yield key, self._values[key]
 
 
+class _Namespace:
+    """Namespace.
+
+    A set of path-like names that identify locations in a hierarchical structure.
+    """
+    def __init__(self):
+        self._assignments = dict()
+
+    def is_available(self, *names, reasons=None):
+        for name in names:
+            assert name and isinstance(name, tuple)
+            assert all(part and isinstance(part, str) for part in name)
+
+        conflicts = False
+        for name_idx, name in enumerate(names):
+            # Also check for conflicts between the queried names.
+            reserved_names = sorted(self._assignments.keys() | set(names[name_idx + 1:]))
+
+            for reserved_name in reserved_names:
+                # A conflict happens in the following cases:
+                #  - `name` is equal to `reserved_name`
+                #  - `name` is a prefix of `reserved_name`
+                #  - `reserved_name` is a prefix of `name`.
+                for part_idx, part in enumerate(name):
+                    if part != reserved_name[part_idx]:
+                        # Available. `name` and `reserved_name` are not equal and are not prefixes
+                        # of each other.
+                        break
+                    if part_idx == min(len(name), len(reserved_name)) - 1:
+                        # `name` and `reserved_name` are equal so far, but we have reached the end
+                        # of at least one of them. In either case, they are in conflict.
+                        conflicts = True
+                        # Conflicts between the queried names should never happen.
+                        assert reserved_name in self._assignments
+                        if reasons is not None:
+                            reasons.append(f"{name} conflicts with local name {reserved_name} "
+                                           f"assigned to {self._assignments[reserved_name]!r}")
+                        break
+
+        return not conflicts
+
+    def assign(self, name, obj):
+        assert self.is_available(name)
+        self._assignments[name] = obj
+
+    def extend(self, other):
+        assert isinstance(other, _Namespace)
+        assert self.is_available(*other.names())
+        self._assignments.update(other._assignments)
+
+    def names(self):
+        yield from self._assignments.keys()
+
+
 class ResourceInfo:
     """Resource metadata.
 
@@ -57,7 +110,7 @@ class ResourceInfo:
     ----------
     resource : :class:`wiring.Component`
         A resource located in the memory map. See :meth:`MemoryMap.add_resource` for details.
-    path : iter(str)
+    path : :class:`tuple` of (:class:`str` or (:class:`tuple` of :class:`str`))
         Path of the resource. It is composed of the names of each window sitting between
         the resource and the memory map from which this :class:`ResourceInfo` was obtained.
         See :meth:`MemoryMap.add_window` for details.
@@ -71,9 +124,12 @@ class ResourceInfo:
         is located behind a window that uses sparse addressing.
     """
     def __init__(self, resource, path, start, end, width):
-        if not path or not all(isinstance(part, str) and part for part in path):
-            raise TypeError("Path must be a non-empty sequence of non-empty strings, not {!r}"
-                            .format(path))
+        flattened_path = []
+        for name in path:
+            flattened_path += name if name and isinstance(name, tuple) else [name]
+        if not (path and isinstance(path, tuple) and
+                all(name and isinstance(name, str) for name in flattened_path)):
+            raise TypeError(f"Path must be a non-empty tuple of non-empty strings, not {path!r}")
         if not isinstance(start, int) or start < 0:
             raise TypeError("Start address must be a non-negative integer, not {!r}"
                             .format(start))
@@ -162,7 +218,7 @@ class MemoryMap:
         self._ranges     = _RangeMap()
         self._resources  = dict()
         self._windows    = dict()
-        self._namespace  = dict()
+        self._namespace  = _Namespace()
 
         self._next_addr  = 0
         self._frozen     = False
@@ -266,8 +322,8 @@ class MemoryMap:
         ---------
         resource : :class:`wiring.Component`
             The resource to be added.
-        name : str
-            Name of the resource. It must not collide with the name of other resources or windows
+        name : :class:`tuple` of (:class:`str`)
+            Name of the resource. It must not conflict with the name of other resources or windows
             present in this memory map.
         addr : int
             Address of the resource. Optional. If ``None``, the implicit next address will be used.
@@ -295,7 +351,8 @@ class MemoryMap:
         :exc:`ValueError`
             If the resource has already been added to this memory map.
         :exc:`ValueError`
-            If the name of the resource is already present in the namespace of this memory map.
+            If the resource name conflicts with the name of other resources or windows present in
+            this memory map.
         """
         if self._frozen:
             raise ValueError("Memory map has been frozen. Cannot add resource {!r}"
@@ -309,10 +366,17 @@ class MemoryMap:
             raise ValueError("Resource {!r} is already added at address range {:#x}..{:#x}"
                              .format(resource, addr_range.start, addr_range.stop))
 
-        if not isinstance(name, str) or not name:
-            raise TypeError("Name must be a non-empty string, not {!r}".format(name))
-        if name in self._namespace:
-            raise ValueError("Name {} is already used by {!r}".format(name, self._namespace[name]))
+        if not (name and isinstance(name, tuple) and
+                all(part and isinstance(part, str) for part in name)):
+            raise TypeError(f"Resource name must be a non-empty tuple of non-empty strings, not "
+                            f"{name!r}")
+
+        reasons = []
+        if not self._namespace.is_available(name, reasons=reasons):
+            reasons_as_string = "".join(f"\n- {reason}" for reason in reasons)
+            raise ValueError(f"Resource {resource!r} cannot be added to the local namespace:" +
+                             reasons_as_string)
+        del reasons
 
         if alignment is not None:
             if not isinstance(alignment, int) or alignment < 0:
@@ -325,7 +389,7 @@ class MemoryMap:
         addr_range = self._compute_addr_range(addr, size, alignment=alignment)
         self._ranges.insert(addr_range, resource)
         self._resources[id(resource)] = resource, name, addr_range
-        self._namespace[name] = resource
+        self._namespace.assign(name, resource)
         self._next_addr = addr_range.stop
         return addr_range.start, addr_range.stop
 
@@ -382,17 +446,24 @@ class MemoryMap:
 
         Exceptions
         ----------
-        Raises :exn:`ValueError` if one of the following occurs:
-
-        - this memory map is frozen;
-        - the requested address and size, after alignment, would overlap with any resources or
-        windows that have already been added, or would be out of bounds;
-        - the added memory map has a wider datapath than this memory map;
-        - dense address translation is used and the datapath width of this memory map is not an
-        integer multiple of the datapath of the added memory map;
-        - the name of the added memory map is already present in the namespace of this memory map;
-        - the added memory map has no name, and the name of one of its subordinate resources or
-        windows is already present in the namespace of this memory map;
+        :exc:`ValueError`
+            If the memory map is frozen.
+        :exc:`TypeError`
+            If the added memory map is not a :class:`MemoryMap`.
+        :exc:`ValueError`
+            If the requested address and size, after alignment, would overlap with any resources or
+            windows that have already been added, or would be out of bounds.
+        :exc:`ValueError`
+            If the added memory map has a wider datapath than this memory map.
+        :exc:`ValueError`
+            If dense address translation is used and the datapath width of this memory map is not
+            an integer multiple of the datapath of the added memory map.
+        :exc:`ValueError`
+            If the name of the added memory map conflicts with the name of other resources or
+            windows present in this memory map.
+        :exc:`ValueError`
+            If the added memory map has no name, and the name of one of its resources or windows
+            conflicts with the name of others present in this memory map.
         """
         if not isinstance(window, MemoryMap):
             raise TypeError("Window must be a MemoryMap, not {!r}"
@@ -423,17 +494,13 @@ class MemoryMap:
                                  "data width {}"
                                  .format(self.data_width, window.data_width))
 
-        if window.name is None:
-            name_conflicts = sorted(self._namespace.keys() & window._namespace.keys())
-            if name_conflicts:
-                name_conflict_descrs = ["{} is used by {!r}".format(name, self._namespace[name])
-                                        for name in name_conflicts]
-                raise ValueError("The following names are already used: {}"
-                                 .format("; ".join(name_conflict_descrs)))
-        else:
-            if window.name in self._namespace:
-                raise ValueError("Name {} is already used by {!r}"
-                                 .format(window.name, self._namespace[window.name]))
+        queries = window._namespace.names() if window.name is None else ((window.name,),)
+        reasons = []
+        if not self._namespace.is_available(*queries, reasons=reasons):
+            reasons_as_string = "".join(f"\n- {reason}" for reason in reasons)
+            raise ValueError(f"Window {window!r} cannot be added to the local namespace:" +
+                             reasons_as_string)
+        del queries, reasons
 
         if not sparse:
             ratio = self.data_width // window.data_width
@@ -452,9 +519,9 @@ class MemoryMap:
         self._ranges.insert(addr_range, window)
         self._windows[id(window)] = window, addr_range
         if window.name is None:
-            self._namespace.update(window._namespace)
+            self._namespace.extend(window._namespace)
         else:
-            self._namespace[window.name] = window
+            self._namespace.assign((window.name,), window)
         self._next_addr = addr_range.stop
         return addr_range.start, addr_range.stop, addr_range.step
 
@@ -587,3 +654,6 @@ class MemoryMap:
             return assignment.decode_address((address - addr_range.start) // addr_range.step)
         else:
             assert False # :nocov:
+
+    def __repr__(self):
+        return f"MemoryMap(name={self.name!r})"

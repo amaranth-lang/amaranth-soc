@@ -55,8 +55,8 @@ class WishboneCSRBridgeTestCase(unittest.TestCase):
         reg_2 = _MockRegister(16, name="reg_2")
 
         memory_map = MemoryMap(addr_width=10, data_width=8)
-        memory_map.add_resource(reg_1, name="reg_1", size=1)
-        memory_map.add_resource(reg_2, name="reg_2", size=2)
+        memory_map.add_resource(reg_1, name=("reg_1",), size=1)
+        memory_map.add_resource(reg_2, name=("reg_2",), size=2)
 
         mux = csr.Multiplexer(memory_map)
         dut = WishboneCSRBridge(mux.bus)
@@ -158,7 +158,7 @@ class WishboneCSRBridgeTestCase(unittest.TestCase):
         reg = _MockRegister(32, name="reg")
 
         memory_map = MemoryMap(addr_width=10, data_width=8)
-        memory_map.add_resource(reg, name="reg", size=4)
+        memory_map.add_resource(reg, name=("reg",), size=4)
 
         mux = csr.Multiplexer(memory_map)
         dut = WishboneCSRBridge(mux.bus, data_width=32)
