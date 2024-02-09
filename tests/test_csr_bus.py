@@ -240,57 +240,47 @@ class MultiplexerTestCase(unittest.TestCase):
 
                     yield bus.addr.eq(0)
                     yield bus.r_stb.eq(1)
-                    yield
-                    yield bus.r_stb.eq(0)
+                    yield Tick()
                     self.assertEqual((yield elem_4_r.r_stb), 1)
                     self.assertEqual((yield elem_16_rw.r_stb), 0)
-                    yield
                     self.assertEqual((yield bus.r_data), 0xa)
 
                     yield bus.addr.eq(2)
-                    yield bus.r_stb.eq(1)
-                    yield
-                    yield bus.r_stb.eq(0)
+                    yield Tick()
                     self.assertEqual((yield elem_4_r.r_stb), 0)
                     self.assertEqual((yield elem_16_rw.r_stb), 1)
-                    yield
-                    yield bus.addr.eq(3) # pipeline a read
                     self.assertEqual((yield bus.r_data), 0xa5)
 
-                    yield bus.r_stb.eq(1)
-                    yield
-                    yield bus.r_stb.eq(0)
+                    yield bus.addr.eq(3) # pipeline a read
+                    yield Tick()
                     self.assertEqual((yield elem_4_r.r_stb), 0)
                     self.assertEqual((yield elem_16_rw.r_stb), 0)
-                    yield
                     self.assertEqual((yield bus.r_data), 0x5a)
+                    yield bus.r_stb.eq(0)
+                    yield Delay()
 
                     yield bus.addr.eq(1)
                     yield bus.w_data.eq(0x3d)
                     yield bus.w_stb.eq(1)
-                    yield
-                    yield bus.w_stb.eq(0)
-                    yield bus.addr.eq(2) # change address
-                    yield
+                    yield Tick()
                     self.assertEqual((yield elem_8_w.w_stb), 1)
                     self.assertEqual((yield elem_8_w.w_data), 0x3d)
                     self.assertEqual((yield elem_16_rw.w_stb), 0)
-                    yield
+
+                    yield bus.w_stb.eq(0)
+                    yield bus.addr.eq(2) # change address
+                    yield Tick()
                     self.assertEqual((yield elem_8_w.w_stb), 0)
 
                     yield bus.addr.eq(2)
                     yield bus.w_data.eq(0x55)
                     yield bus.w_stb.eq(1)
-                    yield
+                    yield Tick()
                     self.assertEqual((yield elem_8_w.w_stb), 0)
                     self.assertEqual((yield elem_16_rw.w_stb), 0)
                     yield bus.addr.eq(3) # pipeline a write
                     yield bus.w_data.eq(0xaa)
-                    yield
-                    self.assertEqual((yield elem_8_w.w_stb), 0)
-                    self.assertEqual((yield elem_16_rw.w_stb), 0)
-                    yield bus.w_stb.eq(0)
-                    yield
+                    yield Tick()
                     self.assertEqual((yield elem_8_w.w_stb), 0)
                     self.assertEqual((yield elem_16_rw.w_stb), 1)
                     self.assertEqual((yield elem_16_rw.w_data), 0xaa55)
@@ -299,15 +289,13 @@ class MultiplexerTestCase(unittest.TestCase):
                     yield bus.r_stb.eq(1)
                     yield bus.w_data.eq(0x66)
                     yield bus.w_stb.eq(1)
-                    yield
+                    yield Tick()
                     self.assertEqual((yield elem_16_rw.r_stb), 1)
                     self.assertEqual((yield elem_16_rw.w_stb), 0)
-                    yield
+                    self.assertEqual((yield bus.r_data), 0xa5)
                     yield bus.addr.eq(3) # pipeline a read and a write
                     yield bus.w_data.eq(0xbb)
-                    self.assertEqual((yield bus.r_data), 0xa5)
-                    yield
-                    yield Delay()
+                    yield Tick()
                     self.assertEqual((yield bus.r_data), 0x5a)
                     self.assertEqual((yield elem_16_rw.r_stb), 0)
                     self.assertEqual((yield elem_16_rw.w_stb), 1)
@@ -315,7 +303,7 @@ class MultiplexerTestCase(unittest.TestCase):
 
                 sim = Simulator(dut)
                 sim.add_clock(1e-6)
-                sim.add_sync_process(sim_test)
+                sim.add_testbench(sim_test)
                 with sim.write_vcd(vcd_file=open("test.vcd", "w")):
                     sim.run()
 
@@ -359,28 +347,25 @@ class MultiplexerAlignedTestCase(unittest.TestCase):
                     yield bus.w_stb.eq(1)
                     yield bus.addr.eq(0)
                     yield bus.w_data.eq(0x55)
-                    yield
+                    yield Tick()
                     self.assertEqual((yield elem_20_rw.w_stb), 0)
                     yield bus.addr.eq(1)
                     yield bus.w_data.eq(0xaa)
-                    yield
+                    yield Tick()
                     self.assertEqual((yield elem_20_rw.w_stb), 0)
                     yield bus.addr.eq(2)
                     yield bus.w_data.eq(0x33)
-                    yield
+                    yield Tick()
                     self.assertEqual((yield elem_20_rw.w_stb), 0)
                     yield bus.addr.eq(3)
                     yield bus.w_data.eq(0xdd)
-                    yield
-                    self.assertEqual((yield elem_20_rw.w_stb), 0)
-                    yield bus.w_stb.eq(0)
-                    yield
+                    yield Tick()
                     self.assertEqual((yield elem_20_rw.w_stb), 1)
                     self.assertEqual((yield elem_20_rw.w_data), 0x3aa55)
 
                 sim = Simulator(dut)
                 sim.add_clock(1e-6)
-                sim.add_sync_process(sim_test)
+                sim.add_testbench(sim_test)
                 with sim.write_vcd(vcd_file=open("test.vcd", "w")):
                     sim.run()
 
@@ -447,17 +432,17 @@ class DecoderTestCase(unittest.TestCase):
             yield bus.addr.eq(elem_1_addr)
             yield bus.w_stb.eq(1)
             yield bus.w_data.eq(0x55)
-            yield
+            yield Tick()
             yield bus.w_stb.eq(0)
-            yield
+            yield Tick()
             self.assertEqual((yield elem_1.w_data), 0x55)
 
             yield bus.addr.eq(elem_2_addr)
             yield bus.w_stb.eq(1)
             yield bus.w_data.eq(0xaa)
-            yield
+            yield Tick()
             yield bus.w_stb.eq(0)
-            yield
+            yield Tick()
             self.assertEqual((yield elem_2.w_data), 0xaa)
 
             yield elem_1.r_data.eq(0x55)
@@ -465,17 +450,17 @@ class DecoderTestCase(unittest.TestCase):
 
             yield bus.addr.eq(elem_1_addr)
             yield bus.r_stb.eq(1)
-            yield
+            yield Tick()
             yield bus.addr.eq(elem_2_addr)
-            yield
+            yield Delay()
             self.assertEqual((yield bus.r_data), 0x55)
-            yield
+            yield Tick()
             self.assertEqual((yield bus.r_data), 0xaa)
 
         m = Module()
         m.submodules += self.dut, mux_1, mux_2
         sim = Simulator(m)
         sim.add_clock(1e-6)
-        sim.add_sync_process(sim_test)
+        sim.add_testbench(sim_test)
         with sim.write_vcd(vcd_file=open("test.vcd", "w")):
             sim.run()

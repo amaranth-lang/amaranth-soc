@@ -11,7 +11,7 @@ from amaranth_soc import event
 def simulation_test(dut, process):
     sim = Simulator(dut)
     sim.add_clock(1e-6)
-    sim.add_sync_process(process)
+    sim.add_testbench(process)
     with sim.write_vcd(vcd_file=open("test.vcd", "w")):
         sim.run()
 
@@ -190,56 +190,55 @@ class MonitorTestCase(unittest.TestCase):
             yield sub_0.i.eq(1)
             yield sub_1.i.eq(0)
             yield sub_2.i.eq(1)
-            yield
+            yield Tick()
             self.assertEqual((yield sub_0.trg), 1)
             self.assertEqual((yield sub_1.trg), 0)
             self.assertEqual((yield sub_2.trg), 0)
-            yield
             self.assertEqual((yield dut.pending), 0b001)
             self.assertEqual((yield dut.src.i), 0)
 
             yield dut.enable.eq(0b111)
-            yield
+            yield Tick()
             self.assertEqual((yield dut.src.i), 1)
 
             yield dut.clear.eq(0b001)
-            yield
+            yield Tick()
             self.assertEqual((yield dut.pending), 0b001)
             self.assertEqual((yield dut.src.i), 1)
 
             yield sub_0.i.eq(0)
-            yield
+            yield Delay()
             self.assertEqual((yield sub_0.trg), 0)
             self.assertEqual((yield sub_1.trg), 0)
             self.assertEqual((yield sub_2.trg), 0)
-            yield
+            yield Tick()
             self.assertEqual((yield dut.pending), 0b000)
             self.assertEqual((yield dut.src.i), 0)
 
             yield sub_1.i.eq(1)
-            yield
+            yield Delay()
             self.assertEqual((yield sub_0.trg), 0)
             self.assertEqual((yield sub_1.trg), 1)
             self.assertEqual((yield sub_2.trg), 0)
-            yield
+            yield Tick()
             self.assertEqual((yield dut.pending), 0b010)
             self.assertEqual((yield dut.src.i), 1)
 
             yield sub_2.i.eq(0)
-            yield
+            yield Delay()
             self.assertEqual((yield sub_0.trg), 0)
             self.assertEqual((yield sub_1.trg), 0)
             self.assertEqual((yield sub_2.trg), 1)
-            yield
+            yield Tick()
             self.assertEqual((yield dut.pending), 0b110)
             self.assertEqual((yield dut.src.i), 1)
 
             yield dut.clear.eq(0b110)
-            yield
+            yield Delay()
             self.assertEqual((yield sub_0.trg), 0)
             self.assertEqual((yield sub_1.trg), 0)
             self.assertEqual((yield sub_2.trg), 0)
-            yield
+            yield Tick()
             self.assertEqual((yield dut.pending), 0b000)
             self.assertEqual((yield dut.src.i), 0)
 
