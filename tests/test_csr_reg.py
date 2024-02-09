@@ -1,7 +1,7 @@
 import unittest
 import warnings
 from amaranth import *
-from amaranth.hdl.ir import UnusedElaboratable
+from amaranth.hdl import UnusedElaboratable
 from amaranth.lib import wiring
 from amaranth.lib.wiring import In, Out
 from amaranth.sim import *
@@ -539,7 +539,7 @@ class RegisterTestCase(unittest.TestCase):
                 Const(0b00,  2), # e
                 Const(0b110, 3), # f
             ))
-            yield Settle()
+            yield Delay()
 
             self.assertEqual((yield dut.f.a   .port.w_stb), 0)
             self.assertEqual((yield dut.f.b   .port.w_stb), 1)
@@ -557,9 +557,9 @@ class RegisterTestCase(unittest.TestCase):
             self.assertEqual((yield dut.f.e[0].w_data), 0b0)
             self.assertEqual((yield dut.f.e[1].w_data), 0b0)
 
-            yield
+            yield Tick()
             yield dut.element.w_stb.eq(0)
-            yield Settle()
+            yield Delay()
 
             self.assertEqual((yield dut.f.b  .data), 0b101)
             self.assertEqual((yield dut.f.c.d.data), 0b00)
@@ -570,7 +570,7 @@ class RegisterTestCase(unittest.TestCase):
             yield dut.f.a.r_data.eq(0b1)
             yield dut.f.b.set   .eq(0b010)
             yield dut.f.f.clear .eq(0b010)
-            yield Settle()
+            yield Delay()
 
             self.assertEqual((yield dut.element.r_data),
                              Const.cast(Cat(
@@ -581,11 +581,11 @@ class RegisterTestCase(unittest.TestCase):
                                  Const(0b110, 3), # f
                              )).value)
 
-            yield
+            yield Tick()
             yield dut.f.a.r_data.eq(0b0)
             yield dut.f.b.set   .eq(0b000)
             yield dut.f.f.clear .eq(0b000)
-            yield Settle()
+            yield Delay()
 
             self.assertEqual((yield dut.element.r_data),
                              Const.cast(Cat(
@@ -609,8 +609,7 @@ class RegisterTestCase(unittest.TestCase):
 
             yield dut.f.b.set  .eq(0b001)
             yield dut.f.f.clear.eq(0b111)
-            yield
-            yield Settle()
+            yield Tick()
 
             self.assertEqual((yield dut.element.r_data),
                              Const.cast(Cat(
@@ -626,7 +625,7 @@ class RegisterTestCase(unittest.TestCase):
 
         sim = Simulator(dut)
         sim.add_clock(1e-6)
-        sim.add_sync_process(process)
+        sim.add_testbench(process)
         with sim.write_vcd(vcd_file=open("test.vcd", "w")):
             sim.run()
 
@@ -930,8 +929,7 @@ class BridgeTestCase(unittest.TestCase):
             yield dut.bus.r_stb.eq(1)
             yield dut.bus.w_stb.eq(1)
             yield dut.bus.w_data.eq(0xa)
-            yield
-            yield Settle()
+            yield Tick()
             self.assertEqual((yield dut.bus.r_data), 0x0)
             self.assertEqual((yield reg_rw_4 .f.a.port.r_stb), 1)
             self.assertEqual((yield reg_rw_8 .f.a.port.r_stb), 0)
@@ -941,16 +939,14 @@ class BridgeTestCase(unittest.TestCase):
             self.assertEqual((yield reg_rw_16.f.a.port.w_stb), 0)
             yield dut.bus.r_stb.eq(0)
             yield dut.bus.w_stb.eq(0)
-            yield
-            yield Settle()
+            yield Tick()
             self.assertEqual((yield reg_rw_4.f.a.data), 0xa)
 
             yield dut.bus.addr.eq(1)
             yield dut.bus.r_stb.eq(1)
             yield dut.bus.w_stb.eq(1)
             yield dut.bus.w_data.eq(0xbb)
-            yield
-            yield Settle()
+            yield Tick()
             self.assertEqual((yield dut.bus.r_data), 0x11)
             self.assertEqual((yield reg_rw_4 .f.a.port.r_stb), 0)
             self.assertEqual((yield reg_rw_8 .f.a.port.r_stb), 1)
@@ -960,16 +956,14 @@ class BridgeTestCase(unittest.TestCase):
             self.assertEqual((yield reg_rw_16.f.a.port.w_stb), 0)
             yield dut.bus.r_stb.eq(0)
             yield dut.bus.w_stb.eq(0)
-            yield
-            yield Settle()
+            yield Tick()
             self.assertEqual((yield reg_rw_8.f.a.data), 0xbb)
 
             yield dut.bus.addr.eq(2)
             yield dut.bus.r_stb.eq(1)
             yield dut.bus.w_stb.eq(1)
             yield dut.bus.w_data.eq(0xcc)
-            yield
-            yield Settle()
+            yield Tick()
             self.assertEqual((yield dut.bus.r_data), 0x22)
             self.assertEqual((yield reg_rw_4 .f.a.port.r_stb), 0)
             self.assertEqual((yield reg_rw_8 .f.a.port.r_stb), 0)
@@ -979,16 +973,14 @@ class BridgeTestCase(unittest.TestCase):
             self.assertEqual((yield reg_rw_16.f.a.port.w_stb), 0)
             yield dut.bus.r_stb.eq(0)
             yield dut.bus.w_stb.eq(0)
-            yield
-            yield Settle()
+            yield Tick()
             self.assertEqual((yield reg_rw_16.f.a.data), 0x3322)
 
             yield dut.bus.addr.eq(3)
             yield dut.bus.r_stb.eq(1)
             yield dut.bus.w_stb.eq(1)
             yield dut.bus.w_data.eq(0xdd)
-            yield
-            yield Settle()
+            yield Tick()
             self.assertEqual((yield dut.bus.r_data), 0x33)
             self.assertEqual((yield reg_rw_4 .f.a.port.r_stb), 0)
             self.assertEqual((yield reg_rw_8 .f.a.port.r_stb), 0)
@@ -998,12 +990,11 @@ class BridgeTestCase(unittest.TestCase):
             self.assertEqual((yield reg_rw_16.f.a.port.w_stb), 1)
             yield dut.bus.r_stb.eq(0)
             yield dut.bus.w_stb.eq(0)
-            yield
-            yield Settle()
+            yield Tick()
             self.assertEqual((yield reg_rw_16.f.a.data), 0xddcc)
 
         sim = Simulator(dut)
         sim.add_clock(1e-6)
-        sim.add_sync_process(process)
+        sim.add_testbench(process)
         with sim.write_vcd(vcd_file=open("test.vcd", "w")):
             sim.run()
