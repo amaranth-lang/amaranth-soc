@@ -11,7 +11,7 @@ from amaranth_soc import event
 def simulation_test(dut, process):
     sim = Simulator(dut)
     sim.add_clock(1e-6)
-    sim.add_sync_process(process)
+    sim.add_testbench(process)
     with sim.write_vcd(vcd_file=open("test.vcd", "w")):
         sim.run()
 
@@ -84,44 +84,42 @@ class EventMonitorSimulationTestCase(unittest.TestCase):
 
             yield dut.bus.addr.eq(addr_enable)
             yield dut.bus.r_stb.eq(1)
-            yield
-            yield dut.bus.r_stb.eq(0)
-            yield
+            yield Tick()
             self.assertEqual((yield dut.bus.r_data), 0b0)
-            yield
+            yield dut.bus.r_stb.eq(0)
+            yield Delay()
 
             yield dut.bus.addr.eq(addr_enable)
             yield dut.bus.w_stb.eq(1)
             yield dut.bus.w_data.eq(0b1)
-            yield
+            yield Tick()
             yield dut.bus.w_stb.eq(0)
-            yield; yield Delay()
-
+            yield Tick()
             self.assertEqual((yield dut.src.i), 1)
+
             yield sub.i.eq(0)
             yield Delay()
             self.assertEqual((yield sub.trg), 0)
 
             yield dut.bus.addr.eq(addr_pending)
             yield dut.bus.r_stb.eq(1)
-            yield
-            yield dut.bus.r_stb.eq(0)
-            yield
+            yield Tick()
             self.assertEqual((yield dut.bus.r_data), 0b1)
-            yield
+            yield dut.bus.r_stb.eq(0)
+            yield Delay()
 
             yield dut.bus.addr.eq(addr_pending)
             yield dut.bus.w_stb.eq(1)
             yield dut.bus.w_data.eq(0b1)
-            yield
+            yield Tick()
             yield dut.bus.w_stb.eq(0)
-            yield
+            yield Tick()
 
             yield dut.bus.addr.eq(addr_pending)
             yield dut.bus.r_stb.eq(1)
-            yield
-            yield dut.bus.r_stb.eq(0)
-            yield
+            yield Tick()
             self.assertEqual((yield dut.bus.r_data), 0b0)
+            yield dut.bus.r_stb.eq(0)
+            yield Delay()
 
         simulation_test(dut, process)

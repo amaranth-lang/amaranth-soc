@@ -301,7 +301,7 @@ class DecoderSimulationTestCase(unittest.TestCase):
             self.assertEqual((yield dut.bus.dat_r), 0x5678abcd)
 
         sim = Simulator(dut)
-        sim.add_process(sim_test)
+        sim.add_testbench(sim_test)
         with sim.write_vcd(vcd_file=open("test.vcd", "w")):
             sim.run()
 
@@ -412,7 +412,7 @@ class DecoderSimulationTestCase(unittest.TestCase):
         m = Module()
         m.submodules += dut, loop_1, loop_2, loop_3, loop_4
         sim = Simulator(m)
-        sim.add_process(sim_test)
+        sim.add_testbench(sim_test)
         with sim.write_vcd(vcd_file=open("test.vcd", "w")):
             sim.run()
 
@@ -434,7 +434,7 @@ class DecoderSimulationTestCase(unittest.TestCase):
             self.assertEqual((yield sub.cyc), 0)
 
         sim = Simulator(dut)
-        sim.add_process(sim_test)
+        sim.add_testbench(sim_test)
         with sim.write_vcd(vcd_file=open("test.vcd", "w")):
             sim.run()
 
@@ -552,7 +552,7 @@ class ArbiterSimulationTestCase(unittest.TestCase):
 
         sim = Simulator(dut)
         sim.add_clock(1e-6)
-        sim.add_sync_process(sim_test)
+        sim.add_testbench(sim_test)
         with sim.write_vcd(vcd_file=open("test.vcd", "w")):
             sim.run()
 
@@ -605,7 +605,7 @@ class ArbiterSimulationTestCase(unittest.TestCase):
 
         sim = Simulator(dut)
         sim.add_clock(1e-6)
-        sim.add_sync_process(sim_test)
+        sim.add_testbench(sim_test)
         with sim.write_vcd(vcd_file=open("test.vcd", "w")):
             sim.run()
 
@@ -631,7 +631,7 @@ class ArbiterSimulationTestCase(unittest.TestCase):
             self.assertEqual((yield intr_2.stall), 1)
 
         sim = Simulator(dut)
-        sim.add_process(sim_test)
+        sim.add_testbench(sim_test)
         with sim.write_vcd(vcd_file=open("test.vcd", "w")):
             sim.run()
 
@@ -656,7 +656,7 @@ class ArbiterSimulationTestCase(unittest.TestCase):
             self.assertEqual((yield intr_2.stall), 1)
 
         sim = Simulator(dut)
-        sim.add_process(sim_test)
+        sim.add_testbench(sim_test)
         with sim.write_vcd(vcd_file=open("test.vcd", "w")):
             sim.run()
 
@@ -718,6 +718,6 @@ class ArbiterSimulationTestCase(unittest.TestCase):
 
         sim = Simulator(dut)
         sim.add_clock(1e-6)
-        sim.add_sync_process(sim_test)
+        sim.add_testbench(sim_test)
         with sim.write_vcd(vcd_file=open("test.vcd", "w")):
             sim.run()
