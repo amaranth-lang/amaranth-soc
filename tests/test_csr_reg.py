@@ -141,18 +141,18 @@ class FieldTestCase(unittest.TestCase):
 
     def test_create(self):
         class MockAction(FieldAction):
-            def __init__(self, shape, *, reset):
+            def __init__(self, shape, *, init):
                 super().__init__(shape, access="rw", members={
                     "data": Out(shape)
                 })
-                self.reset = reset
+                self.init = init
 
             def elaborate(self, platform):
                 return Module()
 
-        field_u8 = Field(MockAction, unsigned(8), reset=1).create()
+        field_u8 = Field(MockAction, unsigned(8), init=1).create()
         self.assertEqual(field_u8.port.shape, unsigned(8))
-        self.assertEqual(field_u8.reset, 1)
+        self.assertEqual(field_u8.init, 1)
 
     def test_create_multiple(self):
         class MockAction(FieldAction):
@@ -500,15 +500,15 @@ class RegisterTestCase(unittest.TestCase):
     def test_sim(self):
         class FooRegister(Register, access="rw"):
             a: Field(action.R, unsigned(1))
-            b: Field(action.RW1C, unsigned(3), reset=0b111)
-            c: {"d": Field(action.RW, signed(2), reset=-1)}
+            b: Field(action.RW1C, unsigned(3), init=0b111)
+            c: {"d": Field(action.RW, signed(2), init=-1)}
             e: [Field(action.W, unsigned(1)) for _ in range(2)]
             f: Field(action.RW1S, unsigned(3))
 
         dut = FooRegister()
 
         def process():
-            # Check reset values:
+            # Check init values:
 
             self.assertEqual((yield dut.f.b  .data),  0b111)
             self.assertEqual((yield dut.f.c.d.data), -1)
@@ -888,8 +888,8 @@ class BuilderTestCase(unittest.TestCase):
 
 class BridgeTestCase(unittest.TestCase):
     class _RWRegister(Register, access="rw"):
-        def __init__(self, width, reset=0):
-            super().__init__({"a": Field(action.RW, width, reset=reset)})
+        def __init__(self, width, init=0):
+            super().__init__({"a": Field(action.RW, width, init=init)})
 
     def test_wrong_memory_map(self):
         with self.assertRaisesRegex(TypeError,
@@ -917,10 +917,10 @@ class BridgeTestCase(unittest.TestCase):
     def test_sim(self):
         regs = Builder(addr_width=16, data_width=8)
 
-        reg_rw_4 = regs.add("reg_rw_4", self._RWRegister(4, reset=0x0))
-        reg_rw_8 = regs.add("reg_rw_8", self._RWRegister(8, reset=0x11))
+        reg_rw_4 = regs.add("reg_rw_4", self._RWRegister(4, init=0x0))
+        reg_rw_8 = regs.add("reg_rw_8", self._RWRegister(8, init=0x11))
         with regs.Cluster("cluster_0"):
-            reg_rw_16 = regs.add("reg_rw_16", self._RWRegister(16, reset=0x3322))
+            reg_rw_16 = regs.add("reg_rw_16", self._RWRegister(16, init=0x3322))
 
         dut = Bridge(regs.as_memory_map())
 
