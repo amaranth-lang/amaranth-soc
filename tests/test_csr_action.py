@@ -55,20 +55,20 @@ class WTestCase(unittest.TestCase):
 
 class RWTestCase(unittest.TestCase):
     def test_simple(self):
-        f4 = action.RW(unsigned(4), reset=0x5)
+        f4 = action.RW(unsigned(4), init=0x5)
         self.assertEqual(f4.data.shape(), unsigned(4))
-        self.assertEqual(f4.reset, 0x5)
+        self.assertEqual(f4.init, 0x5)
         self.assertTrue(f4.port.access.readable())
         self.assertTrue(f4.port.access.writable())
 
         f8 = action.RW(signed(8))
         self.assertEqual(f8.data.shape(), signed(8))
-        self.assertEqual(f8.reset, 0)
+        self.assertEqual(f8.init, 0)
         self.assertTrue(f8.port.access.readable())
         self.assertTrue(f8.port.access.writable())
 
     def test_sim(self):
-        dut = action.RW(unsigned(4), reset=0x5)
+        dut = action.RW(unsigned(4), init=0x5)
 
         def process():
             self.assertEqual((yield dut.port.r_data), 0x5)
@@ -88,22 +88,22 @@ class RWTestCase(unittest.TestCase):
 
 class RW1CTestCase(unittest.TestCase):
     def test_simple(self):
-        f4 = action.RW1C(unsigned(4), reset=0x5)
+        f4 = action.RW1C(unsigned(4), init=0x5)
         self.assertEqual(f4.data.shape(), unsigned(4))
         self.assertEqual(f4.set .shape(), unsigned(4))
-        self.assertEqual(f4.reset, 0x5)
+        self.assertEqual(f4.init, 0x5)
         self.assertTrue(f4.port.access.readable())
         self.assertTrue(f4.port.access.writable())
 
         f8 = action.RW1C(signed(8))
         self.assertEqual(f8.data.shape(), signed(8))
         self.assertEqual(f8.set .shape(), signed(8))
-        self.assertEqual(f8.reset, 0)
+        self.assertEqual(f8.init, 0)
         self.assertTrue(f8.port.access.readable())
         self.assertTrue(f8.port.access.writable())
 
     def test_sim(self):
-        dut = action.RW1C(unsigned(4), reset=0xf)
+        dut = action.RW1C(unsigned(4), init=0xf)
 
         def process():
             self.assertEqual((yield dut.port.r_data), 0xf)
@@ -129,22 +129,22 @@ class RW1CTestCase(unittest.TestCase):
 
 class RW1STestCase(unittest.TestCase):
     def test_simple(self):
-        f4 = action.RW1S(unsigned(4), reset=0x5)
+        f4 = action.RW1S(unsigned(4), init=0x5)
         self.assertEqual(f4.data .shape(), unsigned(4))
         self.assertEqual(f4.clear.shape(), unsigned(4))
-        self.assertEqual(f4.reset, 0x5)
+        self.assertEqual(f4.init, 0x5)
         self.assertTrue(f4.port.access.readable())
         self.assertTrue(f4.port.access.writable())
 
         f8 = action.RW1S(signed(8))
         self.assertEqual(f8.data .shape(), signed(8))
         self.assertEqual(f8.clear.shape(), signed(8))
-        self.assertEqual(f8.reset, 0)
+        self.assertEqual(f8.init, 0)
         self.assertTrue(f8.port.access.readable())
         self.assertTrue(f8.port.access.writable())
 
     def test_sim(self):
-        dut = action.RW1S(unsigned(4), reset=0x5)
+        dut = action.RW1S(unsigned(4), init=0x5)
 
         def process():
             self.assertEqual((yield dut.port.r_data), 0x5)

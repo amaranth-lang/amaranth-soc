@@ -81,8 +81,8 @@ class RW(FieldAction):
     ----------
     shape : :ref:`shape-castable <lang-shapecasting>`
         Shape of the field.
-    reset : :class:`int`
-        Storage reset value.
+    init : :class:`int`
+        Storage initial value.
 
     Interface attributes
     --------------------
@@ -91,16 +91,16 @@ class RW(FieldAction):
     data : Signal(shape)
         Storage output.
     """
-    def __init__(self, shape, *, reset=0):
+    def __init__(self, shape, *, init=0):
         super().__init__(shape, access="rw", members={
             "data": Out(shape),
         })
-        self._storage = Signal(shape, reset=reset)
-        self._reset   = reset
+        self._storage = Signal(shape, init=init)
+        self._init    = init
 
     @property
-    def reset(self):
-        return self._reset
+    def init(self):
+        return self._init
 
     def elaborate(self, platform):
         m = Module()
@@ -129,8 +129,8 @@ class RW1C(FieldAction):
     ----------
     shape : :ref:`shape-castable <lang-shapecasting>`
         Shape of the field.
-    reset : :class:`int`
-        Storage reset value.
+    init : :class:`int`
+        Storage initial value.
 
     Interface attributes
     --------------------
@@ -141,17 +141,17 @@ class RW1C(FieldAction):
     set : Signal(shape)
         Mask to set storage bits.
     """
-    def __init__(self, shape, *, reset=0):
+    def __init__(self, shape, *, init=0):
         super().__init__(shape, access="rw", members={
             "data": Out(shape),
             "set":  In(shape),
         })
-        self._storage = Signal(shape, reset=reset)
-        self._reset   = reset
+        self._storage = Signal(shape, init=init)
+        self._init    = init
 
     @property
-    def reset(self):
-        return self._reset
+    def init(self):
+        return self._init
 
     def elaborate(self, platform):
         m = Module()
@@ -183,8 +183,8 @@ class RW1S(FieldAction):
     ----------
     shape : :ref:`shape-castable <lang-shapecasting>`
         Shape of the field.
-    reset : :class:`int`
-        Storage reset value.
+    init : :class:`int`
+        Storage initial value.
 
     Interface attributes
     --------------------
@@ -195,17 +195,17 @@ class RW1S(FieldAction):
     clear : Signal(shape)
         Mask to clear storage bits.
     """
-    def __init__(self, shape, *, reset=0):
+    def __init__(self, shape, *, init=0):
         super().__init__(shape, access="rw", members={
             "clear": In(shape),
             "data":  Out(shape),
         })
-        self._storage = Signal(shape, reset=reset)
-        self._reset   = reset
+        self._storage = Signal(shape, init=init)
+        self._init    = init
 
     @property
-    def reset(self):
-        return self._reset
+    def init(self):
+        return self._init
 
     def elaborate(self, platform):
         m = Module()
