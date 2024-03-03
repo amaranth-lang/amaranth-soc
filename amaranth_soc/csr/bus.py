@@ -472,7 +472,10 @@ class Multiplexer(wiring.Component):
             registers = defaultdict(list)
             balanced  = True
 
-            for reg_range in self._ranges:
+            # sort ranges in an arbitrary but nice fashion so that we build registers and so create
+            # chunks and elaborate their connections deterministically
+            ranges = sorted(self._ranges, key=lambda r: (r.start, r.stop, r.step))
+            for reg_range in ranges:
                 for chunk_addr in reg_range:
                     chunk_offset = self.decode_address(chunk_addr, reg_range)
                     if len(registers[chunk_offset]) > self.overlaps:
