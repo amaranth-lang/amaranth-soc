@@ -372,11 +372,14 @@ class MemoryMapTestCase(unittest.TestCase):
         memory_map = MemoryMap(addr_width=16, data_width=8)
         res1 = _MockResource("res1")
         res2 = _MockResource("res2")
-        memory_map.add_resource(res1, name=("foo",), size=1)
-        memory_map.add_resource(res2, name=("bar",), size=2)
+        res3 = _MockResource("res3")
+        memory_map.add_resource(res1, name=("a",), size=1)
+        memory_map.add_resource(res2, name=("b",), size=2, addr=2)
+        memory_map.add_resource(res3, name=("c",), size=1, addr=1)
         self.assertEqual(list(memory_map.resources()), [
-            (res1, ("foo",), (0, 1)),
-            (res2, ("bar",), (1, 3)),
+            (res1, ("a",), (0, 1)),
+            (res3, ("c",), (1, 2)),
+            (res2, ("b",), (2, 4)),
         ])
 
     def test_add_window(self):
@@ -487,22 +490,28 @@ class MemoryMapTestCase(unittest.TestCase):
     def test_iter_windows(self):
         memory_map = MemoryMap(addr_width=16, data_width=16)
         window_1 = MemoryMap(addr_width=10, data_width=8)
-        memory_map.add_window(window_1, sparse=False)
         window_2 = MemoryMap(addr_width=12, data_width=16)
+        window_3 = MemoryMap(addr_width=10, data_width=8)
+        memory_map.add_window(window_1, sparse=False)
         memory_map.add_window(window_2)
+        memory_map.add_window(window_3, sparse=False, addr=0x400)
         self.assertEqual(list(memory_map.windows()), [
-            (window_1, (0, 0x200, 2)),
+            (window_1, (0x0000, 0x0200, 2)),
+            (window_3, (0x0400, 0x0600, 2)),
             (window_2, (0x1000, 0x2000, 1)),
         ])
 
     def test_iter_window_patterns(self):
         memory_map = MemoryMap(addr_width=16, data_width=16)
         window_1 = MemoryMap(addr_width=10, data_width=8)
-        memory_map.add_window(window_1, sparse=False)
         window_2 = MemoryMap(addr_width=12, data_width=16)
+        window_3 = MemoryMap(addr_width=10, data_width=8)
+        memory_map.add_window(window_1, sparse=False)
         memory_map.add_window(window_2)
+        memory_map.add_window(window_3, sparse=False, addr=0x400)
         self.assertEqual(list(memory_map.window_patterns()), [
             (window_1, ("000000----------", 2)),
+            (window_3, ("000001----------", 2)),
             (window_2, ("0001------------", 1)),
         ])
 

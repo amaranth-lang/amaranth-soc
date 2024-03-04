@@ -837,17 +837,17 @@ class BuilderTestCase(unittest.TestCase):
         self.assertEqual(results[0][1], ("a",))
         self.assertEqual(results[0][2], (0, 1))
 
-        self.assertIs(results[1][0], rc)
-        self.assertEqual(results[1][1], ("b", "c"))
-        self.assertEqual(results[1][2], (3, 4))
+        self.assertIs(results[1][0], rd)
+        self.assertEqual(results[1][1], ("b", "d"))
+        self.assertEqual(results[1][2], (1, 2))
 
-        self.assertIs(results[2][0], rd)
-        self.assertEqual(results[2][1], ("b", "d"))
-        self.assertEqual(results[2][2], (1, 2))
+        self.assertIs(results[2][0], re)
+        self.assertEqual(results[2][1], ("b", "e"))
+        self.assertEqual(results[2][2], (2, 3))
 
-        self.assertIs(results[3][0], re)
-        self.assertEqual(results[3][1], ("b", "e"))
-        self.assertEqual(results[3][2], (2, 3))
+        self.assertIs(results[3][0], rc)
+        self.assertEqual(results[3][1], ("b", "c"))
+        self.assertEqual(results[3][2], (3, 4))
 
         self.assertIs(results[4][0], rf)
         self.assertEqual(results[4][1], ("b", "0", "f"))
