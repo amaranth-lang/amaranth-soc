@@ -403,7 +403,11 @@ class MemoryMap:
         A tuple ``resource, name, (start, end)`` describing the address range assigned to the
         resource.
         """
-        for resource, resource_name, resource_range in self._resources.values():
+        def is_resource(item):
+            addr_range, assignment = item
+            return id(assignment) in self._resources
+        for resource_range, resource in filter(is_resource, self._ranges.items()):
+            _, resource_name, _ = self._resources[id(resource)]
             yield resource, resource_name, (resource_range.start, resource_range.stop)
 
     def add_window(self, window, *, addr=None, sparse=None):
@@ -537,7 +541,10 @@ class MemoryMap:
         contiguous addresses on the narrower bus that are accessed for each transaction on
         the wider bus. Otherwise, it is always 1.
         """
-        for window, window_range in self._windows.values():
+        def is_window(item):
+            addr_range, assignment = item
+            return id(assignment) in self._windows
+        for window_range, window in filter(is_window, self._ranges.items()):
             yield window, (window_range.start, window_range.stop, window_range.step)
 
     def window_patterns(self):
@@ -554,14 +561,14 @@ class MemoryMap:
         the narrower bus that are accessed for each transaction on the wider bus. Otherwise,
         it is always 1.
         """
-        for window, window_range in self._windows.values():
+        for window, (window_start, window_stop, window_ratio) in self.windows():
             const_bits = self.addr_width - window.addr_width
             if const_bits > 0:
-                const_pat = "{:0{}b}".format(window_range.start >> window.addr_width, const_bits)
+                const_pat = "{:0{}b}".format(window_start >> window.addr_width, const_bits)
             else:
                 const_pat = ""
             pattern = "{}{}".format(const_pat, "-" * window.addr_width)
-            yield window, (pattern, window_range.step)
+            yield window, (pattern, window_ratio)
 
     @staticmethod
     def _translate(resource_info, window, window_range):
