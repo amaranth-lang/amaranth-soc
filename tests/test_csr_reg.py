@@ -414,6 +414,16 @@ class RegisterTestCase(unittest.TestCase):
         self.assertEqual(reg.element.access, Element.Access.R)
         self.assertEqual(reg.element.width, 2)
 
+    def test_fields_single(self):
+        reg = Register(Field(action.R, unsigned(1)), access="r")
+
+        field_r_u1 = Field(action.R, unsigned(1)).create()
+
+        self.assertTrue(_compatible_fields(reg.f, field_r_u1))
+
+        self.assertEqual(reg.element.access, Element.Access.R)
+        self.assertEqual(reg.element.width, 1)
+
     def test_wrong_access(self):
         with self.assertRaisesRegex(ValueError, r"'foo' is not a valid Element.Access"):
             Register({"a": Field(action.R, unsigned(1))}, access="foo")
@@ -450,7 +460,7 @@ class RegisterTestCase(unittest.TestCase):
         class FooRegister(Register, access="w"):
             pass
         with self.assertRaisesRegex(TypeError,
-                r"Field collection must be a dict or a list, not 'foo'"):
+                r"Field collection must be a dict, list, or Field, not 'foo'"):
             FooRegister(fields="foo")
 
     def test_annotations_conflict(self):
@@ -495,6 +505,12 @@ class RegisterTestCase(unittest.TestCase):
             (("c", "d"), reg.f.c.d),
             (("e", 0), reg.f.e[0]),
             (("e", 1), reg.f.e[1]),
+        ])
+
+    def test_iter_single(self):
+        reg = Register(Field(action.R, unsigned(1)), access="rw")
+        self.assertEqual(list(reg), [
+            ((), reg.f),
         ])
 
     def test_sim(self):
@@ -629,6 +645,44 @@ class RegisterTestCase(unittest.TestCase):
         with sim.write_vcd(vcd_file=open("test.vcd", "w")):
             sim.run()
 
+    def test_sim_single(self):
+        dut = Register(Field(action.RW, unsigned(1), init=1), access="rw")
+
+        def process():
+            # Check init values:
+
+            self.assertEqual((yield dut.f.data), 1)
+            self.assertEqual((yield dut.f.port.r_data), 1)
+
+            # Initiator read:
+
+            yield dut.element.r_stb.eq(1)
+            yield Delay()
+
+            self.assertEqual((yield dut.f.port.r_stb), 1)
+
+            yield dut.element.r_stb.eq(0)
+
+            # Initiator write:
+
+            yield dut.element.w_stb.eq(1)
+            yield dut.element.w_data.eq(0)
+            yield Delay()
+
+            self.assertEqual((yield dut.f.port.w_stb), 1)
+            self.assertEqual((yield dut.f.port.w_data), 0)
+
+            yield Tick()
+            yield dut.element.w_stb.eq(0)
+            yield Delay()
+
+            self.assertEqual((yield dut.f.data), 0)
+
+        sim = Simulator(dut)
+        sim.add_clock(1e-6)
+        sim.add_testbench(process)
+        with sim.write_vcd(vcd_file=open("test.vcd", "w")):
+            sim.run()
 
 class _MockRegister(Register, access="rw"):
     def __init__(self, name, width=1):
