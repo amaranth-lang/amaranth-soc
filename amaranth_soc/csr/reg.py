@@ -440,11 +440,11 @@ class Register(wiring.Component):
 
     Parameters
     ----------
-    fields : :class:`dict` or :class:`list`
+    fields : :class:`dict` or :class:`list` or :class:`Field`
         Collection of register fields. If ``None`` (default), a dict is populated from Python
-        :term:`variable annotations <python:variable annotations>`. ``fields`` is used to populate
-        a :class:`FieldActionMap` or a :class:`FieldActionArray`, depending on its type (dict or
-        list).
+        :term:`variable annotations <python:variable annotations>`. ``fields`` is used to create
+        a :class:`FieldActionMap`, :class:`FieldActionArray`, or :class:`FieldAction`,
+        depending on its type (dict, list, or Field).
     {parameters}
 
     Interface attributes
@@ -454,15 +454,15 @@ class Register(wiring.Component):
 
     Attributes
     ----------
-    field : :class:`FieldActionMap` or :class:`FieldActionArray`
+    field : :class:`FieldActionMap` or :class:`FieldActionArray` or :class:`FieldAction`
         Collection of field instances.
-    f : :class:`FieldActionMap` or :class:`FieldActionArray`
+    f : :class:`FieldActionMap` or :class:`FieldActionArray` or :class:`FieldAction`
         Shorthand for :attr:`Register.field`.
 
     Raises
     ------
     :exc:`TypeError`
-        If ``fields`` is neither ``None``, a :class:`dict` or a :class:`list`.
+        If ``fields`` is neither ``None``, a :class:`dict`, a :class:`list`, or a :class:`Field`.
     :exc:`ValueError`
         If ``fields`` is not ``None`` and at least one variable annotation is a :class:`Field`.
     :exc:`ValueError`
@@ -528,8 +528,10 @@ class Register(wiring.Component):
             self._field = FieldActionMap(fields)
         elif isinstance(fields, list):
             self._field = FieldActionArray(fields)
+        elif isinstance(fields, Field):
+            self._field = fields.create()
         else:
-            raise TypeError(f"Field collection must be a dict or a list, not {fields!r}")
+            raise TypeError(f"Field collection must be a dict, list, or Field, not {fields!r}")
 
         width = 0
         for field_path, field in self:
@@ -562,7 +564,10 @@ class Register(wiring.Component):
         :class:`FieldAction`
             Field instance.
         """
-        yield from self.field.flatten()
+        if isinstance(self.field, FieldAction):
+            yield (), self.field
+        else:
+            yield from self.field.flatten()
 
     def elaborate(self, platform):
         m = Module()
@@ -573,7 +578,10 @@ class Register(wiring.Component):
             field_width = Shape.cast(field.port.shape).width
             field_slice = slice(field_start, field_start + field_width)
 
-            m.submodules["__".join(str(key) for key in field_path)] = field
+            if field_path:
+                m.submodules["__".join(str(key) for key in field_path)] = field
+            else: # avoid empty name for a single un-named field
+                m.submodules += field
 
             if field.port.access.readable():
                 m.d.comb += [
