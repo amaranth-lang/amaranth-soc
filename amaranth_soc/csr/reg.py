@@ -454,10 +454,10 @@ class Register(wiring.Component):
 
     Attributes
     ----------
-    fields : :class:`FieldActionMap` or :class:`FieldActionArray`
+    field : :class:`FieldActionMap` or :class:`FieldActionArray`
         Collection of field instances.
     f : :class:`FieldActionMap` or :class:`FieldActionArray`
-        Shorthand for :attr:`Register.fields`.
+        Shorthand for :attr:`Register.field`.
 
     Raises
     ------
@@ -525,9 +525,9 @@ class Register(wiring.Component):
                              "instantiation")
 
         if isinstance(fields, dict):
-            self._fields = FieldActionMap(fields)
+            self._field = FieldActionMap(fields)
         elif isinstance(fields, list):
-            self._fields = FieldActionArray(fields)
+            self._field = FieldActionArray(fields)
         else:
             raise TypeError(f"Field collection must be a dict or a list, not {fields!r}")
 
@@ -544,12 +544,12 @@ class Register(wiring.Component):
         super().__init__({"element": Out(Element.Signature(width, access))})
 
     @property
-    def fields(self):
-        return self._fields
+    def field(self):
+        return self._field
 
     @property
     def f(self):
-        return self._fields
+        return self._field
 
     def __iter__(self):
         """Recursively iterate over the field collection.
@@ -562,7 +562,7 @@ class Register(wiring.Component):
         :class:`FieldAction`
             Field instance.
         """
-        yield from self.fields.flatten()
+        yield from self.field.flatten()
 
     def elaborate(self, platform):
         m = Module()
