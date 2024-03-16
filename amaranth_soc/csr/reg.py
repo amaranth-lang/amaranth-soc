@@ -532,7 +532,7 @@ class Register(wiring.Component):
             raise TypeError(f"Field collection must be a dict or a list, not {fields!r}")
 
         width = 0
-        for field_path, field in self._fields.flatten():
+        for field_path, field in self:
             width += Shape.cast(field.port.shape).width
             if field.port.access.readable() and not access.readable():
                 raise ValueError(f"Field {'__'.join(field_path)} is readable, but element access "
@@ -569,7 +569,7 @@ class Register(wiring.Component):
 
         field_start = 0
 
-        for field_path, field in self.fields.flatten():
+        for field_path, field in self:
             field_width = Shape.cast(field.port.shape).width
             field_slice = slice(field_start, field_start + field_width)
 
