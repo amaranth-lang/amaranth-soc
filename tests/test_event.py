@@ -167,9 +167,9 @@ class MonitorTestCase(unittest.TestCase):
         dut = event.Monitor(event_map, trigger="rise")
         self.assertIs(dut.src.event_map, event_map)
         self.assertEqual(dut.src.trigger, event.Source.Trigger.RISE)
-        self.assertEqual(dut.enable.width, 2)
-        self.assertEqual(dut.pending.width, 2)
-        self.assertEqual(dut.clear.width, 2)
+        self.assertEqual(len(dut.enable), 2)
+        self.assertEqual(len(dut.pending), 2)
+        self.assertEqual(len(dut.clear), 2)
 
     def test_event_map_wrong(self):
         with self.assertRaisesRegex(TypeError,
