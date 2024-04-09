@@ -18,73 +18,104 @@ class PinMode(enum.Enum, shape=unsigned(2)):
     #: `Input-only` mode.
     #:
     #: The pin output is disabled but remains connected to its :class:`Peripheral.Output` field.
-    #: Its :attr:`Peripheral.alt_mode` bit is wired to 0.
+    #: Its ``alt_mode`` bit is wired to 0.
     INPUT_ONLY = 0b00
 
     #: `Push-pull` mode.
     #:
     #: The pin output is enabled and connected to its :class:`Peripheral.Output` field. Its
-    #: :attr:`Peripheral.alt_mode` bit is wired to 0.
+    #: ``alt_mode`` bit is wired to 0.
     PUSH_PULL = 0b01
 
     #: `Open-drain` mode.
     #:
     #: The pin output is enabled when the value of its :class:`Peripheral.Output` field is 0, and
-    #: is itself wired to 0. Its :attr:`Peripheral.alt_mode` bit is wired to 0.
+    #: is itself wired to 0. Its ``alt_mode`` bit is wired to 0.
     OPEN_DRAIN = 0b10
 
     #: `Alternate` mode.
     #:
     #: The pin output is disabled but remains connected to its :class:`Peripheral.Output` field.
-    #: Its :attr:`Peripheral.alt_mode` bit is wired to 1.
+    #: Its ``alt_mode`` bit is wired to 1.
     ALTERNATE = 0b11
 
 
 class PinSignature(wiring.Signature):
     """GPIO pin signature.
 
-    Interface attributes
-    --------------------
-    i : :class:`Signal`
+    Members
+    -------
+    i : :py:`In(1)`
         Input.
-    o : :class:`Signal`
+    o : :py:`Out(1)`
         Output.
-    oe : :class:`Signal`
+    oe : :py:`Out(1)`
         Output enable.
     """
     def __init__(self):
         super().__init__({
-            "i":  In(unsigned(1)),
-            "o":  Out(unsigned(1)),
-            "oe": Out(unsigned(1)),
+            "i":  In(1),
+            "o":  Out(1),
+            "oe": Out(1),
         })
 
 
 class Peripheral(wiring.Component):
+    """GPIO peripheral.
+
+    Arguments
+    ---------
+    pin_count : :class:`int`
+        Number of GPIO pins.
+    addr_width : :class:`int`
+        CSR bus address width.
+    data_width : :class:`int`
+        CSR bus data width.
+    input_stages : :class:`int`
+        Number of synchronization stages between pin inputs and the :class:`~Peripheral.Input`
+        register. Optional. Defaults to ``2``.
+
+    Members
+    -------
+    bus : :py:`In(csr.Signature(addr_width, data_width))`
+        CSR bus interface providing access to registers.
+    pins : :py:`Out(PinSignature()).array(pin_count)`
+        GPIO pin interfaces.
+    alt_mode : :py:`Out(pin_count)`
+        Indicates which members of the ``pins`` array are in alternate mode.
+    """
+
     class Mode(csr.Register, access="rw"):
-        """Mode register.
+        __doc__ = """Mode register.
 
-        This :class:`csr.Register` contains an array of ``pin_count`` read/write fields. Each field
-        is 2-bit wide and its possible values are defined by the :class:`PinMode` enumeration.
+        This :class:`~.csr.reg.Register` contains an array of ``pin_count`` read/write fields.
+        Each field is 2-bit wide and its possible values are defined by the :class:`PinMode`
+        enumeration.
 
-        If ``pin_count`` is 8, then the register has the following fields:
+        ----
 
-        .. bitfield::
-            :bits: 16
+        If ``pin_count`` is 8, then the :class:`~.csr.reg.Register` has the following fields:
 
-                [
-                    { "name": "pin[0]", "bits": 2, "attr": "RW" },
-                    { "name": "pin[1]", "bits": 2, "attr": "RW" },
-                    { "name": "pin[2]", "bits": 2, "attr": "RW" },
-                    { "name": "pin[3]", "bits": 2, "attr": "RW" },
-                    { "name": "pin[4]", "bits": 2, "attr": "RW" },
-                    { "name": "pin[5]", "bits": 2, "attr": "RW" },
-                    { "name": "pin[6]", "bits": 2, "attr": "RW" },
-                    { "name": "pin[7]", "bits": 2, "attr": "RW" },
-                ]
+        .. wavedrom:: gpio_mode
 
-        Parameters
-        ----------
+                {
+                    "reg": [
+                        { "name": "pin[0]", "bits": 2, "attr": "RW" },
+                        { "name": "pin[1]", "bits": 2, "attr": "RW" },
+                        { "name": "pin[2]", "bits": 2, "attr": "RW" },
+                        { "name": "pin[3]", "bits": 2, "attr": "RW" },
+                        { "name": "pin[4]", "bits": 2, "attr": "RW" },
+                        { "name": "pin[5]", "bits": 2, "attr": "RW" },
+                        { "name": "pin[6]", "bits": 2, "attr": "RW" },
+                        { "name": "pin[7]", "bits": 2, "attr": "RW" }
+                    ],
+                    "config": {"bits": 16}
+                }
+
+        ----
+
+        Arguments
+        ---------
         pin_count : :class:`int`
             Number of GPIO pins.
         """
@@ -96,31 +127,37 @@ class Peripheral(wiring.Component):
     class Input(csr.Register, access="r"):
         """Input register.
 
-        This :class:`csr.Register` contains an array of ``pin_count`` read-only fields. Each field
-        is 1-bit wide and driven by the input of its associated pin in the :attr:`Peripheral.pins`
-        array.
+        This :class:`~.csr.reg.Register` contains an array of ``pin_count`` read-only fields. Each
+        field is 1-bit wide and is driven by the input of its associated pin in the
+        :attr:`Peripheral.pins` array.
 
         Values sampled from pin inputs go through :attr:`Peripheral.input_stages` synchronization
         stages (on a rising edge of ``ClockSignal("sync")``) before reaching the register.
 
-        If ``pin_count`` is 8, then the register has the following fields:
+        ----
 
-        .. bitfield::
-            :bits: 8
+        If ``pin_count`` is 8, then the :class:`~.csr.reg.Register` has the following fields:
 
-                [
-                    { "name": "pin[0]", "bits": 1, "attr": "R" },
-                    { "name": "pin[1]", "bits": 1, "attr": "R" },
-                    { "name": "pin[2]", "bits": 1, "attr": "R" },
-                    { "name": "pin[3]", "bits": 1, "attr": "R" },
-                    { "name": "pin[4]", "bits": 1, "attr": "R" },
-                    { "name": "pin[5]", "bits": 1, "attr": "R" },
-                    { "name": "pin[6]", "bits": 1, "attr": "R" },
-                    { "name": "pin[7]", "bits": 1, "attr": "R" },
-                ]
+        .. wavedrom:: gpio_input
 
-        Parameters
-        ----------
+                {
+                    "reg": [
+                        { "name": "pin[0]", "bits": 1, "attr": "R" },
+                        { "name": "pin[1]", "bits": 1, "attr": "R" },
+                        { "name": "pin[2]", "bits": 1, "attr": "R" },
+                        { "name": "pin[3]", "bits": 1, "attr": "R" },
+                        { "name": "pin[4]", "bits": 1, "attr": "R" },
+                        { "name": "pin[5]", "bits": 1, "attr": "R" },
+                        { "name": "pin[6]", "bits": 1, "attr": "R" },
+                        { "name": "pin[7]", "bits": 1, "attr": "R" }
+                    ],
+                    "config": {"bits": 8}
+                }
+
+        ----
+
+        Arguments
+        ---------
         pin_count : :class:`int`
             Number of GPIO pins.
         """
@@ -132,28 +169,34 @@ class Peripheral(wiring.Component):
     class Output(csr.Register, access="rw"):
         """Output register.
 
-        This :class:`csr.Register` contains an array of ``pin_count`` read/write fields. Each field
-        is 1-bit wide and drives the output of its associated pin in the :attr:`Peripheral.pins`
-        array, depending on its associated :class:`~Peripheral.Mode` field.
+        This :class:`~.csr.reg.Register` contains an array of ``pin_count`` read/write fields. Each
+        field is 1-bit wide and drives the output of its associated pin in the
+        :attr:`Peripheral.pins` array, depending on its associated :class:`~Peripheral.Mode` field.
 
-        If ``pin_count`` is 8, then the register has the following fields:
+        ----
 
-        .. bitfield::
-            :bits: 8
+        If ``pin_count`` is 8, then the :class:`~.csr.reg.Register` has the following fields:
 
-                [
-                    { "name": "pin[0]", "bits": 1, "attr": "RW" },
-                    { "name": "pin[1]", "bits": 1, "attr": "RW" },
-                    { "name": "pin[2]", "bits": 1, "attr": "RW" },
-                    { "name": "pin[3]", "bits": 1, "attr": "RW" },
-                    { "name": "pin[4]", "bits": 1, "attr": "RW" },
-                    { "name": "pin[5]", "bits": 1, "attr": "RW" },
-                    { "name": "pin[6]", "bits": 1, "attr": "RW" },
-                    { "name": "pin[7]", "bits": 1, "attr": "RW" },
-                ]
+        .. wavedrom:: gpio_output
 
-        Parameters
-        ----------
+                {
+                    "reg": [
+                        { "name": "pin[0]", "bits": 1, "attr": "RW" },
+                        { "name": "pin[1]", "bits": 1, "attr": "RW" },
+                        { "name": "pin[2]", "bits": 1, "attr": "RW" },
+                        { "name": "pin[3]", "bits": 1, "attr": "RW" },
+                        { "name": "pin[4]", "bits": 1, "attr": "RW" },
+                        { "name": "pin[5]", "bits": 1, "attr": "RW" },
+                        { "name": "pin[6]", "bits": 1, "attr": "RW" },
+                        { "name": "pin[7]", "bits": 1, "attr": "RW" }
+                    ],
+                    "config": {"bits": 8}
+                }
+
+        ----
+
+        Arguments
+        ---------
         pin_count : :class:`int`
             Number of GPIO pins.
         """
@@ -161,8 +204,8 @@ class Peripheral(wiring.Component):
             def __init__(self):
                 super().__init__(shape=unsigned(1), access="rw", members=(
                     ("data", Out(unsigned(1))),
-                    ("set",  In(unsigned(1))),
-                    ("clr",  In(unsigned(1))),
+                    ("set",  In(1)),
+                    ("clr",  In(1)),
                 ))
                 self._storage = Signal(unsigned(1))
 
@@ -189,32 +232,38 @@ class Peripheral(wiring.Component):
     class SetClr(csr.Register, access="w"):
         """Output set/clear register.
 
-        This :class:`csr.Register` contains an array of ``pin_count`` write-only fields. Each field
-        is 2-bit wide; writing it can modify its associated :class:`~Peripheral.Output` field as a
-        side-effect.
+        This :class:`~.csr.reg.Register` contains an array of ``pin_count`` write-only fields. Each
+        field is 2-bit wide; writing it can modify its associated :class:`~Peripheral.Output` field
+        as a side-effect.
 
-        If ``pin_count`` is 8, then the register has the following fields:
+        ----
 
-        .. bitfield::
-            :bits: 16
+        If ``pin_count`` is 8, then the :class:`~.csr.reg.Register` has the following fields:
 
-                [
-                    { "name": "pin[0]", "bits": 2, "attr": "W" },
-                    { "name": "pin[1]", "bits": 2, "attr": "W" },
-                    { "name": "pin[2]", "bits": 2, "attr": "W" },
-                    { "name": "pin[3]", "bits": 2, "attr": "W" },
-                    { "name": "pin[4]", "bits": 2, "attr": "W" },
-                    { "name": "pin[5]", "bits": 2, "attr": "W" },
-                    { "name": "pin[6]", "bits": 2, "attr": "W" },
-                    { "name": "pin[7]", "bits": 2, "attr": "W" },
-                ]
+        .. wavedrom:: gpio_setclr
+
+                {
+                    "reg": [
+                        { "name": "pin[0]", "bits": 2, "attr": "W" },
+                        { "name": "pin[1]", "bits": 2, "attr": "W" },
+                        { "name": "pin[2]", "bits": 2, "attr": "W" },
+                        { "name": "pin[3]", "bits": 2, "attr": "W" },
+                        { "name": "pin[4]", "bits": 2, "attr": "W" },
+                        { "name": "pin[5]", "bits": 2, "attr": "W" },
+                        { "name": "pin[6]", "bits": 2, "attr": "W" },
+                        { "name": "pin[7]", "bits": 2, "attr": "W" }
+                    ],
+                    "config": {"bits": 16}
+                }
 
         - Writing `0b01` to a field sets its associated :class:`~Peripheral.Output` field.
         - Writing `0b10` to a field clears its associated :class:`~Peripheral.Output` field.
         - Writing `0b00` or `0b11` to a field has no side-effect.
 
-        Parameters
-        ----------
+        ----
+
+        Arguments
+        ---------
         pin_count : :class:`int`
             Number of GPIO pins.
         """
@@ -227,36 +276,6 @@ class Peripheral(wiring.Component):
                 "pin": [pin_fields for _ in range(pin_count)],
             })
 
-    """GPIO peripheral.
-
-    Parameters
-    ----------
-    pin_count : :class:`int`
-        Number of GPIO pins.
-    addr_width : :class:`int`
-        CSR bus address width.
-    data_width : :class:`int`
-        CSR bus data width.
-    input_stages : :class:`int`
-        Number of synchronization stages between pin inputs and the :class:`~Peripheral.Input`
-        register. Optional. Defaults to ``2``.
-
-    Attributes
-    ----------
-    bus : :class:`csr.Interface`
-        CSR bus interface providing access to registers.
-    pins : :class:`list` of :class:`wiring.PureInterface` of :class:`PinSignature`
-        GPIO pin interfaces.
-    alt_mode : :class:`Signal`
-        Indicates which members of the :attr:`Peripheral.pins` array are in alternate mode.
-
-    Raises
-    ------
-    :exc:`TypeError`
-        If ``pin_count`` is not a positive integer.
-    :exc:`TypeError`
-        If ``input_stages`` is not a non-negative integer.
-    """
     def __init__(self, *, pin_count, addr_width, data_width, input_stages=2):
         if not isinstance(pin_count, int) or pin_count <= 0:
             raise TypeError(f"Pin count must be a positive integer, not {pin_count!r}")
@@ -275,7 +294,7 @@ class Peripheral(wiring.Component):
         super().__init__({
             "bus":      In(csr.Signature(addr_width=addr_width, data_width=data_width)),
             "pins":     Out(PinSignature()).array(pin_count),
-            "alt_mode": Out(unsigned(pin_count)),
+            "alt_mode": Out(pin_count),
         })
         self.bus.memory_map = self._bridge.bus.memory_map
 

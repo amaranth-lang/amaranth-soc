@@ -106,24 +106,25 @@ class _Namespace:
 class ResourceInfo:
     """Resource metadata.
 
-    A description of a memory map resource with its assigned path and address range.
+    A description of a :class:`MemoryMap` resource with its assigned path and address range.
 
-    Parameters
-    ----------
-    resource : :class:`wiring.Component`
-        A resource located in the memory map. See :meth:`MemoryMap.add_resource` for details.
+    Arguments
+    ---------
+    resource : :class:`amaranth.lib.wiring.Component`
+        A resource located in the :class:`MemoryMap`. See :meth:`MemoryMap.add_resource` for
+        details.
     path : :class:`tuple` of :class:`MemoryMap.Name`
         Path of the resource. It is composed of the names of each window sitting between
-        the resource and the memory map from which this :class:`ResourceInfo` was obtained.
+        the resource and the :class:`MemoryMap` from which this :class:`ResourceInfo` was obtained.
         See :meth:`MemoryMap.add_window` for details.
-    start : int
+    start : :class:`int`
         Start of the address range assigned to the resource.
-    end : int
+    end : :class:`int`
         End of the address range assigned to the resource.
-    width : int
+    width : :class:`int`
         Amount of data bits accessed at each address. It may be equal to the data width of the
-        memory map from which this :class:`ResourceInfo` was obtained, or less if the resource
-        is located behind a window that uses sparse addressing.
+        :class:`MemoryMap` from which this :class:`ResourceInfo` was obtained, or less if the
+        resource is located behind a window that uses sparse addressing.
     """
     def __init__(self, resource, path, start, end, width):
         if not isinstance(path, tuple) or len(path) == 0:
@@ -144,22 +145,52 @@ class ResourceInfo:
 
     @property
     def resource(self):
+        """The resource described by this :class:`ResourceInfo`.
+
+        Returns
+        -------
+        :class:`amaranth.lib.wiring.Component`
+        """
         return self._resource
 
     @property
     def path(self):
+        """Path of the resource.
+
+        Returns
+        -------
+        :class:`tuple` of :class:`MemoryMap.Name`
+        """
         return self._path
 
     @property
     def start(self):
+        """Start of the address range assigned to the resource.
+
+        Returns
+        -------
+        :class:`int`
+        """
         return self._start
 
     @property
     def end(self):
+        """End of the address range assigned to the resource.
+
+        Returns
+        -------
+        :class:`int`
+        """
         return self._end
 
     @property
     def width(self):
+        """Amount of data bits accessed at each address.
+
+        Returns
+        -------
+        :class:`int`
+        """
         return self._width
 
 
@@ -185,27 +216,27 @@ class MemoryMap:
 
     """Memory map.
 
-    A memory map is a hierarchical description of an address space, describing the structure of
-    address decoders of peripherals as well as bus bridges. It is built by adding resources
-    (range allocations for registers, memory, etc) and windows (range allocations for bus bridges),
-    and can be queried later to determine the address of any given resource from a specific
-    vantage point in the design.
+    A :class:`MemoryMap` is a hierarchical description of an address space, describing the
+    structure of address decoders of peripherals as well as bus bridges.
 
-    Address assignment
-    ------------------
+    It is built by adding resources (range allocations for registers, memory, etc) and windows
+    (range allocations for bus bridges), and can be queried later to determine the address of
+    any given resource from a specific vantage point in the design.
 
-    To simplify address assignment, each memory map has an implicit next address, starting at 0.
-    If a resource or a window is added without specifying an address explicitly, the implicit next
-    address is used. In any case, the implicit next address is set to the address immediately
-    following the newly added resource or window.
+    .. note::
 
-    Parameters
-    ----------
-    addr_width : int
+        To simplify address assignment, each :class:`MemoryMap` has an implicit next address,
+        starting at 0. If a resource or a window is added without specifying an address explicitly,
+        the implicit next address is used. In any case, the implicit next address is set to the
+        address immediately following the newly added resource or window.
+
+    Arguments
+    ---------
+    addr_width : :class:`int`
         Address width.
-    data_width : int
+    data_width : :class:`int`
         Data width.
-    alignment : int, power-of-2 exponent
+    alignment : :class:`int`, power-of-2 exponent
         Range alignment. Each added resource and window will be placed at an address that is
         a multiple of ``2 ** alignment``, and its size will be rounded up to be a multiple of
         ``2 ** alignment``.
@@ -232,21 +263,39 @@ class MemoryMap:
 
     @property
     def addr_width(self):
+        """Address width.
+
+        Returns
+        -------
+        :class:`int`
+        """
         return self._addr_width
 
     @property
     def data_width(self):
+        """Data width.
+
+        Returns
+        -------
+        :class:`int`
+        """
         return self._data_width
 
     @property
     def alignment(self):
+        """Alignment.
+
+        Returns
+        -------
+        :class:`int`
+        """
         return self._alignment
 
     def freeze(self):
-        """Freeze the memory map.
+        """Freeze the :class:`MemoryMap`.
 
-        Once the memory map is frozen, its visible state becomes immutable. Resources and windows
-        cannot be added anymore.
+        Once the :class:`MemoryMap` is frozen, its visible state becomes immutable. Resources and
+        windows cannot be added anymore.
         """
         self._frozen = True
 
@@ -261,13 +310,14 @@ class MemoryMap:
 
         Arguments
         ---------
-        alignment : int, power-of-2 exponent
+        alignment : :class:`int`, power-of-2 exponent
             Address alignment. The start of the implicit next address will be a multiple of
             ``2 ** max(alignment, self.alignment)``.
 
-        Return value
-        ------------
-        Implicit next address.
+        Returns
+        -------
+        :class:`int`
+            Implicit next address.
         """
         if not isinstance(alignment, int) or alignment < 0:
             raise ValueError(f"Alignment must be a non-negative integer, not {alignment!r}")
@@ -319,39 +369,40 @@ class MemoryMap:
 
         Arguments
         ---------
-        resource : :class:`wiring.Component`
+        resource : :class:`amaranth.lib.wiring.Component`
             The resource to be added.
         name : :class:`MemoryMap.Name`
             Name of the resource. It must not conflict with the name of other resources or windows
             present in this memory map.
-        addr : int
+        addr : :class:`int`
             Address of the resource. Optional. If ``None``, the implicit next address will be used.
             Otherwise, the exact specified address (which must be a multiple of
             ``2 ** max(alignment, self.alignment)``) will be used.
-        size : int
+        size : :class:`int`
             Size of the resource, in minimal addressable units. Rounded up to a multiple of
             ``2 ** max(alignment, self.alignment)``.
-        alignment : int, power-of-2 exponent
+        alignment : :class:`int`, power-of-2 exponent
             Alignment of the resource. Optional. If ``None``, the memory map alignment is used.
 
-        Return value
-        ------------
-        A tuple ``(start, end)`` describing the address range assigned to the resource.
+        Returns
+        -------
+        :class:`tuple` of (:class:`int`, :class:`int`)
+            A tuple ``(start, end)`` describing the address range assigned to the resource.
 
-        Exceptions
-        ----------
+        Raises
+        ------
         :exc:`ValueError`
-            If the memory map is frozen.
+            If the :class:`MemoryMap` is frozen.
         :exc:`TypeError`
             If the resource is not a :class:`wiring.Component`.
         :exc:`ValueError`
             If the requested address and size, after alignment, would overlap with any resources or
             windows that have already been added, or would be out of bounds.
         :exc:`ValueError`
-            If the resource has already been added to this memory map.
+            If the resource has already been added to this :class:`MemoryMap`.
         :exc:`ValueError`
             If the resource name conflicts with the name of other resources or windows present in
-            this memory map.
+            this :class:`MemoryMap`.
         """
         if self._frozen:
             raise ValueError(f"Memory map has been frozen. Cannot add resource {resource!r}")
@@ -392,10 +443,12 @@ class MemoryMap:
 
         Non-recursively iterate resources in ascending order of their address.
 
-        Yield values
-        ------------
-        A tuple ``resource, name, (start, end)`` describing the address range assigned to the
-        resource.
+        Yields
+        ------
+        :class:`tuple` of (:class:`amaranth.lib.wiring.Component`, :class:`MemoryMap.Name`, \
+        :class:`tuple` of (:class:`int`, :class:`int`))
+            A tuple ``resource, name, (start, end)`` describing the address range assigned to the
+            resource.
         """
         def is_resource(item):
             addr_range, assignment = item
@@ -412,41 +465,45 @@ class MemoryMap:
         addresses; the memory map reflects this address translation when resources are looked up
         through the window.
 
-        Sparse addressing
-        -----------------
+        .. note::
 
-        If a narrow bus is bridged to a wide bus, the bridge can perform *sparse* or *dense*
-        address translation. In the sparse case, each transaction on the wide bus results in
-        one transaction on the narrow bus; high data bits on the wide bus are ignored, and any
-        contiguous resource on the narrow bus becomes discontiguous on the wide bus. In the dense
-        case, each transaction on the wide bus results in several transactions on the narrow bus,
-        and any contiguous resource on the narrow bus stays contiguous on the wide bus.
+            If a narrow bus is bridged to a wide bus, the bridge can perform *sparse* or *dense*
+            address translation.
+
+            In the sparse case, each transaction on the wide bus results in one transaction on the
+            narrow bus; high data bits on the wide bus are ignored, and any contiguous resource on
+            the narrow bus becomes discontiguous on the wide bus.
+
+            In the dense case, each transaction on the wide bus results in several transactions on
+            the narrow bus, and any contiguous resource on the narrow bus stays contiguous on the
+            wide bus.
 
         Arguments
         ---------
         window : :class:`MemoryMap`
-            A memory map describing the layout of the window. It is frozen as a side-effect of
-            being added to this memory map.
+            A :class:`MemoryMap` describing the layout of the window. It is frozen as a side-effect
+            of being added to this memory map.
         name : :class:`MemoryMap.Name`
-            Name of the window. Optional. It must not conflict with the name of other resources
-            or windows present in this memory map.
-        addr : int
+            Name of the window. Optional. It must not conflict with the name of other resources or
+            windows present in this memory map.
+        addr : :class:`int`
             Address of the window. Optional. If ``None``, the implicit next address will be used
             after aligning it to ``2 ** window.addr_width``. Otherwise, the exact specified address
             (which must be a multiple of ``2 ** window.addr_width``) will be used.
-        sparse : bool
+        sparse : :class:`bool`
             Address translation type. Optional. Ignored if the datapath widths of both memory maps
             are equal; must be specified otherwise.
 
-        Return value
-        ------------
-        A tuple ``(start, end, ratio)`` describing the address range assigned to the window.
-        When bridging buses of unequal data width, ``ratio`` is the amount of contiguous addresses
-        on the narrower bus that are accessed for each transaction on the wider bus. Otherwise,
-        it is always 1.
+        Returns
+        -------
+        :class:`tuple` of (:class:`int`, :class:`int`, :class:`int`)
+            A tuple ``(start, end, ratio)`` describing the address range assigned to the window.
+            When bridging buses of unequal data width, ``ratio`` is the amount of contiguous
+            addresses on the narrower bus that are accessed for each transaction on the wider bus.
+            Otherwise, it is always 1.
 
-        Exceptions
-        ----------
+        Raises
+        ------
         :exc:`ValueError`
             If the memory map is frozen.
         :exc:`ValueError`
@@ -547,12 +604,14 @@ class MemoryMap:
 
         Non-recursively iterate windows in ascending order of their address.
 
-        Yield values
-        ------------
-        A tuple ``window, name, (start, end, ratio)`` describing the address range assigned to
-        the window. When bridging buses of unequal data width, ``ratio`` is the amount of
-        contiguous addresses on the narrower bus that are accessed for each transaction on
-        the wider bus. Otherwise, it is always 1.
+        Yields
+        ------
+        :class:`tuple` of (:class:`MemoryMap`, :class:`MemoryMap.Name`, :class:`tuple` of \
+        (:class:`int`, :class:`int`, :class:`int`))
+            A tuple ``window, name, (start, end, ratio)`` describing the address range assigned to
+            the window. When bridging busses of unequal data widths, ``ratio`` is the amount of
+            contiguous addresses on the narrower bus that are accessed for each transaction on the
+            wider bus. Otherwise, it is always 1.
         """
         def is_window(item):
             addr_range, assignment = item
@@ -566,14 +625,16 @@ class MemoryMap:
 
         Non-recursively iterate windows in ascending order of their address.
 
-        Yield values
-        ------------
-        A tuple ``window, name, (pattern, ratio)`` describing the address range assigned to the
-        window. ``pattern`` is a ``self.addr_width`` wide pattern that may be used in ``Case`` or
-        ``match`` to determine if an address signal is within the address range of ``window``. When
-        bridging buses of unequal data width, ``ratio`` is the amount of contiguous addresses on
-        the narrower bus that are accessed for each transaction on the wider bus. Otherwise,
-        it is always 1.
+        Yields
+        ------
+        :class:`tuple` of (:class:`MemoryMap`, :class:`MemoryMap.Name`, :class:`tuple` of \
+        (:class:`str`, :class:`int`))
+            A tuple ``window, name, (pattern, ratio)`` describing the address range assigned to the
+            window. ``pattern`` is a :attr:`addr_width` wide pattern that may be used in ``Case``
+            or ``match`` to determine if a value is within the address range of ``window``. When
+            bridging busses of unequal data widths, ``ratio`` is the amount of contiguous addresses
+            on the narrower bus that are accessed for each transaction on the wider bus. Otherwise,
+            it is always 1.
         """
         for window, window_name, (window_start, window_stop, window_ratio) in self.windows():
             const_bits = self.addr_width - window.addr_width
@@ -607,9 +668,10 @@ class MemoryMap:
         Recursively iterate all resources in ascending order of their address, performing address
         translation for resources that are located behind a window.
 
-        Yield values
-        ------------
-        An instance of :class:`ResourceInfo` describing the resource and its address range.
+        Yields
+        ------
+        :class:`ResourceInfo`
+            A description of the resource and its address range.
         """
         for addr_range, assignment in self._ranges.items():
             if id(assignment) in self._resources:
@@ -632,16 +694,18 @@ class MemoryMap:
 
         Arguments
         ---------
-        resource
-            Resource previously added to this memory map or any windows.
+        resource : :class:`amaranth.lib.wiring.Component`
+            Resource previously added to this :class:`MemoryMap` or one of its windows.
 
-        Return value
-        ------------
-        An instance of :class:`ResourceInfo` describing the resource and its address range.
+        Returns
+        -------
+        :class:`ResourceInfo`
+            A description of the resource and its address range.
 
-        Exceptions
-        ----------
-        Raises :exn:`KeyError` if the resource is not found.
+        Raises
+        ------
+        :exc:`KeyError`
+            If the resource is not found.
         """
         if id(resource) in self._resources:
             _, resource_name, resource_range = self._resources[id(resource)]
@@ -663,12 +727,13 @@ class MemoryMap:
 
         Arguments
         ---------
-        address : int
+        address : :class:`int`
             Address of interest.
 
-        Return value
-        ------------
-        A resource mapped to the provided address, or ``None`` if there is no such resource.
+        Returns
+        -------
+        :class:`amaranth.lib.wiring.Component` or ``None``
+            A resource mapped to the provided address, or ``None`` if there is no such resource.
         """
         assignment = self._ranges.get(address)
         if assignment is None:
