@@ -1,5 +1,5 @@
-System on Chip toolkit
-######################
+CSR
+===
 
 .. warning::
 
@@ -8,7 +8,6 @@ System on Chip toolkit
 .. toctree::
    :maxdepth: 2
 
-   memory
-   wishbone
-   csr
-   gpio
+   csr/bus
+   csr/reg
+   csr/action
