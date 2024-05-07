@@ -131,14 +131,12 @@ class ResourceInfo:
                 all(name and isinstance(name, str) for name in flattened_path)):
             raise TypeError(f"Path must be a non-empty tuple of non-empty strings, not {path!r}")
         if not isinstance(start, int) or start < 0:
-            raise TypeError("Start address must be a non-negative integer, not {!r}"
-                            .format(start))
+            raise TypeError(f"Start address must be a non-negative integer, not {start!r}")
         if not isinstance(end, int) or end <= start:
-            raise TypeError("End address must be an integer greater than the start address, "
-                            "not {!r}".format(end))
+            raise TypeError(f"End address must be an integer greater than the start address, "
+                            f"not {end!r}")
         if not isinstance(width, int) or width < 0:
-            raise TypeError("Width must be a non-negative integer, not {!r}"
-                            .format(width))
+            raise TypeError(f"Width must be a non-negative integer, not {width!r}")
 
         self._resource = resource
         self._path     = tuple(path)
@@ -199,16 +197,13 @@ class MemoryMap:
     """
     def __init__(self, *, addr_width, data_width, alignment=0, name=None):
         if not isinstance(addr_width, int) or addr_width <= 0:
-            raise ValueError("Address width must be a positive integer, not {!r}"
-                             .format(addr_width))
+            raise ValueError(f"Address width must be a positive integer, not {addr_width!r}")
         if not isinstance(data_width, int) or data_width <= 0:
-            raise ValueError("Data width must be a positive integer, not {!r}"
-                             .format(data_width))
+            raise ValueError(f"Data width must be a positive integer, not {data_width!r}")
         if not isinstance(alignment, int) or alignment < 0:
-            raise ValueError("Alignment must be a non-negative integer, not {!r}"
-                             .format(alignment))
+            raise ValueError(f"Alignment must be a non-negative integer, not {alignment!r}")
         if name is not None and not (isinstance(name, str) and name):
-            raise ValueError("Name must be a non-empty string, not {!r}".format(name))
+            raise ValueError(f"Name must be a non-empty string, not {name!r}")
 
         self._addr_width = addr_width
         self._data_width = data_width
@@ -267,32 +262,28 @@ class MemoryMap:
         Implicit next address.
         """
         if not isinstance(alignment, int) or alignment < 0:
-            raise ValueError("Alignment must be a non-negative integer, not {!r}"
-                             .format(alignment))
+            raise ValueError(f"Alignment must be a non-negative integer, not {alignment!r}")
         self._next_addr = self._align_up(self._next_addr, max(alignment, self.alignment))
         return self._next_addr
 
     def _compute_addr_range(self, addr, size, step=1, *, alignment):
         if addr is not None:
             if not isinstance(addr, int) or addr < 0:
-                raise ValueError("Address must be a non-negative integer, not {!r}"
-                                 .format(addr))
+                raise ValueError(f"Address must be a non-negative integer, not {addr!r}")
             if addr % (1 << self.alignment) != 0:
-                raise ValueError("Explicitly specified address {:#x} must be a multiple of "
-                                 "{:#x} bytes"
-                                 .format(addr, 1 << alignment))
+                raise ValueError(f"Explicitly specified address {addr:#x} must be a multiple of "
+                                 f"{1 << alignment:#x} bytes")
         else:
             addr = self._align_up(self._next_addr, alignment)
 
         if not isinstance(size, int) or size < 0:
-            raise ValueError("Size must be a non-negative integer, not {!r}"
-                             .format(size))
+            raise ValueError(f"Size must be a non-negative integer, not {size!r}")
         size = self._align_up(max(size, 1), alignment)
 
         if addr > (1 << self.addr_width) or addr + size > (1 << self.addr_width):
-            raise ValueError("Address range {:#x}..{:#x} out of bounds for memory map spanning "
-                             "range {:#x}..{:#x} ({} address bits)"
-                             .format(addr, addr + size, 0, 1 << self.addr_width, self.addr_width))
+            raise ValueError(f"Address range {addr:#x}..{addr + size:#x} out of bounds for "
+                             f"memory map spanning range {0:#x}..{1 << self.addr_width:#x} "
+                             f"({self.addr_width} address bits)")
 
         addr_range = range(addr, addr + size, step)
         overlaps = self._ranges.overlaps(addr_range)
@@ -301,14 +292,14 @@ class MemoryMap:
             for overlap in overlaps:
                 if id(overlap) in self._resources:
                     _, _, resource_range = self._resources[id(overlap)]
-                    overlap_descrs.append("resource {!r} at {:#x}..{:#x}"
-                        .format(overlap, resource_range.start, resource_range.stop))
+                    overlap_descrs.append(f"resource {overlap!r} at {resource_range.start:#x}.."
+                                          f"{resource_range.stop:#x}")
                 if id(overlap) in self._windows:
                     _, window_range = self._windows[id(overlap)]
-                    overlap_descrs.append("window {!r} at {:#x}..{:#x}"
-                        .format(overlap, window_range.start, window_range.stop))
-            raise ValueError("Address range {:#x}..{:#x} overlaps with {}"
-                             .format(addr, addr + size, ", ".join(overlap_descrs)))
+                    overlap_descrs.append(f"window {overlap!r} at {window_range.start:#x}.."
+                                          f"{window_range.stop:#x}")
+            raise ValueError(f"Address range {addr:#x}..{addr + size:#x} overlaps with " +
+                             ", ".join(overlap_descrs))
 
         return addr_range
 
@@ -355,16 +346,15 @@ class MemoryMap:
             this memory map.
         """
         if self._frozen:
-            raise ValueError("Memory map has been frozen. Cannot add resource {!r}"
-                             .format(resource))
+            raise ValueError(f"Memory map has been frozen. Cannot add resource {resource!r}")
 
         if not isinstance(resource, wiring.Component):
             raise TypeError(f"Resource must be a wiring.Component, not {resource!r}")
 
         if id(resource) in self._resources:
             _, _, addr_range = self._resources[id(resource)]
-            raise ValueError("Resource {!r} is already added at address range {:#x}..{:#x}"
-                             .format(resource, addr_range.start, addr_range.stop))
+            raise ValueError(f"Resource {resource!r} is already added at address range "
+                             f"{addr_range.start:#x}..{addr_range.stop:#x}")
 
         if not (name and isinstance(name, tuple) and
                 all(part and isinstance(part, str) for part in name)):
@@ -380,8 +370,7 @@ class MemoryMap:
 
         if alignment is not None:
             if not isinstance(alignment, int) or alignment < 0:
-                raise ValueError("Alignment must be a non-negative integer, not {!r}"
-                                 .format(alignment))
+                raise ValueError(f"Alignment must be a non-negative integer, not {alignment!r}")
             alignment = max(alignment, self.alignment)
         else:
             alignment = self.alignment
@@ -470,33 +459,28 @@ class MemoryMap:
             conflicts with the name of others present in this memory map.
         """
         if not isinstance(window, MemoryMap):
-            raise TypeError("Window must be a MemoryMap, not {!r}"
-                            .format(window))
+            raise TypeError(f"Window must be a MemoryMap, not {window!r}")
 
         if self._frozen:
-            raise ValueError("Memory map has been frozen. Cannot add window {!r}"
-                             .format(window))
+            raise ValueError(f"Memory map has been frozen. Cannot add window {window!r}")
 
         if id(window) in self._windows:
             _, addr_range = self._windows[id(window)]
-            raise ValueError("Window {!r} is already added at address range {:#x}..{:#x}"
-                             .format(window, addr_range.start, addr_range.stop))
+            raise ValueError(f"Window {window!r} is already added at address range "
+                             f"{addr_range.start:#x}..{addr_range.stop:#x}")
 
         if window.data_width > self.data_width:
-            raise ValueError("Window has data width {}, and cannot be added to a memory map "
-                             "with data width {}"
-                             .format(window.data_width, self.data_width))
+            raise ValueError(f"Window has data width {window.data_width}, and cannot be added to a "
+                             f"memory map with data width {self.data_width}")
         if window.data_width != self.data_width:
             if sparse is None:
-                raise ValueError("Address translation mode must be explicitly specified "
-                                 "when adding a window with data width {} to a memory map "
-                                 "with data width {}"
-                                 .format(window.data_width, self.data_width))
+                raise ValueError(f"Address translation mode must be explicitly specified when "
+                                 f"adding a window with data width {window.data_width} to a "
+                                 f"memory map with data width {self.data_width}")
             if not sparse and self.data_width % window.data_width != 0:
-                raise ValueError("Dense addressing cannot be used because the memory map "
-                                 "data width {} is not an integer multiple of window "
-                                 "data width {}"
-                                 .format(self.data_width, window.data_width))
+                raise ValueError(f"Dense addressing cannot be used because the memory map "
+                                 f"data width {self.data_width} is not an integer multiple of "
+                                 f"window data width {window.data_width}")
 
         queries = window._namespace.names() if window.name is None else ((window.name,),)
         reasons = []
@@ -564,10 +548,10 @@ class MemoryMap:
         for window, (window_start, window_stop, window_ratio) in self.windows():
             const_bits = self.addr_width - window.addr_width
             if const_bits > 0:
-                const_pat = "{:0{}b}".format(window_start >> window.addr_width, const_bits)
+                const_pat = f"{window_start >> window.addr_width:0{const_bits}b}"
             else:
                 const_pat = ""
-            pattern = "{}{}".format(const_pat, "-" * window.addr_width)
+            pattern = const_pat + "-" * window.addr_width
             yield window, (pattern, window_ratio)
 
     @staticmethod

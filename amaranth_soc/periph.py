@@ -24,7 +24,7 @@ class ConstantBool(ConstantValue):
     """
     def __init__(self, value):
         if not isinstance(value, bool):
-            raise TypeError("Value must be a bool, not {!r}".format(value))
+            raise TypeError(f"Value must be a bool, not {value!r}")
         self._value = value
 
     @property
@@ -32,7 +32,7 @@ class ConstantBool(ConstantValue):
         return self._value
 
     def __repr__(self):
-        return "ConstantBool({})".format(self.value)
+        return f"ConstantBool({self.value})"
 
 
 class ConstantInt(ConstantValue):
@@ -49,25 +49,22 @@ class ConstantInt(ConstantValue):
     """
     def __init__(self, value, *, width=None, signed=None):
         if not isinstance(value, int):
-            raise TypeError("Value must be an integer, not {!r}"
-                            .format(value))
+            raise TypeError(f"Value must be an integer, not {value!r}")
         self._value = value
 
         if width is None:
             width = bits_for(value)
         if not isinstance(width, int):
-            raise TypeError("Width must be an integer, not {!r}"
-                            .format(width))
+            raise TypeError(f"Width must be an integer, not {width!r}")
         if width < bits_for(value):
-            raise ValueError("Width must be greater than or equal to the number of bits needed to"
-                             " represent {}".format(value))
+            raise ValueError(f"Width must be greater than or equal to the number of bits needed "
+                             f"to represent {value}")
         self._width = width
 
         if signed is None:
             signed = value < 0
         if not isinstance(signed, bool):
-            raise TypeError("Signedness must be a bool, not {!r}"
-                            .format(signed))
+            raise TypeError(f"Signedness must be a bool, not {signed!r}")
         self._signed = signed
 
     @property
@@ -83,7 +80,7 @@ class ConstantInt(ConstantValue):
         return self._signed
 
     def __repr__(self):
-        return "ConstantInt({}, width={}, signed={})".format(self.value, self.width, self.signed)
+        return f"ConstantInt({self.value}, width={self.width}, signed={self.signed})"
 
 
 class ConstantMap(Mapping):
@@ -109,8 +106,8 @@ class ConstantMap(Mapping):
             if isinstance(value, int):
                 value = ConstantInt(value)
             if not isinstance(value, ConstantValue):
-                raise TypeError("Constant value must be an instance of ConstantValue, not {!r}"
-                                .format(value))
+                raise TypeError(f"Constant value must be an instance of ConstantValue, not "
+                                f"{value!r}")
             self._storage[key] = value
 
     def __getitem__(self, key):
@@ -123,7 +120,7 @@ class ConstantMap(Mapping):
         return len(self._storage)
 
     def __repr__(self):
-        return "ConstantMap({})".format(list(self._storage.items()))
+        return f"ConstantMap({list(self._storage.items())})"
 
 
 class PeripheralInfo:
@@ -143,21 +140,19 @@ class PeripheralInfo:
     """
     def __init__(self, *, memory_map, irq=None, constant_map=None):
         if not isinstance(memory_map, MemoryMap):
-            raise TypeError("Memory map must be an instance of MemoryMap, not {!r}"
-                            .format(memory_map))
+            raise TypeError(f"Memory map must be an instance of MemoryMap, not {memory_map!r}")
         memory_map.freeze()
         self._memory_map = memory_map
 
         if irq is not None and not isinstance(irq, event.Source):
-            raise TypeError("IRQ line must be an instance of event.Source, not {!r}"
-                            .format(irq))
+            raise TypeError(f"IRQ line must be an instance of event.Source, not {irq!r}")
         self._irq = irq
 
         if constant_map is None:
             constant_map = ConstantMap()
         if not isinstance(constant_map, ConstantMap):
-            raise TypeError("Constant map must be an instance of ConstantMap, not {!r}"
-                            .format(constant_map))
+            raise TypeError(f"Constant map must be an instance of ConstantMap, not "
+                            f"{constant_map!r}")
         self._constant_map = constant_map
 
     @property
@@ -184,8 +179,7 @@ class PeripheralInfo:
         Raises :exn:`NotImplementedError` if the peripheral info does not have an IRQ line.
         """
         if self._irq is None:
-            raise NotImplementedError("Peripheral info does not have an IRQ line"
-                                      .format(self))
+            raise NotImplementedError("Peripheral info does not have an IRQ line")
         return self._irq
 
     @property
