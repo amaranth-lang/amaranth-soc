@@ -167,8 +167,7 @@ class EventMap:
         if self._frozen:
             raise ValueError("Event map has been frozen. Cannot add source")
         if not isinstance(src, Source):
-            raise TypeError("Event source must be an instance of event.Source, not {!r}"
-                            .format(src))
+            raise TypeError(f"Event source must be an instance of event.Source, not {src!r}")
         if id(src) not in self._sources:
             self._sources[id(src)] = src, self.size
 
@@ -189,8 +188,7 @@ class EventMap:
         Raises :exn:`KeyError` if the source is not found.
         """
         if not isinstance(src, Source):
-            raise TypeError("Event source must be an instance of event.Source, not {!r}"
-                            .format(src))
+            raise TypeError(f"Event source must be an instance of event.Source, not {src!r}")
         _, index = self._sources[id(src)]
         return index
 
