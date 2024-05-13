@@ -399,7 +399,7 @@ class MemoryMapTestCase(unittest.TestCase):
 
     def test_add_window_dense(self):
         memory_map = MemoryMap(addr_width=16, data_width=32)
-        self.assertEqual(memory_map.add_window(MemoryMap(addr_width=10, data_width=8),
+        self.assertEqual(memory_map.add_window(MemoryMap(addr_width=10, data_width=8, alignment=2),
                                                sparse=False),
                          (0, 0x100, 4))
 
@@ -430,12 +430,27 @@ class MemoryMapTestCase(unittest.TestCase):
                 r"a window with data width 8 to a memory map with data width 16"):
             memory_map.add_window(MemoryMap(addr_width=10, data_width=8))
 
-    def test_add_window_wrong_ratio(self):
+    def test_add_window_wrong_ratio_multiple(self):
         memory_map = MemoryMap(addr_width=16, data_width=16)
         with self.assertRaisesRegex(ValueError,
                 r"Dense addressing cannot be used because the memory map data width "
                 r"16 is not an integer multiple of window data width 7"):
             memory_map.add_window(MemoryMap(addr_width=10, data_width=7), sparse=False)
+
+    def test_add_window_wrong_ratio_pow2(self):
+        memory_map = MemoryMap(addr_width=16, data_width=24)
+        with self.assertRaisesRegex(ValueError,
+                r"Dense addressing cannot be used because the ratio 3 of the memory map "
+                r"data width 24 to the window data width 8 is not a power-of-2"):
+            memory_map.add_window(MemoryMap(addr_width=10, data_width=8), sparse=False)
+
+    def test_add_window_wrong_ratio_alignment(self):
+        memory_map = MemoryMap(addr_width=16, data_width=16)
+        with self.assertRaisesRegex(ValueError,
+                r"Dense addressing cannot be used because the ratio 2 of the memory map "
+                r"data width 16 to the window data width 8 is greater than the window "
+                r"alignment 1"):
+            memory_map.add_window(MemoryMap(addr_width=10, data_width=8), sparse=False)
 
     def test_add_window_wrong_out_of_bounds(self):
         memory_map = MemoryMap(addr_width=16, data_width=8)
@@ -489,9 +504,9 @@ class MemoryMapTestCase(unittest.TestCase):
 
     def test_iter_windows(self):
         memory_map = MemoryMap(addr_width=16, data_width=16)
-        window_1 = MemoryMap(addr_width=10, data_width=8)
+        window_1 = MemoryMap(addr_width=10, data_width=8, alignment=1)
         window_2 = MemoryMap(addr_width=12, data_width=16)
-        window_3 = MemoryMap(addr_width=10, data_width=8)
+        window_3 = MemoryMap(addr_width=10, data_width=8, alignment=1)
         memory_map.add_window(window_1, sparse=False)
         memory_map.add_window(window_2)
         memory_map.add_window(window_3, sparse=False, addr=0x400)
@@ -503,9 +518,9 @@ class MemoryMapTestCase(unittest.TestCase):
 
     def test_iter_window_patterns(self):
         memory_map = MemoryMap(addr_width=16, data_width=16)
-        window_1 = MemoryMap(addr_width=10, data_width=8)
+        window_1 = MemoryMap(addr_width=10, data_width=8, alignment=1)
         window_2 = MemoryMap(addr_width=12, data_width=16)
-        window_3 = MemoryMap(addr_width=10, data_width=8)
+        window_3 = MemoryMap(addr_width=10, data_width=8, alignment=1)
         memory_map.add_window(window_1, sparse=False)
         memory_map.add_window(window_2)
         memory_map.add_window(window_3, sparse=False, addr=0x400)
@@ -555,9 +570,11 @@ class MemoryMapDiscoveryTestCase(unittest.TestCase):
         self.res5 = _MockResource("res5")
         self.win2.add_resource(self.res5, name=("name5",), size=16)
         self.root.add_window(self.win2, sparse=True)
-        self.win3 = MemoryMap(addr_width=16, data_width=8, name="win3")
+        self.win3 = MemoryMap(addr_width=16, data_width=8, alignment=2, name="win3")
         self.res6 = _MockResource("res6")
+        self.res7 = _MockResource("res7")
         self.win3.add_resource(self.res6, name=("name6",), size=16)
+        self.win3.add_resource(self.res7, name=("name7",), size=1)
         self.root.add_window(self.win3, sparse=False)
 
     def test_iter_all_resources(self):
@@ -598,6 +615,12 @@ class MemoryMapDiscoveryTestCase(unittest.TestCase):
         self.assertEqual(res_info[5].start, 0x00040000)
         self.assertEqual(res_info[5].end,   0x00040004)
         self.assertEqual(res_info[5].width, 32)
+
+        self.assertIs(res_info[6].resource, self.res7)
+        self.assertEqual(res_info[6].path,  ("win3", ("name7",)))
+        self.assertEqual(res_info[6].start, 0x00040004)
+        self.assertEqual(res_info[6].end,   0x00040005)
+        self.assertEqual(res_info[6].width, 32)
 
     def test_find_resource(self):
         for res_info in self.root.all_resources():

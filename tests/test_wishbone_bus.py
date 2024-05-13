@@ -326,7 +326,7 @@ class DecoderSimulationTestCase(unittest.TestCase):
         self.assertEqual(dut.add(loop_1.bus, addr=0x10000),
                          (0x10000, 0x10100, 1))
         loop_2 = AddressLoopback(addr_width=6, data_width=32, granularity=8)
-        loop_2.bus.memory_map = MemoryMap(addr_width=8, data_width=8)
+        loop_2.bus.memory_map = MemoryMap(addr_width=8, data_width=8, alignment=1)
         self.assertEqual(dut.add(loop_2.bus, addr=0x20000),
                          (0x20000, 0x20080, 2))
         loop_3 = AddressLoopback(addr_width=8, data_width=16, granularity=16)

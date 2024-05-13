@@ -441,22 +441,29 @@ class MemoryMap:
         ----------
         :exc:`ValueError`
             If the memory map is frozen.
-        :exc:`TypeError`
-            If the added memory map is not a :class:`MemoryMap`.
         :exc:`ValueError`
             If the requested address and size, after alignment, would overlap with any resources or
             windows that have already been added, or would be out of bounds.
         :exc:`ValueError`
-            If the added memory map has a wider datapath than this memory map.
+            If ``window.data_width`` is wider than :attr:`data_width`.
         :exc:`ValueError`
-            If dense address translation is used and the datapath width of this memory map is not
-            an integer multiple of the datapath of the added memory map.
+            If the address translation mode is unspecified and ``window.data_width`` is different
+            than :attr:`data_width`.
         :exc:`ValueError`
-            If the name of the added memory map conflicts with the name of other resources or
-            windows present in this memory map.
+            If dense address translation is used and :attr:`data_width` is not an integer multiple
+            of ``window.data_width``.
         :exc:`ValueError`
-            If the added memory map has no name, and the name of one of its resources or windows
-            conflicts with the name of others present in this memory map.
+            If dense address translation is used and the ratio of :attr:`data_width` to
+            ``window.data_width`` is not a power of 2.
+        :exc:`ValueError`
+            If dense address translation is used and the ratio of :attr:`data_width` to
+            ``window.data_width`` is lesser than 2 raised to the power of :attr:`alignment`.
+        :exc:`ValueError`
+            If the requested name would conflict with the name of other resources or windows that
+            have already been added.
+        :exc:`ValueError`
+            If ``window`` is anonymous and the name of one of its resources or windows would
+            conflict with the name of any resources or windows that have already been added.
         """
         if not isinstance(window, MemoryMap):
             raise TypeError(f"Window must be a MemoryMap, not {window!r}")
@@ -494,6 +501,17 @@ class MemoryMap:
             ratio = self.data_width // window.data_width
         else:
             ratio = 1
+
+        if ratio & (ratio - 1) != 0:
+            raise ValueError(f"Dense addressing cannot be used because the ratio {ratio} of the "
+                             f"memory map data width {self.data_width} to the window data width "
+                             f"{window.data_width} is not a power-of-2")
+        if ratio > (1 << window.alignment):
+            raise ValueError(f"Dense addressing cannot be used because the ratio {ratio} of the "
+                             f"memory map data width {self.data_width} to the window data width "
+                             f"{window.data_width} is greater than the window alignment "
+                             f"{1 << window.alignment}")
+
         size = (1 << window.addr_width) // ratio
         # For resources, the alignment argument of add_resource() affects both address and size
         # of the resource; aligning only the address should be done using align_to(). For windows,
@@ -556,14 +574,18 @@ class MemoryMap:
 
     @staticmethod
     def _translate(resource_info, window, window_range):
+        # When a resource is accessed through a dense window, its size and address on the wider
+        # bus must be integer multiples of the number of addresses on the narrower bus that are
+        # accessed for each transaction.
         assert (resource_info.end - resource_info.start) % window_range.step == 0
+        assert resource_info.start % window_range.step == 0
         # Accessing a resource through a dense and then a sparse window results in very strange
         # layouts that cannot be easily represented, so reject those.
         assert window_range.step == 1 or resource_info.width == window.data_width
 
         path  = resource_info.path if window.name is None else (window.name, *resource_info.path)
         size  = (resource_info.end - resource_info.start) // window_range.step
-        start = resource_info.start + window_range.start
+        start = (resource_info.start // window_range.step) + window_range.start
         width = resource_info.width * window_range.step
         return ResourceInfo(resource_info.resource, path, start, start + size, width)
 
@@ -642,7 +664,7 @@ class MemoryMap:
             return assignment
         elif id(assignment) in self._windows:
             _, addr_range = self._windows[id(assignment)]
-            return assignment.decode_address((address - addr_range.start) // addr_range.step)
+            return assignment.decode_address((address - addr_range.start) * addr_range.step)
         else:
             assert False # :nocov:
 
