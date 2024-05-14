@@ -193,6 +193,10 @@ class ResourceInfo:
         """
         return self._width
 
+    def __repr__(self):
+        return f"ResourceInfo(path={self.path}, start={self.start:#x}, end={self.end:#x}, " \
+                            f"width={self.width})"
+
 
 class MemoryMap:
     class Name(tuple):
@@ -222,13 +226,6 @@ class MemoryMap:
     It is built by adding resources (range allocations for registers, memory, etc) and windows
     (range allocations for bus bridges), and can be queried later to determine the address of
     any given resource from a specific vantage point in the design.
-
-    .. note::
-
-        To simplify address assignment, each :class:`MemoryMap` has an implicit next address,
-        starting at 0. If a resource or a window is added without specifying an address explicitly,
-        the implicit next address is used. In any case, the implicit next address is set to the
-        address immediately following the newly added resource or window.
 
     Arguments
     ---------
@@ -306,7 +303,7 @@ class MemoryMap:
         return value
 
     def align_to(self, alignment):
-        """Align the implicit next address.
+        """Align the :ref:`implicit next address <memory-implicit-next-address>`.
 
         Arguments
         ---------
@@ -375,9 +372,9 @@ class MemoryMap:
             Name of the resource. It must not conflict with the name of other resources or windows
             present in this memory map.
         addr : :class:`int`
-            Address of the resource. Optional. If ``None``, the implicit next address will be used.
-            Otherwise, the exact specified address (which must be a multiple of
-            ``2 ** max(alignment, self.alignment)``) will be used.
+            Address of the resource. Optional. If ``None``, the :ref:`implicit next address
+            <memory-implicit-next-address>` will be used. Otherwise, the exact specified address
+            (which must be a multiple of ``2 ** max(alignment, self.alignment)``) will be used.
         size : :class:`int`
             Size of the resource, in minimal addressable units. Rounded up to a multiple of
             ``2 ** max(alignment, self.alignment)``.
@@ -392,17 +389,15 @@ class MemoryMap:
         Raises
         ------
         :exc:`ValueError`
-            If the :class:`MemoryMap` is frozen.
-        :exc:`TypeError`
-            If the resource is not a :class:`wiring.Component`.
+            If the memory map is frozen.
         :exc:`ValueError`
             If the requested address and size, after alignment, would overlap with any resources or
             windows that have already been added, or would be out of bounds.
         :exc:`ValueError`
-            If the resource has already been added to this :class:`MemoryMap`.
+            If ``resource`` has already been added to this memory map.
         :exc:`ValueError`
-            If the resource name conflicts with the name of other resources or windows present in
-            this :class:`MemoryMap`.
+            If the requested name would conflict with the name of other resources or windows that
+            have already been added.
         """
         if self._frozen:
             raise ValueError(f"Memory map has been frozen. Cannot add resource {resource!r}")
@@ -465,19 +460,6 @@ class MemoryMap:
         addresses; the memory map reflects this address translation when resources are looked up
         through the window.
 
-        .. note::
-
-            If a narrow bus is bridged to a wide bus, the bridge can perform *sparse* or *dense*
-            address translation.
-
-            In the sparse case, each transaction on the wide bus results in one transaction on the
-            narrow bus; high data bits on the wide bus are ignored, and any contiguous resource on
-            the narrow bus becomes discontiguous on the wide bus.
-
-            In the dense case, each transaction on the wide bus results in several transactions on
-            the narrow bus, and any contiguous resource on the narrow bus stays contiguous on the
-            wide bus.
-
         Arguments
         ---------
         window : :class:`MemoryMap`
@@ -487,9 +469,10 @@ class MemoryMap:
             Name of the window. Optional. It must not conflict with the name of other resources or
             windows present in this memory map.
         addr : :class:`int`
-            Address of the window. Optional. If ``None``, the implicit next address will be used
-            after aligning it to ``2 ** window.addr_width``. Otherwise, the exact specified address
-            (which must be a multiple of ``2 ** window.addr_width``) will be used.
+            Address of the window. Optional. If ``None``, the :ref:`implicit next address
+            <memory-implicit-next-address>` will be used after aligning it to
+            ``2 ** window.addr_width``. Otherwise, the exact specified address (which must be a
+            multiple of ``2 ** window.addr_width``) will be used.
         sparse : :class:`bool`
             Address translation type. Optional. Ignored if the datapath widths of both memory maps
             are equal; must be specified otherwise.
