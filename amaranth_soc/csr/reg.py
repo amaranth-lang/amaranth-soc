@@ -1,6 +1,7 @@
 from collections.abc import Mapping, Sequence
 from contextlib import contextmanager
 from amaranth import *
+from amaranth.hdl import ShapeLike
 from amaranth.lib import enum, wiring
 from amaranth.lib.wiring import In, Out, connect, flipped
 from amaranth.utils import ceil_log2
@@ -34,7 +35,7 @@ class FieldPort(wiring.PureInterface):
 
         Parameters
         ----------
-        shape : :ref:`shape-castable <lang-shapecasting>`
+        shape : :ref:`shape-like object <lang-shapelike>`
             Shape of the field.
         access : :class:`FieldPort.Access`
             Field access mode.
@@ -53,10 +54,8 @@ class FieldPort(wiring.PureInterface):
             this strobe is asserted.
         """
         def __init__(self, shape, access):
-            try:
-                Shape.cast(shape)
-            except TypeError as e:
-                raise TypeError(f"Field shape must be a shape-castable object, not {shape!r}") from e
+            if not isinstance(shape, ShapeLike):
+                raise TypeError(f"Field shape must be a shape-like object, not {shape!r}")
             # TODO(py3.9): Remove this. Python 3.8 and below use cls.__name__ in the error message
             # instead of cls.__qualname__.
             # FieldPort.Access(access)
@@ -119,7 +118,7 @@ class FieldPort(wiring.PureInterface):
 
     Attributes
     ----------
-    shape : :ref:`shape-castable <lang-shapecasting>`
+    shape : :ref:`shape-like object <lang-shapelike>`
         Shape of the field. See :class:`FieldPort.Signature`.
     access : :class:`FieldPort.Access`
         Field access mode. See :class:`FieldPort.Signature`.
@@ -190,7 +189,7 @@ class FieldAction(wiring.Component):
 
     Parameters
     ----------
-    shape : :ref:`shape-castable <lang-shapecasting>`
+    shape : :ref:`shape-like object <lang-shapelike>`
         Shape of the field. See :class:`FieldPort.Signature`.
     access : :class:`FieldPort.Access`
         Field access mode. See :class:`FieldPort.Signature`.

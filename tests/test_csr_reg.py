@@ -102,7 +102,7 @@ class FieldPortSignatureTestCase(unittest.TestCase):
 
     def test_wrong_shape(self):
         with self.assertRaisesRegex(TypeError,
-                r"Field shape must be a shape-castable object, not 'foo'"):
+                r"Field shape must be a shape-like object, not 'foo'"):
             port = FieldPort.Signature("foo", "rw")
 
     def test_wrong_access(self):
