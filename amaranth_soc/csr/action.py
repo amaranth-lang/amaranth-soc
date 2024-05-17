@@ -12,7 +12,7 @@ class R(FieldAction):
 
     Parameters
     ----------
-    shape : :ref:`shape-castable <lang-shapecasting>`
+    shape : :ref:`shape-like object <lang-shapelike>`
         Shape of the field.
 
     Interface attributes
@@ -44,7 +44,7 @@ class W(FieldAction):
 
     Parameters
     ----------
-    shape : :ref:`shape-castable <lang-shapecasting>`
+    shape : :ref:`shape-like object <lang-shapelike>`
         Shape of the field.
 
     Interface attributes
@@ -79,7 +79,7 @@ class RW(FieldAction):
 
     Parameters
     ----------
-    shape : :ref:`shape-castable <lang-shapecasting>`
+    shape : :ref:`shape-like object <lang-shapelike>`
         Shape of the field.
     init : :class:`int`
         Storage initial value.
@@ -127,7 +127,7 @@ class RW1C(FieldAction):
 
     Parameters
     ----------
-    shape : :ref:`shape-castable <lang-shapecasting>`
+    shape : :ref:`shape-like object <lang-shapelike>`
         Shape of the field.
     init : :class:`int`
         Storage initial value.
@@ -181,7 +181,7 @@ class RW1S(FieldAction):
 
     Parameters
     ----------
-    shape : :ref:`shape-castable <lang-shapecasting>`
+    shape : :ref:`shape-like object <lang-shapelike>`
         Shape of the field.
     init : :class:`int`
         Storage initial value.
@@ -230,7 +230,7 @@ class _Reserved(FieldAction):
 
     Parameters
     ----------
-    shape : :ref:`shape-castable <lang-shapecasting>`
+    shape : :ref:`shape-like object <lang-shapelike>`
         Shape of the field.
 
     Interface attributes
