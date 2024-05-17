@@ -49,13 +49,17 @@ class Element(wiring.PureInterface):
         w_stb : Signal()
             Write strobe. Registers should update their value or perform the write side effect when
             this strobe is asserted.
-
-        Raises
-        ------
-        See :meth:`Element.Signature.check_parameters`.
         """
         def __init__(self, width, access):
-            self.check_parameters(width, access)
+            if not isinstance(width, int) or width < 0:
+                raise TypeError(f"Width must be a non-negative integer, not {width!r}")
+            # TODO(py3.9): Remove this. Python 3.8 and below use cls.__name__ in the error message
+            # instead of cls.__qualname__.
+            # Element.Access(access)
+            try:
+                Element.Access(access)
+            except ValueError as e:
+                raise ValueError(f"{access!r} is not a valid Element.Access") from e
 
             self._width  = width
             self._access = Element.Access(access)
@@ -80,27 +84,6 @@ class Element(wiring.PureInterface):
         @property
         def access(self):
             return self._access
-
-        @classmethod
-        def check_parameters(cls, width, access):
-            """Validate signature parameters.
-
-            Raises
-            ------
-            :exc:`TypeError`
-                If ``width`` is not an integer greater than or equal to 0.
-            :exc:`ValueError`
-                If ``access`` is not a member of :class:`Element.Access`.
-            """
-            if not isinstance(width, int) or width < 0:
-                raise TypeError(f"Width must be a non-negative integer, not {width!r}")
-            # TODO(py3.9): Remove this. Python 3.8 and below use cls.__name__ in the error message
-            # instead of cls.__qualname__.
-            # Element.Access(access)
-            try:
-                Element.Access(access)
-            except ValueError as e:
-                raise ValueError(f"{access!r} is not a valid Element.Access") from e
 
         def create(self, *, path=None, src_loc_at=0):
             """Create a compatible interface.
@@ -139,10 +122,6 @@ class Element(wiring.PureInterface):
         Register access mode.
     path : iter(:class:`str`)
         Path to this CSR interface. Optional. See :class:`wiring.PureInterface`.
-
-    Raises
-    ------
-    See :meth:`Element.Signature.check_parameters`
     """
     def __init__(self, width, access, *, path=None, src_loc_at=0):
         super().__init__(Element.Signature(width=width, access=access), path=path, src_loc_at=1 + src_loc_at)
@@ -188,13 +167,12 @@ class Signature(wiring.Signature):
         to the register and causes write side effects to be performed (if any). If ``addr`` points
         to any chunk of a register, latches ``w_data`` to the captured value. Otherwise, does
         nothing.
-
-    Raises
-    ------
-    See :meth:`Signature.check_parameters`.
     """
     def __init__(self, *, addr_width, data_width):
-        self.check_parameters(addr_width=addr_width, data_width=data_width)
+        if not isinstance(addr_width, int) or addr_width <= 0:
+            raise TypeError(f"Address width must be a positive integer, not {addr_width!r}")
+        if not isinstance(data_width, int) or data_width <= 0:
+            raise TypeError(f"Data width must be a positive integer, not {data_width!r}")
 
         self._addr_width = addr_width
         self._data_width = data_width
@@ -215,22 +193,6 @@ class Signature(wiring.Signature):
     @property
     def data_width(self):
         return self._data_width
-
-    @classmethod
-    def check_parameters(cls, *, addr_width, data_width):
-        """Validate signature parameters.
-
-        Raises
-        ------
-        :exc:`TypeError`
-            If ``addr_width`` is not an integer greater than 0.
-        :exc:`TypeError`
-            If ``data_width`` is not an integer greater than 0.
-        """
-        if not isinstance(addr_width, int) or addr_width <= 0:
-            raise TypeError(f"Address width must be a positive integer, not {addr_width!r}")
-        if not isinstance(data_width, int) or data_width <= 0:
-            raise TypeError(f"Data width must be a positive integer, not {data_width!r}")
 
     def create(self, *, path=None, src_loc_at=0):
         """Create a compatible interface.
@@ -288,14 +250,10 @@ class Interface(wiring.PureInterface):
     ----------
     memory_map: :class:`MemoryMap`
         Memory map of the bus. Optional.
-
-    Raises
-    ------
-    See :meth:`Signature.check_parameters`.
     """
     def __init__(self, *, addr_width, data_width, path=None, src_loc_at=0):
-        sig = Signature(addr_width=addr_width, data_width=data_width)
-        super().__init__(sig, path=path, src_loc_at=1 + src_loc_at)
+        super().__init__(Signature(addr_width=addr_width, data_width=data_width),
+                         path=path, src_loc_at=1 + src_loc_at)
         self._memory_map = None
 
     @property

@@ -46,12 +46,10 @@ class Signature(wiring.Signature):
     ----------
     addr_width : int
         Width of the address signal.
-    data_width : int
+    data_width : ``8``, ``16``, ``32`` or ``64``
         Width of the data signals ("port size" in Wishbone terminology).
-        One of 8, 16, 32, 64.
-    granularity : int
+    granularity : ``8``, ``16``, ``32``, ``64`` or ``None``
         Granularity of select signals ("port granularity" in Wishbone terminology).
-        One of 8, 16, 32, 64.
         Optional. If ``None`` (by default), the granularity is equal to ``data_width``.
     features : iter(:class:`Feature`)
         Selects additional signals that will be a part of this interface.
@@ -94,16 +92,22 @@ class Signature(wiring.Signature):
         Optional. Corresponds to Wishbone signal ``CTI_O`` (initiator) or ``CTI_I`` (target).
     bte : Signal()
         Optional. Corresponds to Wishbone signal ``BTE_O`` (initiator) or ``BTE_I`` (target).
-
-    Raises
-    ------
-    See :meth:`Signature.check_parameters`.
     """
     def __init__(self, *, addr_width, data_width, granularity=None, features=frozenset()):
         if granularity is None:
-            granularity  = data_width
-        self.check_parameters(addr_width=addr_width, data_width=data_width, granularity=granularity,
-                              features=features)
+            granularity = data_width
+
+        if not isinstance(addr_width, int) or addr_width < 0:
+            raise TypeError(f"Address width must be a non-negative integer, not {addr_width!r}")
+        if data_width not in (8, 16, 32, 64):
+            raise ValueError(f"Data width must be one of 8, 16, 32, 64, not {data_width!r}")
+        if granularity not in (8, 16, 32, 64):
+            raise ValueError(f"Granularity must be one of 8, 16, 32, 64, not {granularity!r}")
+        if granularity > data_width:
+            raise ValueError(f"Granularity {granularity} may not be greater than data width "
+                             f"{data_width}")
+        for feature in features:
+            Feature(feature) # raises ValueError if feature is invalid
 
         self._addr_width  = addr_width
         self._data_width  = data_width
@@ -149,35 +153,6 @@ class Signature(wiring.Signature):
     @property
     def features(self):
         return self._features
-
-    @classmethod
-    def check_parameters(cls, *, addr_width, data_width, granularity, features):
-        """Validate signature parameters.
-
-        Raises
-        ------
-        :exc:`TypeError`
-            If ``addr_width`` is not an integer greater than or equal to 0.
-        :exc:`ValueError`
-            If ``data_width`` is not 8, 16, 32 or 64.
-        :exc:`ValueError`
-            If ``granularity`` is not 8, 16, 32 or 64.
-        :exc:`ValueError`
-            If ``granularity`` is greater than ``data_width``.
-        :exc:`ValueError`
-            If ``features`` contains other values than :class:`Feature` members.
-        """
-        if not isinstance(addr_width, int) or addr_width < 0:
-            raise TypeError(f"Address width must be a non-negative integer, not {addr_width!r}")
-        if data_width not in (8, 16, 32, 64):
-            raise ValueError(f"Data width must be one of 8, 16, 32, 64, not {data_width!r}")
-        if granularity not in (8, 16, 32, 64):
-            raise ValueError(f"Granularity must be one of 8, 16, 32, 64, not {granularity!r}")
-        if granularity > data_width:
-            raise ValueError(f"Granularity {granularity} may not be greater than data width "
-                             f"{data_width}")
-        for feature in features:
-            Feature(feature) # raises ValueError if feature is invalid
 
     def create(self, *, path=None, src_loc_at=0):
         """Create a compatible interface.
@@ -232,10 +207,6 @@ class Interface(wiring.PureInterface):
     ----------
     memory_map: :class:`MemoryMap`
         Memory map of the bus. Optional.
-
-    Raises
-    ------
-    See :meth:`Signature.check_parameters`.
     """
     def __init__(self, *, addr_width, data_width, granularity=None, features=frozenset(),
                  path=None, src_loc_at=0):

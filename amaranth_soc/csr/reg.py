@@ -51,13 +51,20 @@ class FieldPort(wiring.PureInterface):
         w_stb : Signal()
             Write strobe. Fields should update their value or perform the write side effect when
             this strobe is asserted.
-
-        Raises
-        ------
-        See :meth:`FieldPort.Signature.check_parameters`.
         """
         def __init__(self, shape, access):
-            self.check_parameters(shape, access)
+            try:
+                Shape.cast(shape)
+            except TypeError as e:
+                raise TypeError(f"Field shape must be a shape-castable object, not {shape!r}") from e
+            # TODO(py3.9): Remove this. Python 3.8 and below use cls.__name__ in the error message
+            # instead of cls.__qualname__.
+            # FieldPort.Access(access)
+            try:
+                FieldPort.Access(access)
+            except ValueError as e:
+                raise ValueError(f"{access!r} is not a valid FieldPort.Access") from e
+
             self._shape  = Shape.cast(shape)
             self._access = FieldPort.Access(access)
 
@@ -75,29 +82,6 @@ class FieldPort(wiring.PureInterface):
         @property
         def access(self):
             return self._access
-
-        @classmethod
-        def check_parameters(cls, shape, access):
-            """Validate signature parameters.
-
-            Raises
-            ------
-            :exc:`TypeError`
-                If ``shape`` is not a shape-castable object.
-            :exc:`ValueError`
-                If ``access`` is not a member of :class:`FieldPort.Access`.
-            """
-            try:
-                Shape.cast(shape)
-            except TypeError as e:
-                raise TypeError(f"Field shape must be a shape-castable object, not {shape!r}") from e
-            # TODO(py3.9): Remove this. Python 3.8 and below use cls.__name__ in the error message
-            # instead of cls.__qualname__.
-            # FieldPort.Access(access)
-            try:
-                FieldPort.Access(access)
-            except ValueError as e:
-                raise ValueError(f"{access!r} is not a valid FieldPort.Access") from e
 
         def create(self, *, path=None, src_loc_at=0):
             """Create a compatible interface.
