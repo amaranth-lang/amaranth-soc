@@ -27,13 +27,16 @@ class Source(wiring.PureInterface):
             Input line. Sampled in order to detect an event.
         trg : Signal()
             Event trigger. Asserted when an event occurs, according to the trigger mode.
-
-        Raises
-        ------
-        See :meth:`Source.Signature.check_parameters`.
         """
         def __init__(self, *, trigger="level"):
-            self.check_parameters(trigger=trigger)
+            # TODO(py3.9): Remove this. Python 3.8 and below use cls.__name__ in the error message
+            # instead of cls.__qualname__.
+            # Source.Trigger(trigger)
+            try:
+                Source.Trigger(trigger)
+            except ValueError as e:
+                raise ValueError(f"{trigger!r} is not a valid Source.Trigger") from e
+
             super().__init__({
                 "i":   Out(1),
                 "trg": In(1),
@@ -43,22 +46,6 @@ class Source(wiring.PureInterface):
         @property
         def trigger(self):
             return self._trigger
-
-        def check_parameters(cls, *, trigger):
-            """Validate signature parameters.
-
-            Raises
-            ------
-            :exc:`ValueError`
-                If ``trigger`` is not a member of :class:`Source.Trigger`.
-            """
-            # TODO(py3.9): Remove this. Python 3.8 and below use cls.__name__ in the error message
-            # instead of cls.__qualname__.
-            # Source.Trigger(trigger)
-            try:
-                Source.Trigger(trigger)
-            except ValueError as e:
-                raise ValueError(f"{trigger!r} is not a valid Source.Trigger") from e
 
         def create(self, *, path=None, src_loc_at=0):
             """Create a compatible interface.
@@ -94,10 +81,6 @@ class Source(wiring.PureInterface):
     ----------
     event_map : :class:`EventMap`
         A collection of event sources.
-
-    Raises
-    ------
-    See :meth:`Source.Signature.check_parameters`.
     """
     def __init__(self, *, trigger="level", path=None, src_loc_at=0):
         super().__init__(Source.Signature(trigger=trigger), path=path, src_loc_at=1 + src_loc_at)

@@ -131,14 +131,11 @@ class SignatureTestCase(unittest.TestCase):
         with self.assertRaisesRegex(TypeError,
                 r"Address width must be a positive integer, not -1"):
             csr.Signature(addr_width=-1, data_width=8)
-        with self.assertRaisesRegex(TypeError,
-                r"Address width must be a positive integer, not -1"):
-            csr.Signature.check_parameters(addr_width=-1, data_width=8)
 
     def test_wrong_data_width(self):
         with self.assertRaisesRegex(TypeError,
                 r"Data width must be a positive integer, not -1"):
-            csr.Signature.check_parameters(addr_width=16, data_width=-1)
+            csr.Signature(addr_width=16, data_width=-1)
 
 
 class InterfaceTestCase(unittest.TestCase):
