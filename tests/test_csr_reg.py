@@ -642,7 +642,7 @@ class RegisterTestCase(unittest.TestCase):
         sim = Simulator(dut)
         sim.add_clock(1e-6)
         sim.add_testbench(process)
-        with sim.write_vcd(vcd_file=open("test.vcd", "w")):
+        with sim.write_vcd(vcd_file="test.vcd"):
             sim.run()
 
     def test_sim_single(self):
@@ -681,7 +681,7 @@ class RegisterTestCase(unittest.TestCase):
         sim = Simulator(dut)
         sim.add_clock(1e-6)
         sim.add_testbench(process)
-        with sim.write_vcd(vcd_file=open("test.vcd", "w")):
+        with sim.write_vcd(vcd_file="test.vcd"):
             sim.run()
 
 class _MockRegister(Register, access="rw"):
@@ -1050,5 +1050,5 @@ class BridgeTestCase(unittest.TestCase):
         sim = Simulator(dut)
         sim.add_clock(1e-6)
         sim.add_testbench(process)
-        with sim.write_vcd(vcd_file=open("test.vcd", "w")):
+        with sim.write_vcd(vcd_file="test.vcd"):
             sim.run()

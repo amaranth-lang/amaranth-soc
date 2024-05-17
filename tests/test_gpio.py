@@ -330,7 +330,7 @@ class PeripheralTestCase(unittest.TestCase):
         sim = Simulator(dut)
         sim.add_clock(1e-6)
         sim.add_testbench(testbench)
-        with sim.write_vcd(vcd_file=open("test.vcd", "w")):
+        with sim.write_vcd(vcd_file="test.vcd"):
             sim.run()
 
     def test_sim_without_input_sync(self):
@@ -349,5 +349,5 @@ class PeripheralTestCase(unittest.TestCase):
         sim = Simulator(dut)
         sim.add_clock(1e-6)
         sim.add_testbench(testbench)
-        with sim.write_vcd(vcd_file=open("test.vcd", "w")):
+        with sim.write_vcd(vcd_file="test.vcd"):
             sim.run()

@@ -283,7 +283,7 @@ class DecoderSimulationTestCase(unittest.TestCase):
 
         sim = Simulator(dut)
         sim.add_testbench(sim_test)
-        with sim.write_vcd(vcd_file=open("test.vcd", "w")):
+        with sim.write_vcd(vcd_file="test.vcd"):
             sim.run()
 
     def test_addr_translate(self):
@@ -394,7 +394,7 @@ class DecoderSimulationTestCase(unittest.TestCase):
         m.submodules += dut, loop_1, loop_2, loop_3, loop_4
         sim = Simulator(m)
         sim.add_testbench(sim_test)
-        with sim.write_vcd(vcd_file=open("test.vcd", "w")):
+        with sim.write_vcd(vcd_file="test.vcd"):
             sim.run()
 
     def test_coarse_granularity(self):
@@ -416,7 +416,7 @@ class DecoderSimulationTestCase(unittest.TestCase):
 
         sim = Simulator(dut)
         sim.add_testbench(sim_test)
-        with sim.write_vcd(vcd_file=open("test.vcd", "w")):
+        with sim.write_vcd(vcd_file="test.vcd"):
             sim.run()
 
 
@@ -534,7 +534,7 @@ class ArbiterSimulationTestCase(unittest.TestCase):
         sim = Simulator(dut)
         sim.add_clock(1e-6)
         sim.add_testbench(sim_test)
-        with sim.write_vcd(vcd_file=open("test.vcd", "w")):
+        with sim.write_vcd(vcd_file="test.vcd"):
             sim.run()
 
     def test_lock(self):
@@ -587,7 +587,7 @@ class ArbiterSimulationTestCase(unittest.TestCase):
         sim = Simulator(dut)
         sim.add_clock(1e-6)
         sim.add_testbench(sim_test)
-        with sim.write_vcd(vcd_file=open("test.vcd", "w")):
+        with sim.write_vcd(vcd_file="test.vcd"):
             sim.run()
 
     def test_stall(self):
@@ -613,7 +613,7 @@ class ArbiterSimulationTestCase(unittest.TestCase):
 
         sim = Simulator(dut)
         sim.add_testbench(sim_test)
-        with sim.write_vcd(vcd_file=open("test.vcd", "w")):
+        with sim.write_vcd(vcd_file="test.vcd"):
             sim.run()
 
     def test_stall_compat(self):
@@ -638,7 +638,7 @@ class ArbiterSimulationTestCase(unittest.TestCase):
 
         sim = Simulator(dut)
         sim.add_testbench(sim_test)
-        with sim.write_vcd(vcd_file=open("test.vcd", "w")):
+        with sim.write_vcd(vcd_file="test.vcd"):
             sim.run()
 
     def test_roundrobin(self):
@@ -700,5 +700,5 @@ class ArbiterSimulationTestCase(unittest.TestCase):
         sim = Simulator(dut)
         sim.add_clock(1e-6)
         sim.add_testbench(sim_test)
-        with sim.write_vcd(vcd_file=open("test.vcd", "w")):
+        with sim.write_vcd(vcd_file="test.vcd"):
             sim.run()

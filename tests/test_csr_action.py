@@ -26,7 +26,7 @@ class RTestCase(unittest.TestCase):
 
         sim = Simulator(dut)
         sim.add_testbench(process)
-        with sim.write_vcd(vcd_file=open("test.vcd", "w")):
+        with sim.write_vcd(vcd_file="test.vcd"):
             sim.run()
 
 
@@ -49,7 +49,7 @@ class WTestCase(unittest.TestCase):
 
         sim = Simulator(dut)
         sim.add_testbench(process)
-        with sim.write_vcd(vcd_file=open("test.vcd", "w")):
+        with sim.write_vcd(vcd_file="test.vcd"):
             sim.run()
 
 
@@ -82,7 +82,7 @@ class RWTestCase(unittest.TestCase):
         sim = Simulator(dut)
         sim.add_clock(1e-6)
         sim.add_testbench(process)
-        with sim.write_vcd(vcd_file=open("test.vcd", "w")):
+        with sim.write_vcd(vcd_file="test.vcd"):
             sim.run()
 
 
@@ -123,7 +123,7 @@ class RW1CTestCase(unittest.TestCase):
         sim = Simulator(dut)
         sim.add_clock(1e-6)
         sim.add_testbench(process)
-        with sim.write_vcd(vcd_file=open("test.vcd", "w")):
+        with sim.write_vcd(vcd_file="test.vcd"):
             sim.run()
 
 
@@ -164,7 +164,7 @@ class RW1STestCase(unittest.TestCase):
         sim = Simulator(dut)
         sim.add_clock(1e-6)
         sim.add_testbench(process)
-        with sim.write_vcd(vcd_file=open("test.vcd", "w")):
+        with sim.write_vcd(vcd_file="test.vcd"):
             sim.run()
 
 

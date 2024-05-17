@@ -324,7 +324,7 @@ class MultiplexerTestCase(unittest.TestCase):
                 sim = Simulator(dut)
                 sim.add_clock(1e-6)
                 sim.add_testbench(sim_test)
-                with sim.write_vcd(vcd_file=open("test.vcd", "w")):
+                with sim.write_vcd(vcd_file="test.vcd"):
                     sim.run()
 
 
@@ -362,7 +362,7 @@ class MultiplexerAlignedTestCase(unittest.TestCase):
                 sim = Simulator(dut)
                 sim.add_clock(1e-6)
                 sim.add_testbench(sim_test)
-                with sim.write_vcd(vcd_file=open("test.vcd", "w")):
+                with sim.write_vcd(vcd_file="test.vcd"):
                     sim.run()
 
 
@@ -463,5 +463,5 @@ class DecoderTestCase(unittest.TestCase):
         sim = Simulator(m)
         sim.add_clock(1e-6)
         sim.add_testbench(sim_test)
-        with sim.write_vcd(vcd_file=open("test.vcd", "w")):
+        with sim.write_vcd(vcd_file="test.vcd"):
             sim.run()
