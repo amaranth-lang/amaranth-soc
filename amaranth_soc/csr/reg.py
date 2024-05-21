@@ -437,7 +437,7 @@ class Register(wiring.Component):
 
     Members
     -------
-    element : :py:`Out(csr.Element.Signature(shape, access))`
+    element : :py:`In(csr.Element.Signature(shape, access))`
         Interface between this :class:`Register` and a CSR bus primitive.
 
     Raises
@@ -522,7 +522,7 @@ class Register(wiring.Component):
                 raise ValueError(f"Field {'__'.join(field_path)} is writable, but element access "
                                  f"mode is {access}")
 
-        super().__init__({"element": Out(Element.Signature(width, access))})
+        super().__init__({"element": In(Element.Signature(width, access))})
 
     @property
     def field(self):
