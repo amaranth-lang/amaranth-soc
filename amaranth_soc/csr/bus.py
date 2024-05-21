@@ -11,7 +11,7 @@ __all__ = ["Element", "Signature", "Interface", "Decoder", "Multiplexer"]
 
 
 class Element(wiring.PureInterface):
-    """Peripheral-side CSR interface.
+    """CSR register interface.
 
     A low-level interface to a single atomically readable and writable register in a peripheral.
     This interface supports any register width and semantics, provided that both reads and writes
@@ -24,7 +24,7 @@ class Element(wiring.PureInterface):
     access : :class:`Element.Access`
         Register access mode.
     path : iterable of :class:`str`
-        Path to this CSR interface. Optional. See :class:`amaranth.lib.wiring.PureInterface`.
+        Path to this interface. Optional. See :class:`amaranth.lib.wiring.PureInterface`.
     """
 
     class Access(enum.Enum):
@@ -33,8 +33,14 @@ class Element(wiring.PureInterface):
         Coarse access mode for the entire register. Individual fields can have more restrictive
         access mode, e.g. R/O fields can be a part of an R/W register.
         """
+
+        #: Read-only mode.
         R  = "r"
+
+        #: Write-only mode.
         W  = "w"
+
+        #: Read/write mode.
         RW = "rw"
 
         def readable(self):
@@ -43,7 +49,7 @@ class Element(wiring.PureInterface):
             Returns
             -------
             :class:`bool`
-                ``True`` if `self` is equal to :attr:`R` or :attr:`RW`.
+                ``True`` if equal to :attr:`R` or :attr:`RW`.
             """
             return self == self.R or self == self.RW
 
@@ -53,12 +59,12 @@ class Element(wiring.PureInterface):
             Returns
             -------
             :class:`bool`
-                ``True`` if `self` is equal to :attr:`W` or :attr:`RW`.
+                ``True`` if equal to :attr:`W` or :attr:`RW`.
             """
             return self == self.W or self == self.RW
 
     class Signature(wiring.Signature):
-        """Peripheral-side CSR signature.
+        """CSR register signature.
 
         Arguments
         ---------
@@ -179,7 +185,7 @@ class Element(wiring.PureInterface):
 
 
 class Signature(wiring.Signature):
-    """CPU-side CSR signature.
+    """CSR bus signature.
 
     Arguments
     ---------
@@ -272,21 +278,9 @@ class Signature(wiring.Signature):
 
 
 class Interface(wiring.PureInterface):
-    """CPU-side CSR interface.
+    """CSR bus interface.
 
     A low-level interface to a set of atomically readable and writable peripheral CSR registers.
-
-    .. note::
-
-        CSR registers mapped to the CSR bus are split into chunks according to the bus data width.
-        Each chunk is assigned a consecutive address on the bus. This allows accessing CSRs of any
-        size using any datapath width.
-
-        When the first chunk of a register is read, the value of a register is captured, and reads
-        from subsequent chunks of the same register return the captured values. When any chunk
-        except the last chunk of a register is written, the written value is captured; a write to
-        the last chunk writes the captured value to the register. This allows atomically accessing
-        CSRs larger than datapath width.
 
     Arguments
     ---------
@@ -326,11 +320,15 @@ class Interface(wiring.PureInterface):
     def memory_map(self):
         """Memory map of the bus.
 
-        .. todo:: setter
-
         Returns
         -------
         :class:`~.memory.MemoryMap` or ``None``
+
+        Raises
+        ------
+        :exc:`ValueError`
+            If set to a memory map that does not have the same address and data widths as the bus
+            interface.
         """
         if self._memory_map is None:
             raise AttributeError(f"{self!r} does not have a memory map")
@@ -357,39 +355,33 @@ class Multiplexer(wiring.Component):
 
     An address-based multiplexer for CSR registers implementing atomic updates.
 
-    This implementation assumes the following from the CSR bus:
-
-        * an initiator must have exclusive ownership over the multiplexer for the full duration of
-          a register transaction;
-        * an initiator must access a register in ascending order of addresses, but it may abort a
-          transaction after any bus cycle.
-
     Writes are registered, and are performed 1 cycle after ``w_stb`` is asserted.
 
     .. note::
 
-        Because the CSR bus conserves logic and routing resources, it is common to e.g. access
-        a CSR bus with an *n*-bit data path from a CPU with a *k*-bit datapath (*k>n*) in cases
-        where CSR access latency is less important than resource usage.
+       Because the CSR bus conserves logic and routing resources, it is common to e.g. bridge a CSR
+       bus with a narrow *N*-bit datapath to a CPU with a wider *W*-bit datapath (*W>N*) in cases
+       where CSR access latency is less important than resource usage.
 
-        In this case, two strategies are possible for connecting the CSR bus to the CPU:
+       In this case, two strategies are possible for connecting the CSR bus to the CPU:
 
-            * The CPU could access the CSR bus directly (with no intervening logic other than
-              simple translation of control signals). In this case, the register alignment should
-              be set to 1 (i.e. ``memory_map.alignment`` should be set to 0), and each *w*-bit
-              register would occupy *ceil(w/n)* addresses from the CPU perspective, requiring the
-              same amount of memory instructions to access.
-            * The CPU could also access the CSR bus through a width down-converter, which would
-              issue *k/n* CSR accesses for each CPU access. In this case, the register alignment
-              should be set to *k/n*, and each *w*-bit register would occupy *ceil(w/k)* addresses
-              from the CPU perspective, requiring the same amount of memory instructions to access.
+           * The CPU could access the CSR bus directly (with no intervening logic other than simple
+             translation of control signals). The register alignment should be set to 1 (i.e.
+             ``memory_map.alignment`` should be 0), and each *R*-bit register would occupy
+             *ceil(R/N)* addresses from the CPU perspective, requiring the same amount of memory
+             instructions to access.
 
-        If the register alignment (i.e. ``2 ** memory_map.alignment``) is greater than 1, it affects
-        which CSR bus write is considered a write to the last register chunk. For example, if a 24-bit
-        register is used with a 8-bit CSR bus and a CPU with a 32-bit datapath, a write to this
-        register requires 4 CSR bus writes to complete, and the 4th write is the one that actually
-        writes the value to the register. This allows determining write latency solely from the amount
-        of addresses the register occupies in the CPU address space, and the width of the CSR bus.
+           * The CPU could access the CSR bus through a width down-converter, which would issue
+             *W/N* CSR accesses for each CPU access. The register alignment should be set to *W/N*,
+             and each *R*-bit register would occupy *ceil(R/K)* addresses from the CPU perspective,
+             requiring the same amount of memory instructions to access.
+
+       If the register alignment is greater than 1, it affects which CSR bus write is considered a
+       write to the last register chunk. For example, if a 24-bit register is accessed through an
+       8-bit CSR bus and a CPU with a 32-bit datapath, a write to this register requires 4 CSR bus
+       writes to complete, and the last write is the one that actually writes the value to the
+       register. This allows determining write latency solely from the amount of addresses occupied
+       by the register in the CPU address space, and the CSR bus data width.
 
     Arguments
     ---------
@@ -681,19 +673,6 @@ class Decoder(wiring.Component):
 
     An address decoder for subordinate CSR buses.
 
-    .. note::
-
-        Although there is no functional difference between adding a set of registers directly to
-        a :class:`Multiplexer` and adding a set of registers to multiple :class:`Multiplexer`\\ s
-        that are aggregated with a :class:`Decoder`, hierarchical CSR buses are useful for
-        organizing a hierarchical design.
-
-        If many peripherals are directly served by a single :class:`Multiplexer`, a very large
-        amount of ports will connect the peripheral registers with the :class:`Decoder`, and the
-        cost of decoding logic would not be attributed to specific peripherals. With a
-        :class:`Decoder`, only five signals per peripheral will be used, and the logic could be
-        kept together with the peripheral.
-
     Arguments
     ---------
     addr_width : :class:`int`
@@ -730,8 +709,6 @@ class Decoder(wiring.Component):
         """Add a window to a subordinate bus.
 
         See :meth:`~.memory.MemoryMap.add_window` for details.
-
-        .. todo:: include exceptions raised in :meth:`~.memory.MemoryMap.add_window`
 
         Returns
         -------

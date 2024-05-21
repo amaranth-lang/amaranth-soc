@@ -79,6 +79,9 @@ The resource located at a given address can be retrieved with :meth:`MemoryMap.d
    >>> memory_map.decode_address(0x4) is reg_data
    True
 
+
+.. _memory-alignment:
+
 Alignment
 =========
 
