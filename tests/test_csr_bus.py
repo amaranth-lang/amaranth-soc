@@ -12,7 +12,7 @@ from amaranth_soc.memory import MemoryMap
 
 class _MockRegister(wiring.Component):
     def __init__(self, width, access):
-        super().__init__({"element": Out(csr.Element.Signature(width, access))})
+        super().__init__({"element": In(csr.Element.Signature(width, access))})
 
 
 class ElementSignatureTestCase(unittest.TestCase):
@@ -204,32 +204,32 @@ class MultiplexerTestCase(unittest.TestCase):
             pass
         # wrong name
         map_0 = MemoryMap(addr_width=1, data_width=8)
-        map_0.add_resource(_Reg({"foo": Out(csr.Element.Signature(8, "rw"))}), name=("a",), size=1)
+        map_0.add_resource(_Reg({"foo": In(csr.Element.Signature(8, "rw"))}), name=("a",), size=1)
         with self.assertRaisesRegex(AttributeError,
                 r"Signature of CSR register Name\('a'\) must have a csr\.Element\.Signature "
-                r"member named 'element' and oriented as wiring\.Out"):
+                r"member named 'element' and oriented as wiring\.In"):
             csr.Multiplexer(map_0)
         # wrong direction
         map_1 = MemoryMap(addr_width=1, data_width=8)
-        map_1.add_resource(_Reg({"element": In(csr.Element.Signature(8, "rw"))}), name=("a",),
+        map_1.add_resource(_Reg({"element": Out(csr.Element.Signature(8, "rw"))}), name=("a",),
                            size=1)
         with self.assertRaisesRegex(AttributeError,
                 r"Signature of CSR register Name\('a'\) must have a csr\.Element\.Signature "
-                r"member named 'element' and oriented as wiring\.Out"):
+                r"member named 'element' and oriented as wiring\.In"):
             csr.Multiplexer(map_1)
         # wrong member type
         map_2 = MemoryMap(addr_width=1, data_width=8)
-        map_2.add_resource(_Reg({"element": Out(unsigned(8))}), name=("a",), size=1)
+        map_2.add_resource(_Reg({"element": In(unsigned(8))}), name=("a",), size=1)
         with self.assertRaisesRegex(AttributeError,
                 r"Signature of CSR register Name\('a'\) must have a csr\.Element\.Signature "
-                r"member named 'element' and oriented as wiring\.Out"):
+                r"member named 'element' and oriented as wiring\.In"):
             csr.Multiplexer(map_2)
         # wrong member signature
         map_3 = MemoryMap(addr_width=1, data_width=8)
-        map_3.add_resource(_Reg({"element": Out(wiring.Signature({}))}), name=("a",), size=1)
+        map_3.add_resource(_Reg({"element": In(wiring.Signature({}))}), name=("a",), size=1)
         with self.assertRaisesRegex(AttributeError,
                 r"Signature of CSR register Name\('a'\) must have a csr\.Element\.Signature "
-                r"member named 'element' and oriented as wiring\.Out"):
+                r"member named 'element' and oriented as wiring\.In"):
             csr.Multiplexer(map_3)
 
     def test_wrong_memory_map_windows(self):
