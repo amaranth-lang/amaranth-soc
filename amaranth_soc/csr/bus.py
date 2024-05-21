@@ -592,12 +592,12 @@ class Multiplexer(wiring.Component):
             raise ValueError("CSR multiplexer memory map cannot have windows")
         for reg, reg_name, (reg_start, reg_end) in memory_map.resources():
             if not ("element" in reg.signature.members and
-                    reg.signature.members["element"].flow == Out and
+                    reg.signature.members["element"].flow == In and
                     reg.signature.members["element"].is_signature and
                     isinstance(reg.signature.members["element"].signature, Element.Signature)):
                 raise AttributeError(f"Signature of CSR register {reg_name} must have a "
                                      f"csr.Element.Signature member named 'element' and oriented "
-                                     f"as wiring.Out")
+                                     f"as wiring.In")
 
     def elaborate(self, platform):
         m = Module()
