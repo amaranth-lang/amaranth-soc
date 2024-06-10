@@ -17,15 +17,14 @@ class RTestCase(unittest.TestCase):
     def test_sim(self):
         dut = action.R(unsigned(4))
 
-        def process():
-            yield dut.r_data.eq(0xa)
-            yield dut.port.r_stb.eq(1)
-            yield Delay()
-            self.assertEqual((yield dut.port.r_data), 0xa)
-            self.assertEqual((yield dut.r_stb), 1)
+        async def testbench(ctx):
+            ctx.set(dut.r_data, 0xa)
+            ctx.set(dut.port.r_stb, 1)
+            self.assertEqual(ctx.get(dut.port.r_data), 0xa)
+            self.assertEqual(ctx.get(dut.r_stb), 1)
 
         sim = Simulator(dut)
-        sim.add_testbench(process)
+        sim.add_testbench(testbench)
         with sim.write_vcd(vcd_file="test.vcd"):
             sim.run()
 
@@ -40,15 +39,14 @@ class WTestCase(unittest.TestCase):
     def test_sim(self):
         dut = action.W(unsigned(4))
 
-        def process():
-            yield dut.port.w_data.eq(0xa)
-            yield dut.port.w_stb.eq(1)
-            yield Delay()
-            self.assertEqual((yield dut.w_data), 0xa)
-            self.assertEqual((yield dut.w_stb), 1)
+        async def testbench(ctx):
+            ctx.set(dut.port.w_data, 0xa)
+            ctx.set(dut.port.w_stb, 1)
+            self.assertEqual(ctx.get(dut.w_data), 0xa)
+            self.assertEqual(ctx.get(dut.w_stb), 1)
 
         sim = Simulator(dut)
-        sim.add_testbench(process)
+        sim.add_testbench(testbench)
         with sim.write_vcd(vcd_file="test.vcd"):
             sim.run()
 
@@ -70,18 +68,18 @@ class RWTestCase(unittest.TestCase):
     def test_sim(self):
         dut = action.RW(unsigned(4), init=0x5)
 
-        def process():
-            self.assertEqual((yield dut.port.r_data), 0x5)
-            self.assertEqual((yield dut.data), 0x5)
-            yield dut.port.w_stb .eq(1)
-            yield dut.port.w_data.eq(0xa)
-            yield Tick()
-            self.assertEqual((yield dut.port.r_data), 0xa)
-            self.assertEqual((yield dut.data), 0xa)
+        async def testbench(ctx):
+            self.assertEqual(ctx.get(dut.port.r_data), 0x5)
+            self.assertEqual(ctx.get(dut.data), 0x5)
+            ctx.set(dut.port.w_stb, 1)
+            ctx.set(dut.port.w_data, 0xa)
+            await ctx.tick()
+            self.assertEqual(ctx.get(dut.port.r_data), 0xa)
+            self.assertEqual(ctx.get(dut.data), 0xa)
 
         sim = Simulator(dut)
         sim.add_clock(1e-6)
-        sim.add_testbench(process)
+        sim.add_testbench(testbench)
         with sim.write_vcd(vcd_file="test.vcd"):
             sim.run()
 
@@ -105,24 +103,24 @@ class RW1CTestCase(unittest.TestCase):
     def test_sim(self):
         dut = action.RW1C(unsigned(4), init=0xf)
 
-        def process():
-            self.assertEqual((yield dut.port.r_data), 0xf)
-            self.assertEqual((yield dut.data), 0xf)
-            yield dut.port.w_stb .eq(1)
-            yield dut.port.w_data.eq(0x5)
-            yield Tick()
-            self.assertEqual((yield dut.port.r_data), 0xa)
-            self.assertEqual((yield dut.data), 0xa)
+        async def testbench(ctx):
+            self.assertEqual(ctx.get(dut.port.r_data), 0xf)
+            self.assertEqual(ctx.get(dut.data), 0xf)
+            ctx.set(dut.port.w_stb, 1)
+            ctx.set(dut.port.w_data, 0x5)
+            await ctx.tick()
+            self.assertEqual(ctx.get(dut.port.r_data), 0xa)
+            self.assertEqual(ctx.get(dut.data), 0xa)
 
-            yield dut.port.w_data.eq(0x3)
-            yield dut.set.eq(0x4)
-            yield Tick()
-            self.assertEqual((yield dut.port.r_data), 0xc)
-            self.assertEqual((yield dut.data), 0xc)
+            ctx.set(dut.port.w_data, 0x3)
+            ctx.set(dut.set, 0x4)
+            await ctx.tick()
+            self.assertEqual(ctx.get(dut.port.r_data), 0xc)
+            self.assertEqual(ctx.get(dut.data), 0xc)
 
         sim = Simulator(dut)
         sim.add_clock(1e-6)
-        sim.add_testbench(process)
+        sim.add_testbench(testbench)
         with sim.write_vcd(vcd_file="test.vcd"):
             sim.run()
 
@@ -146,24 +144,24 @@ class RW1STestCase(unittest.TestCase):
     def test_sim(self):
         dut = action.RW1S(unsigned(4), init=0x5)
 
-        def process():
-            self.assertEqual((yield dut.port.r_data), 0x5)
-            self.assertEqual((yield dut.data), 0x5)
-            yield dut.port.w_stb .eq(1)
-            yield dut.port.w_data.eq(0xa)
-            yield Tick()
-            self.assertEqual((yield dut.port.r_data), 0xf)
-            self.assertEqual((yield dut.data), 0xf)
+        async def testbench(ctx):
+            self.assertEqual(ctx.get(dut.port.r_data), 0x5)
+            self.assertEqual(ctx.get(dut.data), 0x5)
+            ctx.set(dut.port.w_stb, 1)
+            ctx.set(dut.port.w_data, 0xa)
+            await ctx.tick()
+            self.assertEqual(ctx.get(dut.port.r_data), 0xf)
+            self.assertEqual(ctx.get(dut.data), 0xf)
 
-            yield dut.port.w_data.eq(0x3)
-            yield dut.clear.eq(0x7)
-            yield Tick()
-            self.assertEqual((yield dut.port.r_data), 0xb)
-            self.assertEqual((yield dut.data), 0xb)
+            ctx.set(dut.port.w_data, 0x3)
+            ctx.set(dut.clear, 0x7)
+            await ctx.tick()
+            self.assertEqual(ctx.get(dut.port.r_data), 0xb)
+            self.assertEqual(ctx.get(dut.data), 0xb)
 
         sim = Simulator(dut)
         sim.add_clock(1e-6)
-        sim.add_testbench(process)
+        sim.add_testbench(testbench)
         with sim.write_vcd(vcd_file="test.vcd"):
             sim.run()
 

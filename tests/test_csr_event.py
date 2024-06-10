@@ -8,14 +8,6 @@ from amaranth_soc.csr import *
 from amaranth_soc import event
 
 
-def simulation_test(dut, process):
-    sim = Simulator(dut)
-    sim.add_clock(1e-6)
-    sim.add_testbench(process)
-    with sim.write_vcd(vcd_file="test.vcd"):
-        sim.run()
-
-
 class EventMonitorTestCase(unittest.TestCase):
     def test_params(self):
         event_map = event.EventMap()
@@ -76,50 +68,51 @@ class EventMonitorSimulationTestCase(unittest.TestCase):
         addr_enable  = 0x0
         addr_pending = 0x1
 
-        def process():
-            yield sub.i.eq(1)
-            yield Delay()
-            self.assertEqual((yield sub.trg), 1)
-            self.assertEqual((yield dut.src.i), 0)
+        async def testbench(ctx):
+            ctx.set(sub.i, 1)
+            self.assertEqual(ctx.get(sub.trg), 1)
+            self.assertEqual(ctx.get(dut.src.i), 0)
 
-            yield dut.bus.addr.eq(addr_enable)
-            yield dut.bus.r_stb.eq(1)
-            yield Tick()
-            self.assertEqual((yield dut.bus.r_data), 0b0)
-            yield dut.bus.r_stb.eq(0)
-            yield Delay()
+            ctx.set(dut.bus.addr, addr_enable)
+            ctx.set(dut.bus.r_stb, 1)
+            await ctx.tick()
+            self.assertEqual(ctx.get(dut.bus.r_data), 0b0)
+            ctx.set(dut.bus.r_stb, 0)
 
-            yield dut.bus.addr.eq(addr_enable)
-            yield dut.bus.w_stb.eq(1)
-            yield dut.bus.w_data.eq(0b1)
-            yield Tick()
-            yield dut.bus.w_stb.eq(0)
-            yield Tick()
-            self.assertEqual((yield dut.src.i), 1)
+            ctx.set(dut.bus.addr, addr_enable)
+            ctx.set(dut.bus.w_stb, 1)
+            ctx.set(dut.bus.w_data, 0b1)
+            await ctx.tick()
+            ctx.set(dut.bus.w_stb, 0)
+            await ctx.tick()
+            self.assertEqual(ctx.get(dut.src.i), 1)
 
-            yield sub.i.eq(0)
-            yield Delay()
-            self.assertEqual((yield sub.trg), 0)
+            ctx.set(sub.i, 0)
+            self.assertEqual(ctx.get(sub.trg), 0)
 
-            yield dut.bus.addr.eq(addr_pending)
-            yield dut.bus.r_stb.eq(1)
-            yield Tick()
-            self.assertEqual((yield dut.bus.r_data), 0b1)
-            yield dut.bus.r_stb.eq(0)
-            yield Delay()
+            ctx.set(dut.bus.addr, addr_pending)
+            ctx.set(dut.bus.r_stb, 1)
+            await ctx.tick()
+            self.assertEqual(ctx.get(dut.bus.r_data), 0b1)
+            ctx.set(dut.bus.r_stb, 0)
 
-            yield dut.bus.addr.eq(addr_pending)
-            yield dut.bus.w_stb.eq(1)
-            yield dut.bus.w_data.eq(0b1)
-            yield Tick()
-            yield dut.bus.w_stb.eq(0)
-            yield Tick()
+            ctx.set(dut.bus.addr, addr_pending)
+            ctx.set(dut.bus.w_stb, 1)
+            ctx.set(dut.bus.w_data, 0b1)
+            await ctx.tick()
+            ctx.set(dut.bus.w_stb, 0)
+            await ctx.tick()
 
-            yield dut.bus.addr.eq(addr_pending)
-            yield dut.bus.r_stb.eq(1)
-            yield Tick()
-            self.assertEqual((yield dut.bus.r_data), 0b0)
-            yield dut.bus.r_stb.eq(0)
-            yield Delay()
+            ctx.set(dut.bus.addr, addr_pending)
+            ctx.set(dut.bus.r_stb, 1)
+            await ctx.tick()
+            self.assertEqual(ctx.get(dut.bus.r_data), 0b0)
+            ctx.set(dut.bus.r_stb, 0)
 
-        simulation_test(dut, process)
+        sim = Simulator(dut)
+        sim.add_clock(1e-6)
+        sim.add_testbench(testbench)
+        with sim.write_vcd(vcd_file="test.vcd"):
+            sim.run()
+
+

@@ -523,72 +523,68 @@ class RegisterTestCase(unittest.TestCase):
 
         dut = FooRegister()
 
-        def process():
+        async def testbench(ctx):
             # Check init values:
 
-            self.assertEqual((yield dut.f.b  .data),  0b111)
-            self.assertEqual((yield dut.f.c.d.data), -1)
-            self.assertEqual((yield dut.f.f  .data),  0b000)
+            self.assertEqual(ctx.get(dut.f.b  .data),  0b111)
+            self.assertEqual(ctx.get(dut.f.c.d.data), -1)
+            self.assertEqual(ctx.get(dut.f.f  .data),  0b000)
 
-            self.assertEqual((yield dut.f.b   .port.r_data),  0b111)
-            self.assertEqual((yield dut.f.c.d .port.r_data), -1)
-            self.assertEqual((yield dut.f.f   .port.r_data),  0b000)
+            self.assertEqual(ctx.get(dut.f.b   .port.r_data),  0b111)
+            self.assertEqual(ctx.get(dut.f.c.d .port.r_data), -1)
+            self.assertEqual(ctx.get(dut.f.f   .port.r_data),  0b000)
 
             # Initiator read:
 
-            yield dut.element.r_stb.eq(1)
-            yield Delay()
+            ctx.set(dut.element.r_stb, 1)
 
-            self.assertEqual((yield dut.f.a.port.r_stb), 1)
-            self.assertEqual((yield dut.f.b.port.r_stb), 1)
-            self.assertEqual((yield dut.f.f.port.r_stb), 1)
+            self.assertEqual(ctx.get(dut.f.a.port.r_stb), 1)
+            self.assertEqual(ctx.get(dut.f.b.port.r_stb), 1)
+            self.assertEqual(ctx.get(dut.f.f.port.r_stb), 1)
 
-            yield dut.element.r_stb.eq(0)
+            ctx.set(dut.element.r_stb, 0)
 
             # Initiator write:
 
-            yield dut.element.w_stb .eq(1)
-            yield dut.element.w_data.eq(Cat(
+            ctx.set(dut.element.w_stb, 1)
+            ctx.set(dut.element.w_data, Cat(
                 Const(0b1,   1), # a
                 Const(0b010, 3), # b
                 Const(0b00,  2), # c.d
                 Const(0b00,  2), # e
                 Const(0b110, 3), # f
             ))
-            yield Delay()
 
-            self.assertEqual((yield dut.f.a   .port.w_stb), 0)
-            self.assertEqual((yield dut.f.b   .port.w_stb), 1)
-            self.assertEqual((yield dut.f.c.d .port.w_stb), 1)
-            self.assertEqual((yield dut.f.e[0].port.w_stb), 1)
-            self.assertEqual((yield dut.f.e[1].port.w_stb), 1)
-            self.assertEqual((yield dut.f.f   .port.w_stb), 1)
+            self.assertEqual(ctx.get(dut.f.a   .port.w_stb), 0)
+            self.assertEqual(ctx.get(dut.f.b   .port.w_stb), 1)
+            self.assertEqual(ctx.get(dut.f.c.d .port.w_stb), 1)
+            self.assertEqual(ctx.get(dut.f.e[0].port.w_stb), 1)
+            self.assertEqual(ctx.get(dut.f.e[1].port.w_stb), 1)
+            self.assertEqual(ctx.get(dut.f.f   .port.w_stb), 1)
 
-            self.assertEqual((yield dut.f.b   .port.w_data), 0b010)
-            self.assertEqual((yield dut.f.c.d .port.w_data), 0b00)
-            self.assertEqual((yield dut.f.e[0].port.w_data), 0b0)
-            self.assertEqual((yield dut.f.e[1].port.w_data), 0b0)
-            self.assertEqual((yield dut.f.f   .port.w_data), 0b110)
+            self.assertEqual(ctx.get(dut.f.b   .port.w_data), 0b010)
+            self.assertEqual(ctx.get(dut.f.c.d .port.w_data), 0b00)
+            self.assertEqual(ctx.get(dut.f.e[0].port.w_data), 0b0)
+            self.assertEqual(ctx.get(dut.f.e[1].port.w_data), 0b0)
+            self.assertEqual(ctx.get(dut.f.f   .port.w_data), 0b110)
 
-            self.assertEqual((yield dut.f.e[0].w_data), 0b0)
-            self.assertEqual((yield dut.f.e[1].w_data), 0b0)
+            self.assertEqual(ctx.get(dut.f.e[0].w_data), 0b0)
+            self.assertEqual(ctx.get(dut.f.e[1].w_data), 0b0)
 
-            yield Tick()
-            yield dut.element.w_stb.eq(0)
-            yield Delay()
+            await ctx.tick()
+            ctx.set(dut.element.w_stb, 0)
 
-            self.assertEqual((yield dut.f.b  .data), 0b101)
-            self.assertEqual((yield dut.f.c.d.data), 0b00)
-            self.assertEqual((yield dut.f.f  .data), 0b110)
+            self.assertEqual(ctx.get(dut.f.b  .data), 0b101)
+            self.assertEqual(ctx.get(dut.f.c.d.data), 0b00)
+            self.assertEqual(ctx.get(dut.f.f  .data), 0b110)
 
             # User write:
 
-            yield dut.f.a.r_data.eq(0b1)
-            yield dut.f.b.set   .eq(0b010)
-            yield dut.f.f.clear .eq(0b010)
-            yield Delay()
+            ctx.set(dut.f.a.r_data, 0b1)
+            ctx.set(dut.f.b.set,    0b010)
+            ctx.set(dut.f.f.clear,  0b010)
 
-            self.assertEqual((yield dut.element.r_data),
+            self.assertEqual(ctx.get(dut.element.r_data),
                              Const.cast(Cat(
                                  Const(0b1,   1), # a
                                  Const(0b101, 3), # b
@@ -597,13 +593,12 @@ class RegisterTestCase(unittest.TestCase):
                                  Const(0b110, 3), # f
                              )).value)
 
-            yield Tick()
-            yield dut.f.a.r_data.eq(0b0)
-            yield dut.f.b.set   .eq(0b000)
-            yield dut.f.f.clear .eq(0b000)
-            yield Delay()
+            await ctx.tick()
+            ctx.set(dut.f.a.r_data, 0b0)
+            ctx.set(dut.f.b.set,    0b000)
+            ctx.set(dut.f.f.clear,  0b000)
 
-            self.assertEqual((yield dut.element.r_data),
+            self.assertEqual(ctx.get(dut.element.r_data),
                              Const.cast(Cat(
                                  Const(0b0,   1), # a
                                  Const(0b111, 3), # b
@@ -614,8 +609,8 @@ class RegisterTestCase(unittest.TestCase):
 
             # Concurrent writes:
 
-            yield dut.element.w_stb .eq(1)
-            yield dut.element.w_data.eq(Cat(
+            ctx.set(dut.element.w_stb, 1)
+            ctx.set(dut.element.w_data, Cat(
                 Const(0b0,   1), # a
                 Const(0b111, 3), # b
                 Const(0b00,  2), # c.d
@@ -623,11 +618,11 @@ class RegisterTestCase(unittest.TestCase):
                 Const(0b111, 3), # f
             ))
 
-            yield dut.f.b.set  .eq(0b001)
-            yield dut.f.f.clear.eq(0b111)
-            yield Tick()
+            ctx.set(dut.f.b.set,   0b001)
+            ctx.set(dut.f.f.clear, 0b111)
+            await ctx.tick()
 
-            self.assertEqual((yield dut.element.r_data),
+            self.assertEqual(ctx.get(dut.element.r_data),
                              Const.cast(Cat(
                                  Const(0b0,   1), # a
                                  Const(0b001, 3), # b
@@ -636,51 +631,45 @@ class RegisterTestCase(unittest.TestCase):
                                  Const(0b111, 3), # f
                              )).value)
 
-            self.assertEqual((yield dut.f.b.data), 0b001)
-            self.assertEqual((yield dut.f.f.data), 0b111)
+            self.assertEqual(ctx.get(dut.f.b.data), 0b001)
+            self.assertEqual(ctx.get(dut.f.f.data), 0b111)
 
         sim = Simulator(dut)
         sim.add_clock(1e-6)
-        sim.add_testbench(process)
+        sim.add_testbench(testbench)
         with sim.write_vcd(vcd_file="test.vcd"):
             sim.run()
 
     def test_sim_single(self):
         dut = Register(Field(action.RW, unsigned(1), init=1), access="rw")
 
-        def process():
+        async def testbench(ctx):
             # Check init values:
 
-            self.assertEqual((yield dut.f.data), 1)
-            self.assertEqual((yield dut.f.port.r_data), 1)
+            self.assertEqual(ctx.get(dut.f.data), 1)
+            self.assertEqual(ctx.get(dut.f.port.r_data), 1)
 
             # Initiator read:
 
-            yield dut.element.r_stb.eq(1)
-            yield Delay()
-
-            self.assertEqual((yield dut.f.port.r_stb), 1)
-
-            yield dut.element.r_stb.eq(0)
+            ctx.set(dut.element.r_stb, 1)
+            self.assertEqual(ctx.get(dut.f.port.r_stb), 1)
+            ctx.set(dut.element.r_stb, 0)
 
             # Initiator write:
 
-            yield dut.element.w_stb.eq(1)
-            yield dut.element.w_data.eq(0)
-            yield Delay()
+            ctx.set(dut.element.w_stb, 1)
+            ctx.set(dut.element.w_data, 0)
 
-            self.assertEqual((yield dut.f.port.w_stb), 1)
-            self.assertEqual((yield dut.f.port.w_data), 0)
+            self.assertEqual(ctx.get(dut.f.port.w_stb), 1)
+            self.assertEqual(ctx.get(dut.f.port.w_data), 0)
 
-            yield Tick()
-            yield dut.element.w_stb.eq(0)
-            yield Delay()
-
-            self.assertEqual((yield dut.f.data), 0)
+            await ctx.tick()
+            ctx.set(dut.element.w_stb, 0)
+            self.assertEqual(ctx.get(dut.f.data), 0)
 
         sim = Simulator(dut)
         sim.add_clock(1e-6)
-        sim.add_testbench(process)
+        sim.add_testbench(testbench)
         with sim.write_vcd(vcd_file="test.vcd"):
             sim.run()
 
@@ -978,77 +967,77 @@ class BridgeTestCase(unittest.TestCase):
 
         dut = Bridge(regs.as_memory_map())
 
-        def process():
-            yield dut.bus.addr.eq(0)
-            yield dut.bus.r_stb.eq(1)
-            yield dut.bus.w_stb.eq(1)
-            yield dut.bus.w_data.eq(0xa)
-            yield Tick()
-            self.assertEqual((yield dut.bus.r_data), 0x0)
-            self.assertEqual((yield reg_rw_4 .f.a.port.r_stb), 1)
-            self.assertEqual((yield reg_rw_8 .f.a.port.r_stb), 0)
-            self.assertEqual((yield reg_rw_16.f.a.port.r_stb), 0)
-            self.assertEqual((yield reg_rw_4 .f.a.port.w_stb), 1)
-            self.assertEqual((yield reg_rw_8 .f.a.port.w_stb), 0)
-            self.assertEqual((yield reg_rw_16.f.a.port.w_stb), 0)
-            yield dut.bus.r_stb.eq(0)
-            yield dut.bus.w_stb.eq(0)
-            yield Tick()
-            self.assertEqual((yield reg_rw_4.f.a.data), 0xa)
+        async def testbench(ctx):
+            ctx.set(dut.bus.addr, 0)
+            ctx.set(dut.bus.r_stb, 1)
+            ctx.set(dut.bus.w_stb, 1)
+            ctx.set(dut.bus.w_data, 0xa)
+            await ctx.tick()
+            self.assertEqual(ctx.get(dut.bus.r_data), 0x0)
+            self.assertEqual(ctx.get(reg_rw_4 .f.a.port.r_stb), 1)
+            self.assertEqual(ctx.get(reg_rw_8 .f.a.port.r_stb), 0)
+            self.assertEqual(ctx.get(reg_rw_16.f.a.port.r_stb), 0)
+            self.assertEqual(ctx.get(reg_rw_4 .f.a.port.w_stb), 1)
+            self.assertEqual(ctx.get(reg_rw_8 .f.a.port.w_stb), 0)
+            self.assertEqual(ctx.get(reg_rw_16.f.a.port.w_stb), 0)
+            ctx.set(dut.bus.r_stb, 0)
+            ctx.set(dut.bus.w_stb, 0)
+            await ctx.tick()
+            self.assertEqual(ctx.get(reg_rw_4.f.a.data), 0xa)
 
-            yield dut.bus.addr.eq(1)
-            yield dut.bus.r_stb.eq(1)
-            yield dut.bus.w_stb.eq(1)
-            yield dut.bus.w_data.eq(0xbb)
-            yield Tick()
-            self.assertEqual((yield dut.bus.r_data), 0x11)
-            self.assertEqual((yield reg_rw_4 .f.a.port.r_stb), 0)
-            self.assertEqual((yield reg_rw_8 .f.a.port.r_stb), 1)
-            self.assertEqual((yield reg_rw_16.f.a.port.r_stb), 0)
-            self.assertEqual((yield reg_rw_4 .f.a.port.w_stb), 0)
-            self.assertEqual((yield reg_rw_8 .f.a.port.w_stb), 1)
-            self.assertEqual((yield reg_rw_16.f.a.port.w_stb), 0)
-            yield dut.bus.r_stb.eq(0)
-            yield dut.bus.w_stb.eq(0)
-            yield Tick()
-            self.assertEqual((yield reg_rw_8.f.a.data), 0xbb)
+            ctx.set(dut.bus.addr, 1)
+            ctx.set(dut.bus.r_stb, 1)
+            ctx.set(dut.bus.w_stb, 1)
+            ctx.set(dut.bus.w_data, 0xbb)
+            await ctx.tick()
+            self.assertEqual(ctx.get(dut.bus.r_data), 0x11)
+            self.assertEqual(ctx.get(reg_rw_4 .f.a.port.r_stb), 0)
+            self.assertEqual(ctx.get(reg_rw_8 .f.a.port.r_stb), 1)
+            self.assertEqual(ctx.get(reg_rw_16.f.a.port.r_stb), 0)
+            self.assertEqual(ctx.get(reg_rw_4 .f.a.port.w_stb), 0)
+            self.assertEqual(ctx.get(reg_rw_8 .f.a.port.w_stb), 1)
+            self.assertEqual(ctx.get(reg_rw_16.f.a.port.w_stb), 0)
+            ctx.set(dut.bus.r_stb, 0)
+            ctx.set(dut.bus.w_stb, 0)
+            await ctx.tick()
+            self.assertEqual(ctx.get(reg_rw_8.f.a.data), 0xbb)
 
-            yield dut.bus.addr.eq(2)
-            yield dut.bus.r_stb.eq(1)
-            yield dut.bus.w_stb.eq(1)
-            yield dut.bus.w_data.eq(0xcc)
-            yield Tick()
-            self.assertEqual((yield dut.bus.r_data), 0x22)
-            self.assertEqual((yield reg_rw_4 .f.a.port.r_stb), 0)
-            self.assertEqual((yield reg_rw_8 .f.a.port.r_stb), 0)
-            self.assertEqual((yield reg_rw_16.f.a.port.r_stb), 1)
-            self.assertEqual((yield reg_rw_4 .f.a.port.w_stb), 0)
-            self.assertEqual((yield reg_rw_8 .f.a.port.w_stb), 0)
-            self.assertEqual((yield reg_rw_16.f.a.port.w_stb), 0)
-            yield dut.bus.r_stb.eq(0)
-            yield dut.bus.w_stb.eq(0)
-            yield Tick()
-            self.assertEqual((yield reg_rw_16.f.a.data), 0x3322)
+            ctx.set(dut.bus.addr, 2)
+            ctx.set(dut.bus.r_stb, 1)
+            ctx.set(dut.bus.w_stb, 1)
+            ctx.set(dut.bus.w_data, 0xcc)
+            await ctx.tick()
+            self.assertEqual(ctx.get(dut.bus.r_data), 0x22)
+            self.assertEqual(ctx.get(reg_rw_4 .f.a.port.r_stb), 0)
+            self.assertEqual(ctx.get(reg_rw_8 .f.a.port.r_stb), 0)
+            self.assertEqual(ctx.get(reg_rw_16.f.a.port.r_stb), 1)
+            self.assertEqual(ctx.get(reg_rw_4 .f.a.port.w_stb), 0)
+            self.assertEqual(ctx.get(reg_rw_8 .f.a.port.w_stb), 0)
+            self.assertEqual(ctx.get(reg_rw_16.f.a.port.w_stb), 0)
+            ctx.set(dut.bus.r_stb, 0)
+            ctx.set(dut.bus.w_stb, 0)
+            await ctx.tick()
+            self.assertEqual(ctx.get(reg_rw_16.f.a.data), 0x3322)
 
-            yield dut.bus.addr.eq(3)
-            yield dut.bus.r_stb.eq(1)
-            yield dut.bus.w_stb.eq(1)
-            yield dut.bus.w_data.eq(0xdd)
-            yield Tick()
-            self.assertEqual((yield dut.bus.r_data), 0x33)
-            self.assertEqual((yield reg_rw_4 .f.a.port.r_stb), 0)
-            self.assertEqual((yield reg_rw_8 .f.a.port.r_stb), 0)
-            self.assertEqual((yield reg_rw_16.f.a.port.r_stb), 0)
-            self.assertEqual((yield reg_rw_4 .f.a.port.w_stb), 0)
-            self.assertEqual((yield reg_rw_8 .f.a.port.w_stb), 0)
-            self.assertEqual((yield reg_rw_16.f.a.port.w_stb), 1)
-            yield dut.bus.r_stb.eq(0)
-            yield dut.bus.w_stb.eq(0)
-            yield Tick()
-            self.assertEqual((yield reg_rw_16.f.a.data), 0xddcc)
+            ctx.set(dut.bus.addr, 3)
+            ctx.set(dut.bus.r_stb, 1)
+            ctx.set(dut.bus.w_stb, 1)
+            ctx.set(dut.bus.w_data, 0xdd)
+            await ctx.tick()
+            self.assertEqual(ctx.get(dut.bus.r_data), 0x33)
+            self.assertEqual(ctx.get(reg_rw_4 .f.a.port.r_stb), 0)
+            self.assertEqual(ctx.get(reg_rw_8 .f.a.port.r_stb), 0)
+            self.assertEqual(ctx.get(reg_rw_16.f.a.port.r_stb), 0)
+            self.assertEqual(ctx.get(reg_rw_4 .f.a.port.w_stb), 0)
+            self.assertEqual(ctx.get(reg_rw_8 .f.a.port.w_stb), 0)
+            self.assertEqual(ctx.get(reg_rw_16.f.a.port.w_stb), 1)
+            ctx.set(dut.bus.r_stb, 0)
+            ctx.set(dut.bus.w_stb, 0)
+            await ctx.tick()
+            self.assertEqual(ctx.get(reg_rw_16.f.a.data), 0xddcc)
 
         sim = Simulator(dut)
         sim.add_clock(1e-6)
-        sim.add_testbench(process)
+        sim.add_testbench(testbench)
         with sim.write_vcd(vcd_file="test.vcd"):
             sim.run()
