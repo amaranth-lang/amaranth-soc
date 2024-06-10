@@ -36,16 +36,16 @@ class PeripheralTestCase(unittest.TestCase):
                 r"Input stages must be a non-negative integer, not -1"):
             gpio.Peripheral(pin_count=1, addr_width=2, data_width=8, input_stages=-1)
 
-    def _csr_access(self, dut, addr, r_stb=0, w_stb=0, w_data=0, r_data=0):
-        yield dut.bus.addr.eq(addr)
-        yield dut.bus.r_stb.eq(r_stb)
-        yield dut.bus.w_stb.eq(w_stb)
-        yield dut.bus.w_data.eq(w_data)
-        yield Tick()
+    async def _csr_access(self, ctx, dut, addr, r_stb=0, w_stb=0, w_data=0, r_data=0):
+        ctx.set(dut.bus.addr, addr)
+        ctx.set(dut.bus.r_stb, r_stb)
+        ctx.set(dut.bus.w_stb, w_stb)
+        ctx.set(dut.bus.w_data, w_data)
+        await ctx.tick()
         if r_stb:
-            self.assertEqual((yield dut.bus.r_data), r_data)
-        yield dut.bus.r_stb.eq(0)
-        yield dut.bus.w_stb.eq(0)
+            self.assertEqual(ctx.get(dut.bus.r_data), r_data)
+        ctx.set(dut.bus.r_stb, 0)
+        ctx.set(dut.bus.w_stb, 0)
 
     def test_sim(self):
         dut = gpio.Peripheral(pin_count=4, addr_width=2, data_width=8)
@@ -55,277 +55,277 @@ class PeripheralTestCase(unittest.TestCase):
         output_addr = 0x2
         setclr_addr = 0x3
 
-        def testbench():
+        async def testbench(ctx):
             # INPUT_ONLY mode =====================================================================
 
             # - read Mode:
-            yield from self._csr_access(dut, mode_addr, r_stb=1, r_data=0b00000000)
+            await self._csr_access(ctx, dut, mode_addr, r_stb=1, r_data=0b00000000)
             for n in range(4):
-                self.assertEqual((yield dut.alt_mode[n]), 0)
-                self.assertEqual((yield dut.pins[n].oe), 0)
-                self.assertEqual((yield dut.pins[n].o), 0)
+                self.assertEqual(ctx.get(dut.alt_mode[n]), 0)
+                self.assertEqual(ctx.get(dut.pins[n].oe), 0)
+                self.assertEqual(ctx.get(dut.pins[n].o), 0)
 
             # - read Input:
-            yield dut.pins[1].i.eq(1)
-            yield dut.pins[3].i.eq(1)
-            yield from self._csr_access(dut, input_addr, r_stb=1, r_data=0x0)
-            yield dut.pins[1].i.eq(0)
-            yield dut.pins[3].i.eq(0)
-            yield from self._csr_access(dut, input_addr, r_stb=1, r_data=0x0)
-            yield from self._csr_access(dut, input_addr, r_stb=1, r_data=0xa)
-            yield from self._csr_access(dut, input_addr, r_stb=1, r_data=0x0)
+            ctx.set(dut.pins[1].i, 1)
+            ctx.set(dut.pins[3].i, 1)
+            await self._csr_access(ctx, dut, input_addr, r_stb=1, r_data=0x0)
+            ctx.set(dut.pins[1].i, 0)
+            ctx.set(dut.pins[3].i, 0)
+            await self._csr_access(ctx, dut, input_addr, r_stb=1, r_data=0x0)
+            await self._csr_access(ctx, dut, input_addr, r_stb=1, r_data=0xa)
+            await self._csr_access(ctx, dut, input_addr, r_stb=1, r_data=0x0)
 
             # - write 0xf to Output:
-            yield from self._csr_access(dut, output_addr, r_stb=1, r_data=0x0, w_stb=1, w_data=0xf)
-            yield Tick()
+            await self._csr_access(ctx, dut, output_addr, r_stb=1, r_data=0x0, w_stb=1, w_data=0xf)
+            await ctx.tick()
             for n in range(4):
-                self.assertEqual((yield dut.pins[n].oe), 0)
-                self.assertEqual((yield dut.pins[n].o), 1)
+                self.assertEqual(ctx.get(dut.pins[n].oe), 0)
+                self.assertEqual(ctx.get(dut.pins[n].o), 1)
 
             # - write 0x22 to SetClr (clear pins[0] and pins[2]):
-            yield from self._csr_access(dut, setclr_addr, w_stb=1, w_data=0x22)
-            yield Tick()
+            await self._csr_access(ctx, dut, setclr_addr, w_stb=1, w_data=0x22)
+            await ctx.tick()
             for n in range(4):
-                self.assertEqual((yield dut.pins[n].oe), 0)
-            self.assertEqual((yield dut.pins[0].o), 0)
-            self.assertEqual((yield dut.pins[1].o), 1)
-            self.assertEqual((yield dut.pins[2].o), 0)
-            self.assertEqual((yield dut.pins[3].o), 1)
+                self.assertEqual(ctx.get(dut.pins[n].oe), 0)
+            self.assertEqual(ctx.get(dut.pins[0].o), 0)
+            self.assertEqual(ctx.get(dut.pins[1].o), 1)
+            self.assertEqual(ctx.get(dut.pins[2].o), 0)
+            self.assertEqual(ctx.get(dut.pins[3].o), 1)
 
             # - write 0x0 to Output:
-            yield from self._csr_access(dut, output_addr, r_stb=1, r_data=0xa, w_stb=1, w_data=0x0)
-            yield Tick()
+            await self._csr_access(ctx, dut, output_addr, r_stb=1, r_data=0xa, w_stb=1, w_data=0x0)
+            await ctx.tick()
             for n in range(4):
-                self.assertEqual((yield dut.pins[n].oe), 0)
-                self.assertEqual((yield dut.pins[n].o), 0)
+                self.assertEqual(ctx.get(dut.pins[n].oe), 0)
+                self.assertEqual(ctx.get(dut.pins[n].o), 0)
 
             # - write 0x44 to SetClr (set pins[1] and pins[3]):
-            yield from self._csr_access(dut, setclr_addr, w_stb=1, w_data=0x44)
-            yield Tick()
+            await self._csr_access(ctx, dut, setclr_addr, w_stb=1, w_data=0x44)
+            await ctx.tick()
             for n in range(4):
-                self.assertEqual((yield dut.pins[n].oe), 0)
-            self.assertEqual((yield dut.pins[0].o), 0)
-            self.assertEqual((yield dut.pins[1].o), 1)
-            self.assertEqual((yield dut.pins[2].o), 0)
-            self.assertEqual((yield dut.pins[3].o), 1)
+                self.assertEqual(ctx.get(dut.pins[n].oe), 0)
+            self.assertEqual(ctx.get(dut.pins[0].o), 0)
+            self.assertEqual(ctx.get(dut.pins[1].o), 1)
+            self.assertEqual(ctx.get(dut.pins[2].o), 0)
+            self.assertEqual(ctx.get(dut.pins[3].o), 1)
 
             # - write 0x0 to Output:
-            yield from self._csr_access(dut, output_addr, r_stb=1, r_data=0xa, w_stb=1, w_data=0x0)
-            yield Tick()
+            await self._csr_access(ctx, dut, output_addr, r_stb=1, r_data=0xa, w_stb=1, w_data=0x0)
+            await ctx.tick()
             for n in range(4):
-                self.assertEqual((yield dut.pins[n].oe), 0)
-                self.assertEqual((yield dut.pins[n].o), 0)
+                self.assertEqual(ctx.get(dut.pins[n].oe), 0)
+                self.assertEqual(ctx.get(dut.pins[n].o), 0)
 
             # - write 0xff to SetClr (no-op):
-            yield from self._csr_access(dut, setclr_addr, w_stb=1, w_data=0xff)
-            yield Tick()
+            await self._csr_access(ctx, dut, setclr_addr, w_stb=1, w_data=0xff)
+            await ctx.tick()
             for n in range(4):
-                self.assertEqual((yield dut.pins[n].oe), 0)
-                self.assertEqual((yield dut.pins[n].o), 0)
+                self.assertEqual(ctx.get(dut.pins[n].oe), 0)
+                self.assertEqual(ctx.get(dut.pins[n].o), 0)
 
             # PUSH_PULL mode ======================================================================
 
             # - write Mode:
-            yield from self._csr_access(dut, mode_addr, w_stb=1, w_data=0b01010101)
-            yield Tick()
+            await self._csr_access(ctx, dut, mode_addr, w_stb=1, w_data=0b01010101)
+            await ctx.tick()
             for n in range(4):
-                self.assertEqual((yield dut.alt_mode[n]), 0)
-                self.assertEqual((yield dut.pins[n].oe), 1)
-                self.assertEqual((yield dut.pins[n].o), 0)
+                self.assertEqual(ctx.get(dut.alt_mode[n]), 0)
+                self.assertEqual(ctx.get(dut.pins[n].oe), 1)
+                self.assertEqual(ctx.get(dut.pins[n].o), 0)
 
             # - read Input:
-            yield dut.pins[1].i.eq(1)
-            yield dut.pins[3].i.eq(1)
-            yield from self._csr_access(dut, input_addr, r_stb=1, r_data=0x0)
-            yield dut.pins[1].i.eq(0)
-            yield dut.pins[3].i.eq(0)
-            yield from self._csr_access(dut, input_addr, r_stb=1, r_data=0x0)
-            yield from self._csr_access(dut, input_addr, r_stb=1, r_data=0xa)
-            yield from self._csr_access(dut, input_addr, r_stb=1, r_data=0x0)
+            ctx.set(dut.pins[1].i, 1)
+            ctx.set(dut.pins[3].i, 1)
+            await self._csr_access(ctx, dut, input_addr, r_stb=1, r_data=0x0)
+            ctx.set(dut.pins[1].i, 0)
+            ctx.set(dut.pins[3].i, 0)
+            await self._csr_access(ctx, dut, input_addr, r_stb=1, r_data=0x0)
+            await self._csr_access(ctx, dut, input_addr, r_stb=1, r_data=0xa)
+            await self._csr_access(ctx, dut, input_addr, r_stb=1, r_data=0x0)
 
             # - write 0xf to Output:
-            yield from self._csr_access(dut, output_addr, r_stb=1, r_data=0x0, w_stb=1, w_data=0xf)
-            yield Tick()
+            await self._csr_access(ctx, dut, output_addr, r_stb=1, r_data=0x0, w_stb=1, w_data=0xf)
+            await ctx.tick()
             for n in range(4):
-                self.assertEqual((yield dut.pins[n].oe), 1)
-                self.assertEqual((yield dut.pins[n].o), 1)
+                self.assertEqual(ctx.get(dut.pins[n].oe), 1)
+                self.assertEqual(ctx.get(dut.pins[n].o), 1)
 
             # - write 0x22 to SetClr (clear pins[0] and pins[2]):
-            yield from self._csr_access(dut, setclr_addr, w_stb=1, w_data=0x22)
-            yield Tick()
+            await self._csr_access(ctx, dut, setclr_addr, w_stb=1, w_data=0x22)
+            await ctx.tick()
             for n in range(4):
-                self.assertEqual((yield dut.pins[n].oe), 1)
-            self.assertEqual((yield dut.pins[0].o), 0)
-            self.assertEqual((yield dut.pins[1].o), 1)
-            self.assertEqual((yield dut.pins[2].o), 0)
-            self.assertEqual((yield dut.pins[3].o), 1)
+                self.assertEqual(ctx.get(dut.pins[n].oe), 1)
+            self.assertEqual(ctx.get(dut.pins[0].o), 0)
+            self.assertEqual(ctx.get(dut.pins[1].o), 1)
+            self.assertEqual(ctx.get(dut.pins[2].o), 0)
+            self.assertEqual(ctx.get(dut.pins[3].o), 1)
 
             # - write 0x0 to Output:
-            yield from self._csr_access(dut, output_addr, r_stb=1, r_data=0xa, w_stb=1, w_data=0x0)
-            yield Tick()
+            await self._csr_access(ctx, dut, output_addr, r_stb=1, r_data=0xa, w_stb=1, w_data=0x0)
+            await ctx.tick()
             for n in range(4):
-                self.assertEqual((yield dut.pins[n].oe), 1)
-                self.assertEqual((yield dut.pins[n].o), 0)
+                self.assertEqual(ctx.get(dut.pins[n].oe), 1)
+                self.assertEqual(ctx.get(dut.pins[n].o), 0)
 
             # - write 0x44 to SetClr (set pins[1] and pins[3]):
-            yield from self._csr_access(dut, setclr_addr, w_stb=1, w_data=0x44)
-            yield Tick()
+            await self._csr_access(ctx, dut, setclr_addr, w_stb=1, w_data=0x44)
+            await ctx.tick()
             for n in range(4):
-                self.assertEqual((yield dut.pins[n].oe), 1)
-            self.assertEqual((yield dut.pins[0].o), 0)
-            self.assertEqual((yield dut.pins[1].o), 1)
-            self.assertEqual((yield dut.pins[2].o), 0)
-            self.assertEqual((yield dut.pins[3].o), 1)
+                self.assertEqual(ctx.get(dut.pins[n].oe), 1)
+            self.assertEqual(ctx.get(dut.pins[0].o), 0)
+            self.assertEqual(ctx.get(dut.pins[1].o), 1)
+            self.assertEqual(ctx.get(dut.pins[2].o), 0)
+            self.assertEqual(ctx.get(dut.pins[3].o), 1)
 
             # - write 0x0 to Output:
-            yield from self._csr_access(dut, output_addr, r_stb=1, r_data=0xa, w_stb=1, w_data=0x0)
-            yield Tick()
+            await self._csr_access(ctx, dut, output_addr, r_stb=1, r_data=0xa, w_stb=1, w_data=0x0)
+            await ctx.tick()
             for n in range(4):
-                self.assertEqual((yield dut.pins[n].oe), 1)
-                self.assertEqual((yield dut.pins[n].o), 0)
+                self.assertEqual(ctx.get(dut.pins[n].oe), 1)
+                self.assertEqual(ctx.get(dut.pins[n].o), 0)
 
             # - write 0xff to SetClr (no-op):
-            yield from self._csr_access(dut, setclr_addr, w_stb=1, w_data=0xff)
-            yield Tick()
+            await self._csr_access(ctx, dut, setclr_addr, w_stb=1, w_data=0xff)
+            await ctx.tick()
             for n in range(4):
-                self.assertEqual((yield dut.pins[n].oe), 1)
-                self.assertEqual((yield dut.pins[n].o), 0)
+                self.assertEqual(ctx.get(dut.pins[n].oe), 1)
+                self.assertEqual(ctx.get(dut.pins[n].o), 0)
 
             # OPEN_DRAIN mode =====================================================================
 
             # - write Mode:
-            yield from self._csr_access(dut, mode_addr, w_stb=1, w_data=0b10101010)
-            yield Tick()
+            await self._csr_access(ctx, dut, mode_addr, w_stb=1, w_data=0b10101010)
+            await ctx.tick()
             for n in range(4):
-                self.assertEqual((yield dut.alt_mode[n]), 0)
-                self.assertEqual((yield dut.pins[n].oe), 1)
-                self.assertEqual((yield dut.pins[n].o), 0)
+                self.assertEqual(ctx.get(dut.alt_mode[n]), 0)
+                self.assertEqual(ctx.get(dut.pins[n].oe), 1)
+                self.assertEqual(ctx.get(dut.pins[n].o), 0)
 
             # - read Input:
-            yield dut.pins[1].i.eq(1)
-            yield dut.pins[3].i.eq(1)
-            yield from self._csr_access(dut, input_addr, r_stb=1, r_data=0x0)
-            yield dut.pins[1].i.eq(0)
-            yield dut.pins[3].i.eq(0)
-            yield from self._csr_access(dut, input_addr, r_stb=1, r_data=0x0)
-            yield from self._csr_access(dut, input_addr, r_stb=1, r_data=0xa)
-            yield from self._csr_access(dut, input_addr, r_stb=1, r_data=0x0)
+            ctx.set(dut.pins[1].i, 1)
+            ctx.set(dut.pins[3].i, 1)
+            await self._csr_access(ctx, dut, input_addr, r_stb=1, r_data=0x0)
+            ctx.set(dut.pins[1].i, 0)
+            ctx.set(dut.pins[3].i, 0)
+            await self._csr_access(ctx, dut, input_addr, r_stb=1, r_data=0x0)
+            await self._csr_access(ctx, dut, input_addr, r_stb=1, r_data=0xa)
+            await self._csr_access(ctx, dut, input_addr, r_stb=1, r_data=0x0)
 
             # - write 0xf to Output:
-            yield from self._csr_access(dut, output_addr, r_stb=1, r_data=0x0, w_stb=1, w_data=0xf)
-            yield Tick()
+            await self._csr_access(ctx, dut, output_addr, r_stb=1, r_data=0x0, w_stb=1, w_data=0xf)
+            await ctx.tick()
             for n in range(4):
-                self.assertEqual((yield dut.pins[n].oe), 0)
-                self.assertEqual((yield dut.pins[n].o), 0)
+                self.assertEqual(ctx.get(dut.pins[n].oe), 0)
+                self.assertEqual(ctx.get(dut.pins[n].o), 0)
 
             # - write 0x22 to SetClr (clear pins[0] and pins[2]):
-            yield from self._csr_access(dut, setclr_addr, w_stb=1, w_data=0x22)
-            yield Tick()
-            self.assertEqual((yield dut.pins[0].oe), 1)
-            self.assertEqual((yield dut.pins[1].oe), 0)
-            self.assertEqual((yield dut.pins[2].oe), 1)
-            self.assertEqual((yield dut.pins[3].oe), 0)
+            await self._csr_access(ctx, dut, setclr_addr, w_stb=1, w_data=0x22)
+            await ctx.tick()
+            self.assertEqual(ctx.get(dut.pins[0].oe), 1)
+            self.assertEqual(ctx.get(dut.pins[1].oe), 0)
+            self.assertEqual(ctx.get(dut.pins[2].oe), 1)
+            self.assertEqual(ctx.get(dut.pins[3].oe), 0)
             for n in range(4):
-                self.assertEqual((yield dut.pins[n].o), 0)
+                self.assertEqual(ctx.get(dut.pins[n].o), 0)
 
             # - write 0x0 to Output:
-            yield from self._csr_access(dut, output_addr, r_stb=1, r_data=0xa, w_stb=1, w_data=0x0)
-            yield Tick()
+            await self._csr_access(ctx, dut, output_addr, r_stb=1, r_data=0xa, w_stb=1, w_data=0x0)
+            await ctx.tick()
             for n in range(4):
-                self.assertEqual((yield dut.pins[n].oe), 1)
-                self.assertEqual((yield dut.pins[n].o), 0)
+                self.assertEqual(ctx.get(dut.pins[n].oe), 1)
+                self.assertEqual(ctx.get(dut.pins[n].o), 0)
 
             # - write 0x44 to SetClr (set pins[1] and pins[3]):
-            yield from self._csr_access(dut, setclr_addr, w_stb=1, w_data=0x44)
-            yield Tick()
-            self.assertEqual((yield dut.pins[0].oe), 1)
-            self.assertEqual((yield dut.pins[1].oe), 0)
-            self.assertEqual((yield dut.pins[2].oe), 1)
-            self.assertEqual((yield dut.pins[3].oe), 0)
+            await self._csr_access(ctx, dut, setclr_addr, w_stb=1, w_data=0x44)
+            await ctx.tick()
+            self.assertEqual(ctx.get(dut.pins[0].oe), 1)
+            self.assertEqual(ctx.get(dut.pins[1].oe), 0)
+            self.assertEqual(ctx.get(dut.pins[2].oe), 1)
+            self.assertEqual(ctx.get(dut.pins[3].oe), 0)
             for n in range(4):
-                self.assertEqual((yield dut.pins[n].o), 0)
+                self.assertEqual(ctx.get(dut.pins[n].o), 0)
 
             # - write 0x0 to Output:
-            yield from self._csr_access(dut, output_addr, r_stb=1, r_data=0xa, w_stb=1, w_data=0x0)
-            yield Tick()
+            await self._csr_access(ctx, dut, output_addr, r_stb=1, r_data=0xa, w_stb=1, w_data=0x0)
+            await ctx.tick()
             for n in range(4):
-                self.assertEqual((yield dut.pins[n].oe), 1)
-                self.assertEqual((yield dut.pins[n].o), 0)
+                self.assertEqual(ctx.get(dut.pins[n].oe), 1)
+                self.assertEqual(ctx.get(dut.pins[n].o), 0)
 
             # - write 0xff to SetClr (no-op):
-            yield from self._csr_access(dut, setclr_addr, w_stb=1, w_data=0xff)
-            yield Tick()
+            await self._csr_access(ctx, dut, setclr_addr, w_stb=1, w_data=0xff)
+            await ctx.tick()
             for n in range(4):
-                self.assertEqual((yield dut.pins[n].oe), 1)
-                self.assertEqual((yield dut.pins[n].o), 0)
+                self.assertEqual(ctx.get(dut.pins[n].oe), 1)
+                self.assertEqual(ctx.get(dut.pins[n].o), 0)
 
             # ALTERNATE mode ======================================================================
 
             # - write Mode:
-            yield from self._csr_access(dut, mode_addr, w_stb=1, w_data=0b11111111)
-            yield Tick()
+            await self._csr_access(ctx, dut, mode_addr, w_stb=1, w_data=0b11111111)
+            await ctx.tick()
             for n in range(4):
-                self.assertEqual((yield dut.alt_mode[n]), 1)
-                self.assertEqual((yield dut.pins[n].oe), 0)
-                self.assertEqual((yield dut.pins[n].o), 0)
+                self.assertEqual(ctx.get(dut.alt_mode[n]), 1)
+                self.assertEqual(ctx.get(dut.pins[n].oe), 0)
+                self.assertEqual(ctx.get(dut.pins[n].o), 0)
 
             # - read Input:
-            yield dut.pins[1].i.eq(1)
-            yield dut.pins[3].i.eq(1)
-            yield from self._csr_access(dut, input_addr, r_stb=1, r_data=0x0)
-            yield dut.pins[1].i.eq(0)
-            yield dut.pins[3].i.eq(0)
-            yield from self._csr_access(dut, input_addr, r_stb=1, r_data=0x0)
-            yield from self._csr_access(dut, input_addr, r_stb=1, r_data=0xa)
-            yield from self._csr_access(dut, input_addr, r_stb=1, r_data=0x0)
+            ctx.set(dut.pins[1].i, 1)
+            ctx.set(dut.pins[3].i, 1)
+            await self._csr_access(ctx, dut, input_addr, r_stb=1, r_data=0x0)
+            ctx.set(dut.pins[1].i, 0)
+            ctx.set(dut.pins[3].i, 0)
+            await self._csr_access(ctx, dut, input_addr, r_stb=1, r_data=0x0)
+            await self._csr_access(ctx, dut, input_addr, r_stb=1, r_data=0xa)
+            await self._csr_access(ctx, dut, input_addr, r_stb=1, r_data=0x0)
 
             # - write 0xf to Output:
-            yield from self._csr_access(dut, output_addr, r_stb=1, r_data=0x0, w_stb=1, w_data=0xf)
-            yield Tick()
+            await self._csr_access(ctx, dut, output_addr, r_stb=1, r_data=0x0, w_stb=1, w_data=0xf)
+            await ctx.tick()
             for n in range(4):
-                self.assertEqual((yield dut.pins[n].oe), 0)
-                self.assertEqual((yield dut.pins[n].o), 1)
+                self.assertEqual(ctx.get(dut.pins[n].oe), 0)
+                self.assertEqual(ctx.get(dut.pins[n].o), 1)
 
             # - write 0x22 to SetClr (clear pins[0] and pins[2]):
-            yield from self._csr_access(dut, setclr_addr, w_stb=1, w_data=0x22)
-            yield Tick()
+            await self._csr_access(ctx, dut, setclr_addr, w_stb=1, w_data=0x22)
+            await ctx.tick()
             for n in range(4):
-                self.assertEqual((yield dut.pins[n].oe), 0)
-            self.assertEqual((yield dut.pins[0].o), 0)
-            self.assertEqual((yield dut.pins[1].o), 1)
-            self.assertEqual((yield dut.pins[2].o), 0)
-            self.assertEqual((yield dut.pins[3].o), 1)
+                self.assertEqual(ctx.get(dut.pins[n].oe), 0)
+            self.assertEqual(ctx.get(dut.pins[0].o), 0)
+            self.assertEqual(ctx.get(dut.pins[1].o), 1)
+            self.assertEqual(ctx.get(dut.pins[2].o), 0)
+            self.assertEqual(ctx.get(dut.pins[3].o), 1)
 
             # - write 0x0 to Output:
-            yield from self._csr_access(dut, output_addr, r_stb=1, r_data=0xa, w_stb=1, w_data=0x0)
-            yield Tick()
+            await self._csr_access(ctx, dut, output_addr, r_stb=1, r_data=0xa, w_stb=1, w_data=0x0)
+            await ctx.tick()
             for n in range(4):
-                self.assertEqual((yield dut.pins[n].oe), 0)
-                self.assertEqual((yield dut.pins[n].o), 0)
+                self.assertEqual(ctx.get(dut.pins[n].oe), 0)
+                self.assertEqual(ctx.get(dut.pins[n].o), 0)
 
             # - write 0x44 to SetClr (set pins[1] and pins[3]):
-            yield from self._csr_access(dut, setclr_addr, w_stb=1, w_data=0x44)
-            yield Tick()
+            await self._csr_access(ctx, dut, setclr_addr, w_stb=1, w_data=0x44)
+            await ctx.tick()
             for n in range(4):
-                self.assertEqual((yield dut.pins[n].oe), 0)
-            self.assertEqual((yield dut.pins[0].o), 0)
-            self.assertEqual((yield dut.pins[1].o), 1)
-            self.assertEqual((yield dut.pins[2].o), 0)
-            self.assertEqual((yield dut.pins[3].o), 1)
+                self.assertEqual(ctx.get(dut.pins[n].oe), 0)
+            self.assertEqual(ctx.get(dut.pins[0].o), 0)
+            self.assertEqual(ctx.get(dut.pins[1].o), 1)
+            self.assertEqual(ctx.get(dut.pins[2].o), 0)
+            self.assertEqual(ctx.get(dut.pins[3].o), 1)
 
             # - write 0x0 to Output:
-            yield from self._csr_access(dut, output_addr, r_stb=1, r_data=0xa, w_stb=1, w_data=0x0)
-            yield Tick()
+            await self._csr_access(ctx, dut, output_addr, r_stb=1, r_data=0xa, w_stb=1, w_data=0x0)
+            await ctx.tick()
             for n in range(4):
-                self.assertEqual((yield dut.pins[n].oe), 0)
-                self.assertEqual((yield dut.pins[n].o), 0)
+                self.assertEqual(ctx.get(dut.pins[n].oe), 0)
+                self.assertEqual(ctx.get(dut.pins[n].o), 0)
 
             # - write 0xff to SetClr (no-op):
-            yield from self._csr_access(dut, setclr_addr, w_stb=1, w_data=0xff)
-            yield Tick()
+            await self._csr_access(ctx, dut, setclr_addr, w_stb=1, w_data=0xff)
+            await ctx.tick()
             for n in range(4):
-                self.assertEqual((yield dut.pins[n].oe), 0)
-                self.assertEqual((yield dut.pins[n].o), 0)
+                self.assertEqual(ctx.get(dut.pins[n].oe), 0)
+                self.assertEqual(ctx.get(dut.pins[n].o), 0)
 
         sim = Simulator(dut)
         sim.add_clock(1e-6)
@@ -337,14 +337,14 @@ class PeripheralTestCase(unittest.TestCase):
         dut = gpio.Peripheral(pin_count=4, addr_width=2, data_width=8, input_stages=0)
         input_addr = 0x1
 
-        def testbench():
-            yield from self._csr_access(dut, input_addr, r_stb=1, r_data=0x0)
-            yield dut.pins[1].i.eq(1)
-            yield dut.pins[3].i.eq(1)
-            yield from self._csr_access(dut, input_addr, r_stb=1, r_data=0xa)
-            yield dut.pins[1].i.eq(0)
-            yield dut.pins[3].i.eq(0)
-            yield from self._csr_access(dut, input_addr, r_stb=1, r_data=0x0)
+        async def testbench(ctx):
+            await self._csr_access(ctx, dut, input_addr, r_stb=1, r_data=0x0)
+            ctx.set(dut.pins[1].i, 1)
+            ctx.set(dut.pins[3].i, 1)
+            await self._csr_access(ctx, dut, input_addr, r_stb=1, r_data=0xa)
+            ctx.set(dut.pins[1].i, 0)
+            ctx.set(dut.pins[3].i, 0)
+            await self._csr_access(ctx, dut, input_addr, r_stb=1, r_data=0x0)
 
         sim = Simulator(dut)
         sim.add_clock(1e-6)
