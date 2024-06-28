@@ -14,7 +14,7 @@ license = {file = "LICENSE.txt"}
 requires-python = "~=3.8"
 dependencies = [
   # this version requirement needs to be synchronized with the one in .github/workflows/main.yml
-  "amaranth@git+https://github.com/amaranth-lang/amaranth",
+  "amaranth>=0.5,<0.6",
 ]
 
 [project.urls]
