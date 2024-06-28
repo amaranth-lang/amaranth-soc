@@ -23,18 +23,18 @@ class WishboneCSRBridge(wiring.Component):
     Reads and writes always take ``self.data_width // csr_bus.data_width + 1`` cycles to complete,
     regardless of the select inputs. Write side effects occur simultaneously with acknowledgement.
 
-    Parameters
-    ----------
-    csr_bus : :class:`..csr.Interface`
+    Arguments
+    ---------
+    csr_bus : :class:`.csr.bus.Interface`
         CSR bus driven by the bridge.
     data_width : int
         Wishbone bus data width. Optional. If ``None``, defaults to ``csr_bus.data_width``.
     name : str
-        Window name. Optional. See :class:`..memory.MemoryMap`.
+        Window name. Optional. See :class:`~.memory.MemoryMap`.
 
     Attributes
     ----------
-    wb_bus : :class:`..wishbone.Interface`
+    wb_bus : :class:`.wishbone.bus.Interface`
         Wishbone bus provided by the bridge.
     """
     def __init__(self, csr_bus, *, data_width=None, name=None):
