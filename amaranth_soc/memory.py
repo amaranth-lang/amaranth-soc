@@ -56,14 +56,13 @@ class _Namespace:
         self._assignments = dict()
 
     def is_available(self, *names, reasons=None):
-        for name in names:
-            assert name and isinstance(name, tuple)
-            assert all(part and isinstance(part, str) for part in name)
+        names = tuple(MemoryMap.Name(name) for name in names)
 
         conflicts = False
         for name_idx, name in enumerate(names):
             # Also check for conflicts between the queried names.
-            reserved_names = sorted(self._assignments.keys() | set(names[name_idx + 1:]))
+            reserved_names = sorted(self._assignments.keys() | set(names[name_idx + 1:]),
+                                    key=lambda name: tuple(str(part) for part in name))
 
             for reserved_name in reserved_names:
                 # A conflict happens in the following cases:
@@ -90,7 +89,7 @@ class _Namespace:
 
     def assign(self, name, obj):
         assert self.is_available(name)
-        self._assignments[name] = obj
+        self._assignments[MemoryMap.Name(name)] = obj
 
     def extend(self, other):
         assert isinstance(other, _Namespace)
@@ -99,6 +98,9 @@ class _Namespace:
 
     def names(self):
         yield from self._assignments.keys()
+
+    def __repr__(self):
+        return repr(self._assignments)
 
 
 class ResourceInfo:
@@ -110,7 +112,7 @@ class ResourceInfo:
     ----------
     resource : :class:`wiring.Component`
         A resource located in the memory map. See :meth:`MemoryMap.add_resource` for details.
-    path : :class:`tuple` of (:class:`str` or (:class:`tuple` of :class:`str`))
+    path : :class:`tuple` of :class:`MemoryMap.Name`
         Path of the resource. It is composed of the names of each window sitting between
         the resource and the memory map from which this :class:`ResourceInfo` was obtained.
         See :meth:`MemoryMap.add_window` for details.
@@ -124,12 +126,8 @@ class ResourceInfo:
         is located behind a window that uses sparse addressing.
     """
     def __init__(self, resource, path, start, end, width):
-        flattened_path = []
-        for name in path:
-            flattened_path += name if name and isinstance(name, tuple) else [name]
-        if not (path and isinstance(path, tuple) and
-                all(name and isinstance(name, str) for name in flattened_path)):
-            raise TypeError(f"Path must be a non-empty tuple of non-empty strings, not {path!r}")
+        if not isinstance(path, tuple) or len(path) == 0:
+            raise TypeError(f"Path must be a non-empty tuple, not {path!r}")
         if not isinstance(start, int) or start < 0:
             raise TypeError(f"Start address must be a non-negative integer, not {start!r}")
         if not isinstance(end, int) or end <= start:
@@ -139,7 +137,7 @@ class ResourceInfo:
             raise TypeError(f"Width must be a non-negative integer, not {width!r}")
 
         self._resource = resource
-        self._path     = tuple(path)
+        self._path     = tuple(MemoryMap.Name(name) for name in path)
         self._start    = start
         self._end      = end
         self._width    = width
@@ -166,6 +164,25 @@ class ResourceInfo:
 
 
 class MemoryMap:
+    class Name(tuple):
+        """Name of a resource or window located in a memory map."""
+        def __new__(cls, name, /):
+            if isinstance(name, str):
+                name = (name,)
+            if not isinstance(name, tuple) or len(name) == 0:
+                raise TypeError(f"Name must be a non-empty tuple, not {name!r}")
+            for part in name:
+                if isinstance(part, str) and part:
+                    continue
+                if isinstance(part, int) and part >= 0:
+                    continue
+                raise TypeError(f"Name {name!r} must be composed of non-empty strings or "
+                                f"non-negative integers, not {part!r}")
+            return tuple.__new__(MemoryMap.Name, name)
+
+        def __repr__(self):
+            return "Name({})".format(", ".join(f"{part!r}" for part in self))
+
     """Memory map.
 
     A memory map is a hierarchical description of an address space, describing the structure of
@@ -192,23 +209,18 @@ class MemoryMap:
         Range alignment. Each added resource and window will be placed at an address that is
         a multiple of ``2 ** alignment``, and its size will be rounded up to be a multiple of
         ``2 ** alignment``.
-    name : str
-        Name of the address range. Optional.
     """
-    def __init__(self, *, addr_width, data_width, alignment=0, name=None):
+    def __init__(self, *, addr_width, data_width, alignment=0):
         if not isinstance(addr_width, int) or addr_width <= 0:
             raise ValueError(f"Address width must be a positive integer, not {addr_width!r}")
         if not isinstance(data_width, int) or data_width <= 0:
             raise ValueError(f"Data width must be a positive integer, not {data_width!r}")
         if not isinstance(alignment, int) or alignment < 0:
             raise ValueError(f"Alignment must be a non-negative integer, not {alignment!r}")
-        if name is not None and not (isinstance(name, str) and name):
-            raise ValueError(f"Name must be a non-empty string, not {name!r}")
 
         self._addr_width = addr_width
         self._data_width = data_width
         self._alignment  = alignment
-        self._name       = name
 
         self._ranges     = _RangeMap()
         self._resources  = dict()
@@ -229,10 +241,6 @@ class MemoryMap:
     @property
     def alignment(self):
         return self._alignment
-
-    @property
-    def name(self):
-        return self._name
 
     def freeze(self):
         """Freeze the memory map.
@@ -295,7 +303,7 @@ class MemoryMap:
                     overlap_descrs.append(f"resource {overlap!r} at {resource_range.start:#x}.."
                                           f"{resource_range.stop:#x}")
                 if id(overlap) in self._windows:
-                    _, window_range = self._windows[id(overlap)]
+                    _, _, window_range = self._windows[id(overlap)]
                     overlap_descrs.append(f"window {overlap!r} at {window_range.start:#x}.."
                                           f"{window_range.stop:#x}")
             raise ValueError(f"Address range {addr:#x}..{addr + size:#x} overlaps with " +
@@ -313,7 +321,7 @@ class MemoryMap:
         ---------
         resource : :class:`wiring.Component`
             The resource to be added.
-        name : :class:`tuple` of (:class:`str`)
+        name : :class:`MemoryMap.Name`
             Name of the resource. It must not conflict with the name of other resources or windows
             present in this memory map.
         addr : int
@@ -356,10 +364,7 @@ class MemoryMap:
             raise ValueError(f"Resource {resource!r} is already added at address range "
                              f"{addr_range.start:#x}..{addr_range.stop:#x}")
 
-        if not (name and isinstance(name, tuple) and
-                all(part and isinstance(part, str) for part in name)):
-            raise TypeError(f"Resource name must be a non-empty tuple of non-empty strings, not "
-                            f"{name!r}")
+        name = MemoryMap.Name(name)
 
         reasons = []
         if not self._namespace.is_available(name, reasons=reasons):
@@ -399,7 +404,7 @@ class MemoryMap:
             _, resource_name, _ = self._resources[id(resource)]
             yield resource, resource_name, (resource_range.start, resource_range.stop)
 
-    def add_window(self, window, *, addr=None, sparse=None):
+    def add_window(self, window, *, name=None, addr=None, sparse=None):
         """Add a window.
 
         A window is a device on a bus that provides access to a different bus, i.e. a bus bridge.
@@ -422,6 +427,9 @@ class MemoryMap:
         window : :class:`MemoryMap`
             A memory map describing the layout of the window. It is frozen as a side-effect of
             being added to this memory map.
+        name : :class:`MemoryMap.Name`
+            Name of the window. Optional. It must not conflict with the name of other resources
+            or windows present in this memory map.
         addr : int
             Address of the window. Optional. If ``None``, the implicit next address will be used
             after aligning it to ``2 ** window.addr_width``. Otherwise, the exact specified address
@@ -472,7 +480,7 @@ class MemoryMap:
             raise ValueError(f"Memory map has been frozen. Cannot add window {window!r}")
 
         if id(window) in self._windows:
-            _, addr_range = self._windows[id(window)]
+            _, _, addr_range = self._windows[id(window)]
             raise ValueError(f"Window {window!r} is already added at address range "
                              f"{addr_range.start:#x}..{addr_range.stop:#x}")
 
@@ -489,7 +497,10 @@ class MemoryMap:
                                  f"data width {self.data_width} is not an integer multiple of "
                                  f"window data width {window.data_width}")
 
-        queries = window._namespace.names() if window.name is None else ((window.name,),)
+        if name is not None:
+            name = MemoryMap.Name(name)
+
+        queries = window._namespace.names() if name is None else (name,)
         reasons = []
         if not self._namespace.is_available(*queries, reasons=reasons):
             reasons_as_string = "".join(f"\n- {reason}" for reason in reasons)
@@ -523,11 +534,11 @@ class MemoryMap:
         addr_range = self._compute_addr_range(addr, size, ratio, alignment=alignment)
         window.freeze()
         self._ranges.insert(addr_range, window)
-        self._windows[id(window)] = window, addr_range
-        if window.name is None:
+        self._windows[id(window)] = window, name, addr_range
+        if name is None:
             self._namespace.extend(window._namespace)
         else:
-            self._namespace.assign((window.name,), window)
+            self._namespace.assign(name, window)
         self._next_addr = addr_range.stop
         return addr_range.start, addr_range.stop, addr_range.step
 
@@ -538,7 +549,7 @@ class MemoryMap:
 
         Yield values
         ------------
-        A tuple ``window, (start, end, ratio)`` describing the address range assigned to
+        A tuple ``window, name, (start, end, ratio)`` describing the address range assigned to
         the window. When bridging buses of unequal data width, ``ratio`` is the amount of
         contiguous addresses on the narrower bus that are accessed for each transaction on
         the wider bus. Otherwise, it is always 1.
@@ -547,7 +558,8 @@ class MemoryMap:
             addr_range, assignment = item
             return id(assignment) in self._windows
         for window_range, window in filter(is_window, self._ranges.items()):
-            yield window, (window_range.start, window_range.stop, window_range.step)
+            _, window_name, _ = self._windows[id(window)]
+            yield window, window_name, (window_range.start, window_range.stop, window_range.step)
 
     def window_patterns(self):
         """Iterate local windows and patterns that match their address ranges.
@@ -556,24 +568,24 @@ class MemoryMap:
 
         Yield values
         ------------
-        A tuple ``window, (pattern, ratio)`` describing the address range assigned to the window.
-        ``pattern`` is a ``self.addr_width`` wide pattern that may be used in ``Case`` or ``match``
-        to determine if an address signal is within the address range of ``window``. When bridging
-        buses of unequal data width, ``ratio`` is the amount of contiguous addresses on
+        A tuple ``window, name, (pattern, ratio)`` describing the address range assigned to the
+        window. ``pattern`` is a ``self.addr_width`` wide pattern that may be used in ``Case`` or
+        ``match`` to determine if an address signal is within the address range of ``window``. When
+        bridging buses of unequal data width, ``ratio`` is the amount of contiguous addresses on
         the narrower bus that are accessed for each transaction on the wider bus. Otherwise,
         it is always 1.
         """
-        for window, (window_start, window_stop, window_ratio) in self.windows():
+        for window, window_name, (window_start, window_stop, window_ratio) in self.windows():
             const_bits = self.addr_width - window.addr_width
             if const_bits > 0:
                 const_pat = f"{window_start >> window.addr_width:0{const_bits}b}"
             else:
                 const_pat = ""
             pattern = const_pat + "-" * window.addr_width
-            yield window, (pattern, window_ratio)
+            yield window, window_name, (pattern, window_ratio)
 
     @staticmethod
-    def _translate(resource_info, window, window_range):
+    def _translate(resource_info, window, window_name, window_range):
         # When a resource is accessed through a dense window, its size and address on the wider
         # bus must be integer multiples of the number of addresses on the narrower bus that are
         # accessed for each transaction.
@@ -583,7 +595,7 @@ class MemoryMap:
         # layouts that cannot be easily represented, so reject those.
         assert window_range.step == 1 or resource_info.width == window.data_width
 
-        path  = resource_info.path if window.name is None else (window.name, *resource_info.path)
+        path  = resource_info.path if window_name is None else (window_name, *resource_info.path)
         size  = (resource_info.end - resource_info.start) // window_range.step
         start = (resource_info.start // window_range.step) + window_range.start
         width = resource_info.width * window_range.step
@@ -606,8 +618,9 @@ class MemoryMap:
                 yield ResourceInfo(assignment, resource_path, addr_range.start, addr_range.stop,
                                    self.data_width)
             elif id(assignment) in self._windows:
+                _, window_name, _ = self._windows[id(assignment)]
                 for resource_info in assignment.all_resources():
-                    yield self._translate(resource_info, assignment, addr_range)
+                    yield self._translate(resource_info, assignment, window_name, addr_range)
             else:
                 assert False # :nocov:
 
@@ -636,9 +649,10 @@ class MemoryMap:
             return ResourceInfo(resource, resource_path, resource_range.start, resource_range.stop,
                                 self.data_width)
 
-        for window, window_range in self._windows.values():
+        for window, window_name, window_range in self._windows.values():
             try:
-                return self._translate(window.find_resource(resource), window, window_range)
+                resource_info = window.find_resource(resource)
+                return self._translate(resource_info, window, window_name, window_range)
             except KeyError:
                 pass
 
@@ -663,10 +677,10 @@ class MemoryMap:
         if id(assignment) in self._resources:
             return assignment
         elif id(assignment) in self._windows:
-            _, addr_range = self._windows[id(assignment)]
+            _, _, addr_range = self._windows[id(assignment)]
             return assignment.decode_address((address - addr_range.start) * addr_range.step)
         else:
             assert False # :nocov:
 
     def __repr__(self):
-        return f"MemoryMap(name={self.name!r})"
+        return f"MemoryMap({self._namespace!r})"

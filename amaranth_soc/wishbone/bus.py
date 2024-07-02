@@ -274,8 +274,6 @@ class Decoder(wiring.Component):
         Optional signal set. See :class:`Signature`.
     alignment : int, power-of-2 exponent
         Window alignment. Optional. See :class:`..memory.MemoryMap`.
-    name : :class:`str`
-        Window name. Optional. See :class:`..memory.MemoryMap`.
 
     Attributes
     ----------
@@ -290,7 +288,7 @@ class Decoder(wiring.Component):
                                               granularity=granularity, features=features))})
         self.bus.memory_map = MemoryMap(
                 addr_width=max(1, addr_width + exact_log2(data_width // granularity)),
-                data_width=granularity, alignment=alignment, name=name)
+                data_width=granularity, alignment=alignment)
         self._subs = dict()
 
     def align_to(self, alignment):
@@ -300,7 +298,7 @@ class Decoder(wiring.Component):
         """
         return self.bus.memory_map.align_to(alignment)
 
-    def add(self, sub_bus, *, addr=None, sparse=False):
+    def add(self, sub_bus, *, name=None, addr=None, sparse=False):
         """Add a window to a subordinate bus.
 
         The decoder can perform either sparse or dense address translation. If dense address
@@ -338,7 +336,8 @@ class Decoder(wiring.Component):
                                  f"decoder does not have a corresponding input")
 
         self._subs[sub_bus.memory_map] = sub_bus
-        return self.bus.memory_map.add_window(sub_bus.memory_map, addr=addr, sparse=sparse)
+        return self.bus.memory_map.add_window(sub_bus.memory_map, name=name, addr=addr,
+                                              sparse=sparse)
 
     def elaborate(self, platform):
         m = Module()
@@ -349,7 +348,7 @@ class Decoder(wiring.Component):
         stall_fanin = 0
 
         with m.Switch(self.bus.adr):
-            for sub_map, (sub_pat, sub_ratio) in self.bus.memory_map.window_patterns():
+            for sub_map, sub_name, (sub_pat, sub_ratio) in self.bus.memory_map.window_patterns():
                 sub_bus = self._subs[sub_map]
 
                 m.d.comb += [

@@ -42,8 +42,6 @@ class EventMonitor(wiring.Component):
         CSR bus data width. See :class:`..csr.Interface`.
     alignment : int, power-of-2 exponent
         CSR address alignment. See :class:`..memory.MemoryMap`.
-    name : str
-        Window name. Optional. See :class:`..memory.MemoryMap`.
 
     Attributes
     ----------
@@ -75,9 +73,7 @@ class EventMonitor(wiring.Component):
             "src": Out(self._monitor.src.signature),
             "bus": In(self._mux.bus.signature),
         })
-        self.bus.memory_map = MemoryMap(addr_width=addr_width, data_width=data_width,
-                                        alignment=alignment, name=name)
-        self.bus.memory_map.add_window(self._mux.bus.memory_map)
+        self.bus.memory_map = self._mux.bus.memory_map
 
     def elaborate(self, platform):
         m = Module()

@@ -29,8 +29,8 @@ class WishboneCSRBridge(wiring.Component):
         CSR bus driven by the bridge.
     data_width : int
         Wishbone bus data width. Optional. If ``None``, defaults to ``csr_bus.data_width``.
-    name : str
-        Window name. Optional. See :class:`..memory.MemoryMap`.
+    name : :class:`..memory.MemoryMap.Name`
+        Window name. Optional.
 
     Attributes
     ----------
@@ -59,10 +59,10 @@ class WishboneCSRBridge(wiring.Component):
         super().__init__({"wb_bus": In(wb_sig)})
 
         self.wb_bus.memory_map = MemoryMap(addr_width=csr_bus.addr_width,
-                                           data_width=csr_bus.data_width, name=name)
+                                           data_width=csr_bus.data_width)
         # Since granularity of the Wishbone interface matches the data width of the CSR bus,
         # no width conversion is performed, even if the Wishbone data width is greater.
-        self.wb_bus.memory_map.add_window(csr_bus.memory_map)
+        self.wb_bus.memory_map.add_window(csr_bus.memory_map, name=name)
 
         self._csr_bus = csr_bus
 

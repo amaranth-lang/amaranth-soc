@@ -237,8 +237,6 @@ class Peripheral(wiring.Component):
         CSR bus address width.
     data_width : :class:`int`
         CSR bus data width.
-    name : :class:`str`
-        CSR bus window name. Optional.
     input_stages : :class:`int`
         Number of synchronization stages between pin inputs and the :class:`~Peripheral.Input`
         register. Optional. Defaults to ``2``.
@@ -259,13 +257,13 @@ class Peripheral(wiring.Component):
     :exc:`TypeError`
         If ``input_stages`` is not a non-negative integer.
     """
-    def __init__(self, *, pin_count, addr_width, data_width, name=None, input_stages=2):
+    def __init__(self, *, pin_count, addr_width, data_width, input_stages=2):
         if not isinstance(pin_count, int) or pin_count <= 0:
             raise TypeError(f"Pin count must be a positive integer, not {pin_count!r}")
         if not isinstance(input_stages, int) or input_stages < 0:
             raise TypeError(f"Input stages must be a non-negative integer, not {input_stages!r}")
 
-        regs = csr.Builder(addr_width=addr_width, data_width=data_width, name=name)
+        regs = csr.Builder(addr_width=addr_width, data_width=data_width)
 
         self._mode   = regs.add("Mode",   self.Mode(pin_count))
         self._input  = regs.add("Input",  self.Input(pin_count))
