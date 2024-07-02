@@ -596,8 +596,6 @@ class Builder:
         Data width.
     granularity : :class:`int`
         Granularity. Optional, defaults to 8 bits.
-    name : :class:`str`
-        Name of the address range. Optional.
 
     Raises
     ------
@@ -609,10 +607,8 @@ class Builder:
         If ``granularity`` is not a positive integer.
     :exc:`ValueError`
         If ``granularity`` is not a divisor of ``data_width``
-    :exc:`TypeError`
-        If ``name`` is not a string, or is empty.
     """
-    def __init__(self, *, addr_width, data_width, granularity=8, name=None):
+    def __init__(self, *, addr_width, data_width, granularity=8):
         if not isinstance(addr_width, int) or addr_width <= 0:
             raise TypeError(f"Address width must be a positive integer, not {addr_width!r}")
         if not isinstance(data_width, int) or data_width <= 0:
@@ -624,13 +620,9 @@ class Builder:
             raise ValueError(f"Granularity {granularity} is not a divisor of data width "
                              f"{data_width}")
 
-        if name is not None and not (isinstance(name, str) and name):
-            raise TypeError(f"Name must be a non-empty string, not {name!r}")
-
         self._addr_width  = addr_width
         self._data_width  = data_width
         self._granularity = granularity
-        self._name        = name
 
         self._registers   = dict()
         self._scope_stack = []
@@ -647,10 +639,6 @@ class Builder:
     @property
     def granularity(self):
         return self._granularity
-
-    @property
-    def name(self):
-        return self._name
 
     def freeze(self):
         """Freeze the builder.
@@ -765,16 +753,13 @@ class Builder:
 
     def as_memory_map(self):
         self.freeze()
-        memory_map = MemoryMap(addr_width=self.addr_width, data_width=self.data_width,
-                               name=self.name)
+        memory_map = MemoryMap(addr_width=self.addr_width, data_width=self.data_width)
         for reg, reg_name, reg_offset in self._registers.values():
             if reg_offset is not None:
                 reg_addr = (reg_offset * self.granularity) // self.data_width
             else:
                 reg_addr = None
             reg_size = (reg.element.width + self.data_width - 1) // self.data_width
-            # TBD: should integers be allowed inside resource names?
-            reg_name = tuple(str(part) for part in reg_name)
             memory_map.add_resource(reg, name=reg_name, addr=reg_addr, size=reg_size,
                                     alignment=ceil_log2(reg_size))
         memory_map.freeze()

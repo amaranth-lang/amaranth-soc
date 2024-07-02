@@ -1,3 +1,5 @@
+# amaranth: UnusedElaboratable=no
+
 import unittest
 import warnings
 from amaranth import *
@@ -684,18 +686,16 @@ class _MockRegister(Register, access="rw"):
 
 class BuilderTestCase(unittest.TestCase):
     def test_init(self):
-        # default name & granularity
+        # default granularity
         regs_0 = Builder(addr_width=30, data_width=32)
         self.assertEqual(regs_0.addr_width, 30)
         self.assertEqual(regs_0.data_width, 32)
         self.assertEqual(regs_0.granularity, 8)
-        self.assertEqual(regs_0.name, None)
-        # custom name & granularity
-        regs_1 = Builder(addr_width=31, data_width=32, granularity=16, name="periph")
+        # custom granularity
+        regs_1 = Builder(addr_width=31, data_width=32, granularity=16)
         self.assertEqual(regs_1.addr_width, 31)
         self.assertEqual(regs_1.data_width, 32)
         self.assertEqual(regs_1.granularity, 16)
-        self.assertEqual(regs_1.name, "periph")
 
     def test_init_wrong_addr_width(self):
         with self.assertRaisesRegex(TypeError,
@@ -716,14 +716,6 @@ class BuilderTestCase(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,
                 r"Granularity 7 is not a divisor of data width 32"):
             Builder(addr_width=30, data_width=32, granularity=7)
-
-    def test_init_wrong_name(self):
-        with self.assertRaisesRegex(TypeError,
-                r"Name must be a non-empty string, not 8"):
-            Builder(addr_width=30, data_width=32, name=8)
-        with self.assertRaisesRegex(TypeError,
-                r"Name must be a non-empty string, not ''"):
-            Builder(addr_width=30, data_width=32, name="")
 
     def test_add(self):
         regs = Builder(addr_width=30, data_width=32)
@@ -856,7 +848,7 @@ class BuilderTestCase(unittest.TestCase):
                 pass
 
     def test_memory_map(self):
-        regs = Builder(addr_width=30, data_width=32, name="foo")
+        regs = Builder(addr_width=30, data_width=32)
         ra = regs.add("a", _MockRegister("ra")) # offset=0x0
         with regs.Cluster("b"):
             rc = regs.add("c", _MockRegister("rc"), offset=0xc)
@@ -868,7 +860,6 @@ class BuilderTestCase(unittest.TestCase):
                 rg = regs.add("g", _MockRegister("rg", width=48)) # offset=0x18
 
         memory_map = regs.as_memory_map()
-        self.assertEqual(memory_map.name, "foo")
         self.assertEqual(memory_map.addr_width, 30)
         self.assertEqual(memory_map.data_width, 32)
         self.assertEqual(memory_map.alignment, 0)
@@ -893,11 +884,11 @@ class BuilderTestCase(unittest.TestCase):
         self.assertEqual(results[3][2], (3, 4))
 
         self.assertIs(results[4][0], rf)
-        self.assertEqual(results[4][1], ("b", "0", "f"))
+        self.assertEqual(results[4][1], ("b", 0, "f"))
         self.assertEqual(results[4][2], (4, 5))
 
         self.assertIs(results[5][0], rg)
-        self.assertEqual(results[5][1], ("b", "1", "g"))
+        self.assertEqual(results[5][1], ("b", 1, "g"))
         self.assertEqual(results[5][2], (6, 8))
 
     def test_memory_map_name_conflicts(self):
@@ -907,7 +898,8 @@ class BuilderTestCase(unittest.TestCase):
         regs_0.add("a", _MockRegister("bar"))
         with self.assertRaisesRegex(ValueError,
                 r"Resource _MockRegister\('bar'\) cannot be added to the local namespace:"
-                r"\n- \('a',\) conflicts with local name \('a',\) assigned to _MockRegister\('foo'\)"):
+                r"\n- Name\('a'\) conflicts with local name Name\('a'\) assigned to "
+                    r"_MockRegister\('foo'\)"):
             regs_0.as_memory_map()
         # register/cluster
         regs_1 = Builder(addr_width=8, data_width=32)
@@ -916,7 +908,8 @@ class BuilderTestCase(unittest.TestCase):
             regs_1.add("b", _MockRegister("bar"))
         with self.assertRaisesRegex(ValueError,
                 r"Resource _MockRegister\('bar'\) cannot be added to the local namespace:"
-                r"\n- \('a', 'b'\) conflicts with local name \('a',\) assigned to _MockRegister\('foo'\)"):
+                r"\n- Name\('a', 'b'\) conflicts with local name Name\('a'\) assigned to "
+                    r"_MockRegister\('foo'\)"):
             regs_1.as_memory_map()
         # cluster/register
         regs_2 = Builder(addr_width=8, data_width=32)
@@ -925,7 +918,8 @@ class BuilderTestCase(unittest.TestCase):
         regs_2.add("a", _MockRegister("bar"))
         with self.assertRaisesRegex(ValueError,
                 r"Resource _MockRegister\('bar'\) cannot be added to the local namespace:"
-                r"\n- \('a',\) conflicts with local name \('a', 'b'\) assigned to _MockRegister\('foo'\)"):
+                r"\n- Name\('a'\) conflicts with local name Name\('a', 'b'\) assigned to "
+                    r"_MockRegister\('foo'\)"):
             regs_2.as_memory_map()
 
 

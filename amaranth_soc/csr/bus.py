@@ -636,18 +636,16 @@ class Decoder(wiring.Component):
         Data width. See :class:`Interface`.
     alignment : int, power-of-2 exponent
         Window alignment. See :class:`..memory.MemoryMap`.
-    name : :class:`str`
-        Window name. Optional. See :class:`..memory.MemoryMap`.
 
     Attributes
     ----------
     bus : :class:`Interface`
         CSR bus providing access to subordinate buses.
     """
-    def __init__(self, *, addr_width, data_width, alignment=0, name=None):
+    def __init__(self, *, addr_width, data_width, alignment=0):
         super().__init__({"bus": In(Signature(addr_width=addr_width, data_width=data_width))})
         self.bus.memory_map = MemoryMap(addr_width=addr_width, data_width=data_width,
-                                        alignment=alignment, name=name)
+                                        alignment=alignment)
         self._subs = dict()
 
     def align_to(self, alignment):
@@ -657,10 +655,10 @@ class Decoder(wiring.Component):
         """
         return self.bus.memory_map.align_to(alignment)
 
-    def add(self, sub_bus, *, addr=None):
+    def add(self, sub_bus, *, name=None, addr=None):
         """Add a window to a subordinate bus.
 
-        See :meth:`MemoryMap.add_resource` for details.
+        See :meth:`MemoryMap.add_window` for details.
         """
         if isinstance(sub_bus, wiring.FlippedInterface):
             sub_bus_unflipped = flipped(sub_bus)
@@ -673,7 +671,7 @@ class Decoder(wiring.Component):
             raise ValueError(f"Subordinate bus has data width {sub_bus.data_width}, which is not "
                              f"the same as decoder data width {self.bus.data_width}")
         self._subs[sub_bus.memory_map] = sub_bus
-        return self.bus.memory_map.add_window(sub_bus.memory_map, addr=addr)
+        return self.bus.memory_map.add_window(sub_bus.memory_map, name=name, addr=addr)
 
     def elaborate(self, platform):
         m = Module()
@@ -682,7 +680,7 @@ class Decoder(wiring.Component):
         r_data_fanin = 0
 
         with m.Switch(self.bus.addr):
-            for sub_map, (sub_pat, sub_ratio) in self.bus.memory_map.window_patterns():
+            for sub_map, sub_name, (sub_pat, sub_ratio) in self.bus.memory_map.window_patterns():
                 assert sub_ratio == 1
 
                 sub_bus = self._subs[sub_map]
