@@ -18,8 +18,7 @@ class WishboneSRAMTestCase(unittest.TestCase):
         self.assertEqual(dut_1.wb_bus.addr_width, 10)
         self.assertEqual(dut_1.wb_bus.data_width, 32)
         self.assertEqual(dut_1.wb_bus.granularity, 32)
-        self.assertEqual(dut_1.wb_bus.features,
-                         {wishbone.Feature.CTI, wishbone.Feature.BTE})
+        self.assertEqual(dut_1.wb_bus.features, frozenset())
         self.assertEqual(dut_1.wb_bus.memory_map.addr_width, 10)
         self.assertEqual(dut_1.wb_bus.memory_map.data_width, 32)
         self.assertEqual(dut_1.wb_bus.memory_map.alignment, 0)
@@ -34,8 +33,7 @@ class WishboneSRAMTestCase(unittest.TestCase):
         self.assertEqual(dut_2.wb_bus.addr_width, 1)
         self.assertEqual(dut_2.wb_bus.data_width, 16)
         self.assertEqual(dut_2.wb_bus.granularity, 8)
-        self.assertEqual(dut_2.wb_bus.features,
-                         {wishbone.Feature.CTI, wishbone.Feature.BTE})
+        self.assertEqual(dut_2.wb_bus.features, frozenset())
         self.assertEqual(dut_2.wb_bus.memory_map.addr_width, 2)
         self.assertEqual(dut_2.wb_bus.memory_map.data_width, 8)
         self.assertEqual(dut_2.wb_bus.memory_map.alignment, 0)
@@ -75,109 +73,57 @@ class WishboneSRAMTestCase(unittest.TestCase):
     def test_sim_writable(self):
         dut = WishboneSRAM(size=128, data_width=32, granularity=8, writable=True, init=range(32))
 
-        async def wb_cycle(ctx, *, adr, sel, we, dat_w, cti, bte=0, assert_dat_r=None):
-            ctx.set(dut.wb_bus.cyc, 1)
-            ctx.set(dut.wb_bus.stb, 1)
-            ctx.set(dut.wb_bus.adr, adr)
-            ctx.set(dut.wb_bus.sel, sel)
-            ctx.set(dut.wb_bus.we, we)
-            ctx.set(dut.wb_bus.dat_w, dat_w)
-            ctx.set(dut.wb_bus.cti, cti)
-            ctx.set(dut.wb_bus.bte, bte)
-
-            await ctx.tick()
-            self.assertEqual(ctx.get(dut.wb_bus.ack), 1)
-            if assert_dat_r is not None:
-                self.assertEqual(ctx.get(dut.wb_bus.dat_r), assert_dat_r)
-
-            ctx.set(dut.wb_bus.cyc, 0)
-            ctx.set(dut.wb_bus.stb, 0)
-
         async def testbench(ctx):
             self.assertEqual(ctx.get(dut.wb_bus.ack), 0)
             for i in range(32):
                 self.assertEqual(ctx.get(dut._mem_data[i]), i)
 
-            # cti = CLASSIC =======================================================================
+            await ctx.tick()
 
             # - left shift all values by 24 bits:
+
             for i in range(32):
-                await wb_cycle(ctx, cti=wishbone.CycleType.CLASSIC,
-                               adr=i, sel=0b1001, we=1, dat_w=(i << 24) | 0x00ffff00,
-                               assert_dat_r=i)
+                ctx.set(dut.wb_bus.cyc, 1)
+                ctx.set(dut.wb_bus.stb, 1)
+                ctx.set(dut.wb_bus.adr, i)
+                ctx.set(dut.wb_bus.sel, 0b1001)
+                ctx.set(dut.wb_bus.we, 1)
+                ctx.set(dut.wb_bus.dat_w, (i << 24) | 0x00ffff00)
+                await ctx.tick()
+                self.assertEqual(ctx.get(dut.wb_bus.ack), 1)
+                self.assertEqual(ctx.get(dut.wb_bus.dat_r), i)
                 await ctx.tick()
                 self.assertEqual(ctx.get(dut.wb_bus.ack), 0)
+                ctx.set(dut.wb_bus.cyc, 0)
+                ctx.set(dut.wb_bus.stb, 0)
+                await ctx.tick()
 
             for i in range(32):
                 self.assertEqual(ctx.get(dut._mem_data[i]), i << 24)
 
-            # cti = INCR_BURST, bte = LINEAR ======================================================
+            await ctx.tick()
 
             # - right shift all values by 24 bits:
-            for i in range(32):
-                cti = wishbone.CycleType.END_OF_BURST if i == 31 else wishbone.CycleType.INCR_BURST
-                await wb_cycle(ctx, cti=cti, bte=wishbone.BurstTypeExt.LINEAR,
-                               adr=i, sel=0b1001, we=1, dat_w=i | 0x00ffff00,
-                               assert_dat_r=i << 24)
 
-            await ctx.tick()
-            self.assertEqual(ctx.get(dut.wb_bus.ack), 0)
+            ctx.set(dut.wb_bus.cyc, 1)
+            ctx.set(dut.wb_bus.stb, 1)
+
+            for i in range(32):
+                ctx.set(dut.wb_bus.adr, i)
+                ctx.set(dut.wb_bus.sel, 0b1001)
+                ctx.set(dut.wb_bus.we, 1)
+                ctx.set(dut.wb_bus.dat_w, i | 0x00ffff00)
+                await ctx.tick()
+                self.assertEqual(ctx.get(dut.wb_bus.ack), 1)
+                self.assertEqual(ctx.get(dut.wb_bus.dat_r), i << 24)
+                await ctx.tick()
+                self.assertEqual(ctx.get(dut.wb_bus.ack), 0)
+
+            ctx.set(dut.wb_bus.cyc, 0)
+            ctx.set(dut.wb_bus.stb, 0)
+
             for i in range(32):
                 self.assertEqual(ctx.get(dut._mem_data[i]), i)
-
-            # cti = INCR_BURST, bte = WRAP_4 ======================================================
-
-            # - increment values at addresses 0..15:
-            for i in (1,2,3,0, 5,6,7,4, 9,10,11,8, 13,14,15,12):
-                cti = wishbone.CycleType.END_OF_BURST if i == 12 else wishbone.CycleType.INCR_BURST
-                await wb_cycle(ctx, cti=cti, bte=wishbone.BurstTypeExt.WRAP_4,
-                               adr=i, sel=0b0001, we=1, dat_w=i + 1,
-                               assert_dat_r=i)
-
-            await ctx.tick()
-            self.assertEqual(ctx.get(dut.wb_bus.ack), 0)
-            for i in range(16):
-                self.assertEqual(ctx.get(dut._mem_data[i]), i + 1)
-
-            # cti = INCR_BURST, bte = WRAP_8 ======================================================
-
-            # - increment values at addresses 0..15:
-            for i in (1,2,3,4,5,6,7,0, 9,10,11,12,13,14,15,8):
-                cti = wishbone.CycleType.END_OF_BURST if i == 8 else wishbone.CycleType.INCR_BURST
-                await wb_cycle(ctx, cti=cti, bte=wishbone.BurstTypeExt.WRAP_8,
-                               adr=i, sel=0b0001, we=1, dat_w=i + 2,
-                               assert_dat_r=i + 1)
-
-            await ctx.tick()
-            self.assertEqual(ctx.get(dut.wb_bus.ack), 0)
-            for i in range(16):
-                self.assertEqual(ctx.get(dut._mem_data[i]), i + 2)
-
-            # cti = INCR_BURST, bte = WRAP_16 =====================================================
-
-            # - increment values at addresses 0..15:
-            for i in (1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,0):
-                cti = wishbone.CycleType.END_OF_BURST if i == 0 else wishbone.CycleType.INCR_BURST
-                await wb_cycle(ctx, cti=cti, bte=wishbone.BurstTypeExt.WRAP_16,
-                               adr=i, sel=0b0001, we=1, dat_w=i + 3,
-                               assert_dat_r=i + 2)
-
-            await ctx.tick()
-            self.assertEqual(ctx.get(dut.wb_bus.ack), 0)
-            for i in range(16):
-                self.assertEqual(ctx.get(dut._mem_data[i]), i + 3)
-
-            # cti = CONST_BURST ===================================================================
-
-            # - increment value at address 31, 16 times in a row:
-            for i in range(16):
-                cti = wishbone.CycleType.END_OF_BURST if i == 15 else wishbone.CycleType.CONST_BURST
-                await wb_cycle(ctx, cti=cti, adr=31, sel=0b0001, we=1, dat_w=31 + i + 1,
-                               assert_dat_r=31 + i)
-
-            await ctx.tick()
-            self.assertEqual(ctx.get(dut.wb_bus.ack), 0)
-            self.assertEqual(ctx.get(dut._mem_data[31]), 31 + 16)
 
         sim = Simulator(dut)
         sim.add_clock(1e-6)
