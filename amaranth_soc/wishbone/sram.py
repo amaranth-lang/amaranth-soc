@@ -14,8 +14,7 @@ __all__ = ["WishboneSRAM"]
 class WishboneSRAM(wiring.Component):
     """Wishbone-attached SRAM.
 
-    Wishbone bus accesses have a latency of one clock cycle. Incremental and constant address
-    bursts are supported.
+    Wishbone bus accesses have a latency of one clock cycle.
 
     Arguments
     ---------
@@ -63,8 +62,7 @@ class WishboneSRAM(wiring.Component):
         self._mem      = Memory(self._mem_data)
 
         super().__init__({"wb_bus": In(Signature(addr_width=exact_log2(self._mem.depth),
-                                                 data_width=data_width, granularity=granularity,
-                                                 features=("cti", "bte")))})
+                                                 data_width=data_width, granularity=granularity))})
 
         self.wb_bus.memory_map = MemoryMap(addr_width=exact_log2(size), data_width=granularity)
         self.wb_bus.memory_map.add_resource(self._mem, name=("mem",), size=size)
@@ -103,11 +101,11 @@ class WishboneSRAM(wiring.Component):
                 write_port.data.eq(self.wb_bus.dat_w),
             ]
 
-        with m.If(self.wb_bus.cyc & self.wb_bus.stb):
+        with m.If(self.wb_bus.ack):
+            m.d.sync += self.wb_bus.ack.eq(0)
+        with m.Elif(self.wb_bus.cyc & self.wb_bus.stb):
             if self.writable:
                 m.d.comb += write_port.en.eq(Mux(self.wb_bus.we, self.wb_bus.sel, 0))
             m.d.sync += self.wb_bus.ack.eq(1)
-        with m.Else():
-            m.d.sync += self.wb_bus.ack.eq(0)
 
         return m
