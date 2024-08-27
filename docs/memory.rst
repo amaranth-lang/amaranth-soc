@@ -62,15 +62,15 @@ Memory map resources can be iterated with :meth:`MemoryMap.resources`:
 
    >>> for resource, name, (start, end) in memory_map.resources():
    ...     print(f"name={name}, start={start:#x}, end={end:#x}, resource={resource}")
-   name=('ctrl',), start=0x0, end=0x4, resource=<...>
-   name=('data',), start=0x4, end=0x8, resource=<...>
+   name=Name('ctrl'), start=0x0, end=0x4, resource=<...>
+   name=Name('data'), start=0x4, end=0x8, resource=<...>
 
 A memory map can be queried with :meth:`MemoryMap.find_resource` to get the name and address range of a given resource:
 
 .. doctest::
 
    >>> memory_map.find_resource(reg_ctrl)
-   ResourceInfo(path=(('ctrl',),), start=0x0, end=0x4, width=8)
+   ResourceInfo(path=(Name('ctrl'),), start=0x0, end=0x4, width=8)
 
 The resource located at a given address can be retrieved with :meth:`MemoryMap.decode_address`:
 
@@ -145,8 +145,8 @@ Windows are added with :meth:`MemoryMap.add_window`, which returns a ``(start, e
    reg_tx_data = csr.Register(csr.Field(csr.action.RW, 32), "rw")
 
    memory_map = MemoryMap(addr_width=14, data_width=32)
-   rx_window  = MemoryMap(addr_width=12, data_width=32, name="rx")
-   tx_window  = MemoryMap(addr_width=12, data_width=32, name="tx")
+   rx_window  = MemoryMap(addr_width=12, data_width=32)
+   tx_window  = MemoryMap(addr_width=12, data_width=32)
 
 .. doctest::
 
@@ -155,7 +155,7 @@ Windows are added with :meth:`MemoryMap.add_window`, which returns a ``(start, e
 
    >>> rx_window.add_resource(reg_rx_data, size=1, name=("data",))
    (0, 1)
-   >>> memory_map.add_window(rx_window)
+   >>> memory_map.add_window(rx_window, name=("rx",))
    (4096, 8192, 1)
 
 The third value returned by :meth:`MemoryMap.add_window` represents the number of addresses that are accessed in the bus described by ``rx_window`` for one transaction in the bus described by ``memory_map``. It is 1 in this case, as both busses have the same width.
@@ -164,7 +164,7 @@ The third value returned by :meth:`MemoryMap.add_window` represents the number o
 
    >>> tx_window.add_resource(reg_tx_data, size=1, name=("data",))
    (0, 1)
-   >>> memory_map.add_window(tx_window)
+   >>> memory_map.add_window(tx_window, name=("tx",))
    (8192, 12288, 1)
 
 .. _memory-accessing-windows:
@@ -176,19 +176,19 @@ Memory map windows can be iterated with :meth:`MemoryMap.windows`:
 
 .. doctest::
 
-   >>> for window, (start, end, ratio) in memory_map.windows():
-   ...     print(f"{window}, start={start:#x}, end={end:#x}, ratio={ratio}")
-   MemoryMap(name='rx'), start=0x1000, end=0x2000, ratio=1
-   MemoryMap(name='tx'), start=0x2000, end=0x3000, ratio=1
+   >>> for window, name, (start, end, ratio) in memory_map.windows():
+   ...     print(f"{name}, start={start:#x}, end={end:#x}, ratio={ratio}")
+   Name('rx'), start=0x1000, end=0x2000, ratio=1
+   Name('tx'), start=0x2000, end=0x3000, ratio=1
 
 Windows can also be iterated with :meth:`MemoryMap.window_patterns`, which encodes their address ranges as bit patterns compatible with the :ref:`match operator <lang-matchop>` and the :ref:`Case block <lang-switch>`:
 
 .. doctest::
 
-   >>> for window, (pattern, ratio) in memory_map.window_patterns():
-   ...     print(f"{window}, pattern='{pattern}', ratio={ratio}")
-   MemoryMap(name='rx'), pattern='01------------', ratio=1
-   MemoryMap(name='tx'), pattern='10------------', ratio=1
+   >>> for window, name, (pattern, ratio) in memory_map.window_patterns():
+   ...     print(f"{name}, pattern='{pattern}', ratio={ratio}")
+   Name('rx'), pattern='01------------', ratio=1
+   Name('tx'), pattern='10------------', ratio=1
 
 Memory map resources can be recursively iterated with :meth:`MemoryMap.all_resources`, which yields instances of :class:`ResourceInfo`:
 
@@ -196,9 +196,9 @@ Memory map resources can be recursively iterated with :meth:`MemoryMap.all_resou
 
    >>> for res_info in memory_map.all_resources():
    ...     print(res_info)
-   ResourceInfo(path=(('ctrl',),), start=0x0, end=0x1, width=32)
-   ResourceInfo(path=('rx', ('data',)), start=0x1000, end=0x1001, width=32)
-   ResourceInfo(path=('tx', ('data',)), start=0x2000, end=0x2001, width=32)
+   ResourceInfo(path=(Name('ctrl'),), start=0x0, end=0x1, width=32)
+   ResourceInfo(path=(Name('rx'), Name('data')), start=0x1000, end=0x1001, width=32)
+   ResourceInfo(path=(Name('tx'), Name('data')), start=0x2000, end=0x2001, width=32)
 
 Address translation
 +++++++++++++++++++

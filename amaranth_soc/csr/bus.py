@@ -36,10 +36,8 @@ class Element(wiring.PureInterface):
 
         #: Read-only mode.
         R  = "r"
-
         #: Write-only mode.
         W  = "w"
-
         #: Read/write mode.
         RW = "rw"
 

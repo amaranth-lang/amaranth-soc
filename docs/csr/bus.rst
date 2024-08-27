@@ -19,7 +19,17 @@ The :mod:`amaranth_soc.csr.bus` module contains primitives to implement and acce
 Introduction
 ============
 
-The CSR bus API provides unopinionated primitives for defining and connecting the *Control and Status Registers* of SoC peripherals, with an emphasis on safety and resource efficiency. It is composed of low-level :ref:`register interfaces <csr-bus-element>`, :ref:`register multiplexers <csr-bus-multiplexer>` that provide access to the registers of a peripheral, and :ref:`bus decoders <csr-bus-decoder>` that provide access to the registers of multiple peripherals.
+Overview
+++++++++
+
+The CSR bus API provides unopinionated primitives for defining and connecting the *Control and Status Registers* of SoC peripherals, with an emphasis on safety and resource efficiency. It is composed of low-level :ref:`register interfaces <csr-bus-element>`, :ref:`multiplexers <csr-bus-multiplexer>` that provide access to the registers of a peripheral, and :ref:`bus decoders <csr-bus-decoder>` that provide access to subordinate bus interfaces.
+
+This diagram shows a CSR bus decoder being used to provide access to the registers of two peripherals:
+
+.. image:: _images/csr-bus.png
+
+Examples
+========
 
 .. _csr-bus-element:
 
@@ -93,7 +103,7 @@ The following example shows a very basic timer peripheral with an 8-bit CSR bus 
                ]
                return m
 
-       def __init__(self, name="timer"):
+       def __init__(self):
            super().__init__({
                "csr_bus": In(csr.Signature(addr_width=3, data_width=8)),
            })
@@ -101,8 +111,7 @@ The following example shows a very basic timer peripheral with an 8-bit CSR bus 
            self._reg_cnt = self.Cnt()
            self._reg_rst = self.Rst()
 
-           self.csr_bus.memory_map = MemoryMap(addr_width=3, data_width=8, alignment=2,
-                                               name=name)
+           self.csr_bus.memory_map = MemoryMap(addr_width=3, data_width=8, alignment=2)
            self.csr_bus.memory_map.add_resource(self._reg_cnt, size=3, name=("cnt",))
            self.csr_bus.memory_map.add_resource(self._reg_rst, size=3, name=("rst",))
 
@@ -132,8 +141,8 @@ The following example shows a very basic timer peripheral with an 8-bit CSR bus 
    >>> timer = BasicTimer()
    >>> for res_info in timer.csr_bus.memory_map.all_resources():
    ...     print(res_info)
-   ResourceInfo(path=(('cnt',),), start=0x0, end=0x4, width=8)
-   ResourceInfo(path=(('rst',),), start=0x4, end=0x8, width=8)
+   ResourceInfo(path=(Name('cnt'),), start=0x0, end=0x4, width=8)
+   ResourceInfo(path=(Name('rst'),), start=0x4, end=0x8, width=8)
 
 
 Registers are always accessed atomically, regardless of their size. Each register is split into chunks according to the CSR bus data width, and each chunk is assigned a consecutive address on the bus.
@@ -264,28 +273,28 @@ In the following example, a CSR decoder provides access to the registers of two 
 
 .. testcode::
 
-   timer0 = BasicTimer(name="timer0")
-   timer1 = BasicTimer(name="timer1")
+   timer0 = BasicTimer()
+   timer1 = BasicTimer()
 
    csr_dec = csr.Decoder(addr_width=16, data_width=8)
-   csr_dec.add(timer0.csr_bus, addr=0x0000)
-   csr_dec.add(timer1.csr_bus, addr=0x1000)
+   csr_dec.add(timer0.csr_bus, addr=0x0000, name="timer0")
+   csr_dec.add(timer1.csr_bus, addr=0x1000, name="timer1")
 
 .. doctest::
 
    >>> for res_info in csr_dec.bus.memory_map.all_resources():
    ...     print(res_info)
-   ResourceInfo(path=('timer0', ('cnt',)), start=0x0, end=0x4, width=8)
-   ResourceInfo(path=('timer0', ('rst',)), start=0x4, end=0x8, width=8)
-   ResourceInfo(path=('timer1', ('cnt',)), start=0x1000, end=0x1004, width=8)
-   ResourceInfo(path=('timer1', ('rst',)), start=0x1004, end=0x1008, width=8)
+   ResourceInfo(path=(Name('timer0'), Name('cnt')), start=0x0, end=0x4, width=8)
+   ResourceInfo(path=(Name('timer0'), Name('rst')), start=0x4, end=0x8, width=8)
+   ResourceInfo(path=(Name('timer1'), Name('cnt')), start=0x1000, end=0x1004, width=8)
+   ResourceInfo(path=(Name('timer1'), Name('rst')), start=0x1004, end=0x1008, width=8)
 
 Although there is no functional difference between adding a group of registers directly to a :class:`Multiplexer` and adding them to multiple :class:`Multiplexer`\ s that are aggregated with a :class:`Decoder`, hierarchical CSR buses are useful for organizing a hierarchical design.
 
 If many peripherals are directly served by a single :class:`Multiplexer`, a very large amount of ports will connect the peripheral registers to the multiplexer, and the cost of decoding logic would not be attributed to specific peripherals. With a :class:`Decoder`, only five signals per peripheral will be used, and the logic could be kept together with the peripheral.
 
-Register interface
-==================
+Register interfaces
+===================
 
 .. autoclass:: amaranth_soc.csr.bus::Element.Access()
    :no-members:
@@ -307,8 +316,8 @@ Register interface
 
 .. _csr-bus-interface:
 
-Bus interface
-=============
+Bus interfaces
+==============
 
 .. autoclass:: Signature()
    :no-members:
