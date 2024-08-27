@@ -128,8 +128,8 @@ class Peripheral(wiring.Component):
         """Input register.
 
         This :class:`~.csr.reg.Register` contains an array of ``pin_count`` read-only fields. Each
-        field is 1-bit wide and is driven by the input of its associated pin in the
-        :attr:`Peripheral.pins` array.
+        field is 1-bit wide and is driven by the input of its associated pin in the ``pins`` array
+        of the peripheral.
 
         Values sampled from pin inputs go through :attr:`Peripheral.input_stages` synchronization
         stages (on a rising edge of ``ClockSignal("sync")``) before reaching the register.
@@ -170,8 +170,8 @@ class Peripheral(wiring.Component):
         """Output register.
 
         This :class:`~.csr.reg.Register` contains an array of ``pin_count`` read/write fields. Each
-        field is 1-bit wide and drives the output of its associated pin in the
-        :attr:`Peripheral.pins` array, depending on its associated :class:`~Peripheral.Mode` field.
+        field is 1-bit wide and drives the output of its associated pin in the ``pins`` array of the
+        peripheral, depending on its associated :class:`~Peripheral.Mode` field.
 
         ----
 
