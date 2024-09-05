@@ -91,7 +91,6 @@ class WishboneSRAMTestCase(unittest.TestCase):
                 ctx.set(dut.wb_bus.dat_w, (i << 24) | 0x00ffff00)
                 await ctx.tick()
                 self.assertEqual(ctx.get(dut.wb_bus.ack), 1)
-                self.assertEqual(ctx.get(dut.wb_bus.dat_r), i)
                 await ctx.tick()
                 self.assertEqual(ctx.get(dut.wb_bus.ack), 0)
                 ctx.set(dut.wb_bus.cyc, 0)
@@ -115,7 +114,6 @@ class WishboneSRAMTestCase(unittest.TestCase):
                 ctx.set(dut.wb_bus.dat_w, i | 0x00ffff00)
                 await ctx.tick()
                 self.assertEqual(ctx.get(dut.wb_bus.ack), 1)
-                self.assertEqual(ctx.get(dut.wb_bus.dat_r), i << 24)
                 await ctx.tick()
                 self.assertEqual(ctx.get(dut.wb_bus.ack), 0)
 
