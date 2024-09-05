@@ -56,13 +56,6 @@ class FieldPort(wiring.PureInterface):
         def __init__(self, shape, access):
             if not isinstance(shape, ShapeLike):
                 raise TypeError(f"Field shape must be a shape-like object, not {shape!r}")
-            # TODO(py3.9): Remove this. Python 3.8 and below use cls.__name__ in the error message
-            # instead of cls.__qualname__.
-            # FieldPort.Access(access)
-            try:
-                FieldPort.Access(access)
-            except ValueError as e:
-                raise ValueError(f"{access!r} is not a valid FieldPort.Access") from e
 
             self._shape  = Shape.cast(shape)
             self._access = FieldPort.Access(access)
@@ -461,13 +454,7 @@ class Register(wiring.Component):
 
     def __init_subclass__(cls, *, access=None, **kwargs):
         if access is not None:
-            # TODO(py3.9): Remove this. Python 3.8 and below use cls.__name__ in the error message
-            # instead of cls.__qualname__.
-            # cls._access = Element.Access(access)
-            try:
-                cls._access = Element.Access(access)
-            except ValueError as e:
-                raise ValueError(f"{access!r} is not a valid Element.Access") from e
+            cls._access = Element.Access(access)
             cls.__doc__ = cls._doc_template.format(parameters="")
         super().__init_subclass__(**kwargs)
 
@@ -493,11 +480,7 @@ class Register(wiring.Component):
                                  f"field annotations: {', '.join(annot_fields)}")
 
         if access is not None:
-            # TODO(py3.9): Remove this (see above).
-            try:
-                access = Element.Access(access)
-            except ValueError as e:
-                raise ValueError(f"{access!r} is not a valid Element.Access") from e
+            access = Element.Access(access)
             if hasattr(self, "_access") and access != self._access:
                 raise ValueError(f"Element access mode {access} conflicts with the value "
                                  f"provided during class creation: {self._access}")

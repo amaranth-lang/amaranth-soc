@@ -53,13 +53,6 @@ class Element(wiring.PureInterface):
         def __init__(self, width, access):
             if not isinstance(width, int) or width < 0:
                 raise TypeError(f"Width must be a non-negative integer, not {width!r}")
-            # TODO(py3.9): Remove this. Python 3.8 and below use cls.__name__ in the error message
-            # instead of cls.__qualname__.
-            # Element.Access(access)
-            try:
-                Element.Access(access)
-            except ValueError as e:
-                raise ValueError(f"{access!r} is not a valid Element.Access") from e
 
             self._width  = width
             self._access = Element.Access(access)

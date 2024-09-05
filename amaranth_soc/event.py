@@ -29,14 +29,6 @@ class Source(wiring.PureInterface):
             Event trigger. Asserted when an event occurs, according to the trigger mode.
         """
         def __init__(self, *, trigger="level"):
-            # TODO(py3.9): Remove this. Python 3.8 and below use cls.__name__ in the error message
-            # instead of cls.__qualname__.
-            # Source.Trigger(trigger)
-            try:
-                Source.Trigger(trigger)
-            except ValueError as e:
-                raise ValueError(f"{trigger!r} is not a valid Source.Trigger") from e
-
             super().__init__({
                 "i":   Out(1),
                 "trg": In(1),
