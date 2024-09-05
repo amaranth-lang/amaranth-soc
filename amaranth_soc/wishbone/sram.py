@@ -106,6 +106,7 @@ class WishboneSRAM(wiring.Component):
         with m.Elif(self.wb_bus.cyc & self.wb_bus.stb):
             if self.writable:
                 m.d.comb += write_port.en.eq(Mux(self.wb_bus.we, self.wb_bus.sel, 0))
+                m.d.comb += read_port.en.eq(~self.wb_bus.we)
             m.d.sync += self.wb_bus.ack.eq(1)
 
         return m
