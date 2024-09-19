@@ -43,7 +43,8 @@ docs = [
 
 [tool.pdm.scripts]
 test.composite = ["test-code"]
-test-code.env = {PYTHONWARNINGS = "error"}
+# TODO: Once the amaranth requirement is bumped to 0.6, remove the RFC 66 warning filter and fix the deprecations.
+test-code.env = {PYTHONWARNINGS = "error,ignore:Per RFC 66,:DeprecationWarning"}
 test-code.cmd = "python -m coverage run -m unittest discover -t . -s tests -v"
 test-docs.cmd = "sphinx-build -b doctest docs docs/_build"
 
