@@ -14,7 +14,7 @@ from amaranth_soc.memory import MemoryMap
 class _MockRegister(wiring.Component):
     def __init__(self, width, name):
         super().__init__({
-            "element": Out(csr.Element.Signature(width, "rw")),
+            "element": In(csr.Element.Signature(width, "rw")),
             "r_count": Out(unsigned(8)),
             "w_count": Out(unsigned(8)),
             "data":    Out(width)

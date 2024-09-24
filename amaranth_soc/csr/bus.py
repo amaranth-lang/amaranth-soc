@@ -11,42 +11,76 @@ __all__ = ["Element", "Signature", "Interface", "Decoder", "Multiplexer"]
 
 
 class Element(wiring.PureInterface):
+    """CSR register interface.
+
+    A low-level interface to a single atomically readable and writable register in a peripheral.
+    This interface supports any register width and semantics, provided that both reads and writes
+    always succeed and complete in one cycle.
+
+    Arguments
+    ---------
+    width : :class:`int`
+        Width of the register.
+    access : :class:`Element.Access`
+        Register access mode.
+    path : iterable of :class:`str`
+        Path to this interface. Optional. See :class:`amaranth.lib.wiring.PureInterface`.
+    """
+
     class Access(enum.Enum):
         """Register access mode.
 
         Coarse access mode for the entire register. Individual fields can have more restrictive
         access mode, e.g. R/O fields can be a part of an R/W register.
         """
+
+        #: Read-only mode.
         R  = "r"
+        #: Write-only mode.
         W  = "w"
+        #: Read/write mode.
         RW = "rw"
 
         def readable(self):
+            """Readable access mode.
+
+            Returns
+            -------
+            :class:`bool`
+                ``True`` if equal to :attr:`R` or :attr:`RW`.
+            """
             return self == self.R or self == self.RW
 
         def writable(self):
+            """Writable access mode.
+
+            Returns
+            -------
+            :class:`bool`
+                ``True`` if equal to :attr:`W` or :attr:`RW`.
+            """
             return self == self.W or self == self.RW
 
     class Signature(wiring.Signature):
-        """Peripheral-side CSR signature.
+        """CSR register signature.
 
-        Parameters
-        ----------
-        width : int
+        Arguments
+        ---------
+        width : :class:`int`
             Width of the register.
-        access : :class:`Access`
+        access : :class:`Element.Access`
             Register access mode.
 
-        Interface attributes
-        --------------------
-        r_data : Signal(width)
+        Members
+        -------
+        r_data : :py:`In(width)`
             Read data. Must be always valid, and is sampled when ``r_stb`` is asserted.
-        r_stb : Signal()
-            Read strobe. Registers with read side effects should perform the read side effect when this
-            strobe is asserted.
-        w_data : Signal(width)
+        r_stb : :py:`Out(1)`
+            Read strobe. Registers with read side effects should perform the read side effect when
+            this strobe is asserted.
+        w_data : :py:`Out(width)`
             Write data. Valid only when ``w_stb`` is asserted.
-        w_stb : Signal()
+        w_stb : :py:`Out(1)`
             Write strobe. Registers should update their value or perform the write side effect when
             this strobe is asserted.
         """
@@ -79,20 +113,32 @@ class Element(wiring.PureInterface):
 
         @property
         def width(self):
+            """Width of the register.
+
+            Returns
+            -------
+            :class:`int`
+            """
             return self._width
 
         @property
         def access(self):
+            """Register access mode.
+
+            Returns
+            -------
+            :class:`Element.Access`
+            """
             return self._access
 
         def create(self, *, path=None, src_loc_at=0):
             """Create a compatible interface.
 
-            See :meth:`wiring.Signature.create` for details.
+            See :meth:`amaranth.lib.wiring.Signature.create` for details.
 
             Returns
             -------
-            An :class:`Element` object using this signature.
+            :class:`Element`.
             """
             return Element(self.width, self.access, path=path, src_loc_at=1 + src_loc_at)
 
@@ -108,30 +154,28 @@ class Element(wiring.PureInterface):
         def __repr__(self):
             return f"csr.Element.Signature({self.members!r})"
 
-    """Peripheral-side CSR interface.
-
-    A low-level interface to a single atomically readable and writable register in a peripheral.
-    This interface supports any register width and semantics, provided that both reads and writes
-    always succeed and complete in one cycle.
-
-    Parameters
-    ----------
-    width : :class:`int`
-        Width of the register.
-    access : :class:`Element.Access`
-        Register access mode.
-    path : iter(:class:`str`)
-        Path to this CSR interface. Optional. See :class:`wiring.PureInterface`.
-    """
     def __init__(self, width, access, *, path=None, src_loc_at=0):
-        super().__init__(Element.Signature(width=width, access=access), path=path, src_loc_at=1 + src_loc_at)
+        super().__init__(Element.Signature(width=width, access=access), path=path,
+                         src_loc_at=1 + src_loc_at)
 
     @property
     def width(self):
+        """Width of the register.
+
+        Returns
+        -------
+        :class:`int`
+        """
         return self.signature.width
 
     @property
     def access(self):
+        """Register access mode.
+
+        Returns
+        -------
+        :class:`Element.Access`
+        """
         return self.signature.access
 
     def __repr__(self):
@@ -139,30 +183,30 @@ class Element(wiring.PureInterface):
 
 
 class Signature(wiring.Signature):
-    """CPU-side CSR signature.
+    """CSR bus signature.
 
-    Parameters
-    ----------
+    Arguments
+    ---------
     addr_width : :class:`int`
         Address width. At most ``(2 ** addr_width) * data_width`` register bits will be available.
     data_width : :class:`int`
         Data width. Registers are accessed in ``data_width`` sized chunks.
 
-    Interface attributes
-    --------------------
-    addr : Signal(addr_width)
+    Members
+    -------
+    addr : :py:`Out(addr_width)`
         Address for reads and writes.
-    r_data : Signal(data_width)
+    r_data : :py:`In(data_width)`
         Read data. Valid on the next cycle after ``r_stb`` is asserted. Otherwise, zero. (Keeping
         read data of an unused interface at zero simplifies multiplexers.)
-    r_stb : Signal()
+    r_stb : :py:`Out(1)`
         Read strobe. If ``addr`` points to the first chunk of a register, captures register value
         and causes read side effects to be performed (if any). If ``addr`` points to any chunk
         of a register, latches the captured value to ``r_data``. Otherwise, latches zero
         to ``r_data``.
-    w_data : Signal(data_width)
+    w_data : :py:`Out(data_width)`
         Write data. Must be valid when ``w_stb`` is asserted.
-    w_stb : Signal()
+    w_stb : :py:`Out(1)`
         Write strobe. If ``addr`` points to the last chunk of a register, writes captured value
         to the register and causes write side effects to be performed (if any). If ``addr`` points
         to any chunk of a register, latches ``w_data`` to the captured value. Otherwise, does
@@ -188,20 +232,32 @@ class Signature(wiring.Signature):
 
     @property
     def addr_width(self):
+        """Address width.
+
+        Returns
+        -------
+        :class:`int`
+        """
         return self._addr_width
 
     @property
     def data_width(self):
+        """Data width.
+
+        Returns
+        -------
+        :class:`int`
+        """
         return self._data_width
 
     def create(self, *, path=None, src_loc_at=0):
         """Create a compatible interface.
 
-        See :meth:`wiring.Signature.create` for details.
+        See :meth:`amaranth.lib.wiring.Signature.create` for details.
 
         Returns
         -------
-        An :class:`Interface` object using this signature.
+        :class:`Interface`
         """
         return Interface(addr_width=self.addr_width, data_width=self.data_width,
                          path=path, src_loc_at=1 + src_loc_at)
@@ -220,36 +276,18 @@ class Signature(wiring.Signature):
 
 
 class Interface(wiring.PureInterface):
-    """CPU-side CSR interface.
+    """CSR bus interface.
 
     A low-level interface to a set of atomically readable and writable peripheral CSR registers.
 
-    Operation
+    Arguments
     ---------
-
-    CSR registers mapped to the CSR bus are split into chunks according to the bus data width.
-    Each chunk is assigned a consecutive address on the bus. This allows accessing CSRs of any
-    size using any datapath width.
-
-    When the first chunk of a register is read, the value of a register is captured, and reads
-    from subsequent chunks of the same register return the captured values. When any chunk except
-    the last chunk of a register is written, the written value is captured; a write to the last
-    chunk writes the captured value to the register. This allows atomically accessing CSRs larger
-    than datapath width.
-
-    Parameters
-    ----------
     addr_width : :class:`int`
         Address width. See :class:`Signature`.
     data_width : :class:`int`
         Data width. See :class:`Signature`.
-    path : iter(:class:`str`)
-        Path to this CSR interface. Optional. See :class:`wiring.PureInterface`.
-
-    Attributes
-    ----------
-    memory_map: :class:`MemoryMap`
-        Memory map of the bus. Optional.
+    path : iterable of :class:`str`
+        Path to this CSR interface. Optional. See :class:`amaranth.lib.wiring.PureInterface`.
     """
     def __init__(self, *, addr_width, data_width, path=None, src_loc_at=0):
         super().__init__(Signature(addr_width=addr_width, data_width=data_width),
@@ -258,14 +296,38 @@ class Interface(wiring.PureInterface):
 
     @property
     def addr_width(self):
+        """Address width.
+
+        Returns
+        -------
+        :class:`int`
+        """
         return self.signature.addr_width
 
     @property
     def data_width(self):
+        """Data width.
+
+        Returns
+        -------
+        :class:`int`
+        """
         return self.signature.data_width
 
     @property
     def memory_map(self):
+        """Memory map of the bus.
+
+        Returns
+        -------
+        :class:`~.memory.MemoryMap` or ``None``
+
+        Raises
+        ------
+        :exc:`ValueError`
+            If set to a memory map that does not have the same address and data widths as the bus
+            interface.
+        """
         if self._memory_map is None:
             raise AttributeError(f"{self!r} does not have a memory map")
         return self._memory_map
@@ -287,6 +349,52 @@ class Interface(wiring.PureInterface):
 
 
 class Multiplexer(wiring.Component):
+    """CSR register multiplexer.
+
+    An address-based multiplexer for CSR registers implementing atomic updates.
+
+    Writes are registered, and are performed 1 cycle after ``w_stb`` is asserted.
+
+    .. note::
+
+       Because the CSR bus conserves logic and routing resources, it is common to e.g. bridge a CSR
+       bus with a narrow *N*-bit datapath to a CPU with a wider *W*-bit datapath (*W>N*) in cases
+       where CSR access latency is less important than resource usage.
+
+       In this case, two strategies are possible for connecting the CSR bus to the CPU:
+
+           * The CPU could access the CSR bus directly (with no intervening logic other than simple
+             translation of control signals). The register alignment should be set to 1 (i.e.
+             ``memory_map.alignment`` should be 0), and each *R*-bit register would occupy
+             *ceil(R/N)* addresses from the CPU perspective, requiring the same amount of memory
+             instructions to access.
+
+           * The CPU could access the CSR bus through a width down-converter, which would issue
+             *W/N* CSR accesses for each CPU access. The register alignment should be set to *W/N*,
+             and each *R*-bit register would occupy *ceil(R/K)* addresses from the CPU perspective,
+             requiring the same amount of memory instructions to access.
+
+       If the register alignment is greater than 1, it affects which CSR bus write is considered a
+       write to the last register chunk. For example, if a 24-bit register is accessed through an
+       8-bit CSR bus and a CPU with a 32-bit datapath, a write to this register requires 4 CSR bus
+       writes to complete, and the last write is the one that actually writes the value to the
+       register. This allows determining write latency solely from the amount of addresses occupied
+       by the register in the CPU address space, and the CSR bus data width.
+
+    Arguments
+    ---------
+    memory_map : :class:`~.memory.MemoryMap`
+        Memory map of CSR registers.
+    shadow_overlaps : :class:`int`
+        Maximum number of CSR registers that can share a chunk of a shadow register.
+        Optional. If ``None``, any number of CSR registers can share a shadow chunk.
+
+    Members
+    -------
+    bus : :py:`In(csr.Signature(memory_map.addr_width, memory_map.data_width))`
+        CSR bus providing access to registers.
+    """
+
     class _Shadow:
         class Chunk:
             """The interface between a CSR multiplexer and a shadow register chunk."""
@@ -456,59 +564,6 @@ class Multiplexer(wiring.Component):
             for chunk_offset, chunk in self._chunks.items():
                 yield chunk_offset, chunk
 
-    """CSR register multiplexer.
-
-    An address-based multiplexer for CSR registers implementing atomic updates.
-
-    This implementation assumes the following from the CSR bus:
-        * an initiator must have exclusive ownership over the multiplexer for the full duration of
-          a register transaction;
-        * an initiator must access a register in ascending order of addresses, but it may abort a
-          transaction after any bus cycle.
-
-    Latency
-    -------
-
-    Writes are registered, and are performed 1 cycle after ``w_stb`` is asserted.
-
-    Alignment
-    ---------
-
-    Because the CSR bus conserves logic and routing resources, it is common to e.g. access
-    a CSR bus with an *n*-bit data path from a CPU with a *k*-bit datapath (*k>n*) in cases
-    where CSR access latency is less important than resource usage. In this case, two strategies
-    are possible for connecting the CSR bus to the CPU:
-        * The CPU could access the CSR bus directly (with no intervening logic other than simple
-          translation of control signals). In this case, the register alignment should be set
-          to 1 (i.e. `memory_map.alignment` should be set to 0), and each *w*-bit register would
-          occupy *ceil(w/n)* addresses from the CPU perspective, requiring the same amount of
-          memory instructions to access.
-        * The CPU could also access the CSR bus through a width down-converter, which would issue
-          *k/n* CSR accesses for each CPU access. In this case, the register alignment should be
-          set to *k/n*, and each *w*-bit register would occupy *ceil(w/k)* addresses from the CPU
-          perspective, requiring the same amount of memory instructions to access.
-
-    If the register alignment (i.e. `2 ** memory_map.alignment`) is greater than 1, it affects
-    which CSR bus write is considered a write to the last register chunk. For example, if a 24-bit
-    register is used with a 8-bit CSR bus and a CPU with a 32-bit datapath, a write to this
-    register requires 4 CSR bus writes to complete and the 4th write is the one that actually
-    writes the value to the register. This allows determining write latency solely from the amount
-    of addresses the register occupies in the CPU address space, and the width of the CSR bus.
-
-    Parameters
-    ----------
-    memory_map : :class:`..memory.MemoryMap`
-        Memory map of CSR registers.
-    shadow_overlaps : int
-        Maximum number of CSR registers that can share a chunk of a shadow register.
-        Optional. If ``None``, any number of CSR registers can share a shadow chunk.
-        See :class:`Multiplexer._Shadow` for details.
-
-    Attributes
-    ----------
-    bus : :class:`Interface`
-        CSR bus providing access to registers.
-    """
     def __init__(self, memory_map, *, shadow_overlaps=None):
         self._check_memory_map(memory_map)
         self._r_shadow = self._Shadow(memory_map.data_width, shadow_overlaps, name="r_shadow")
@@ -527,12 +582,12 @@ class Multiplexer(wiring.Component):
             raise ValueError("CSR multiplexer memory map cannot have windows")
         for reg, reg_name, (reg_start, reg_end) in memory_map.resources():
             if not ("element" in reg.signature.members and
-                    reg.signature.members["element"].flow == Out and
+                    reg.signature.members["element"].flow == In and
                     reg.signature.members["element"].is_signature and
                     isinstance(reg.signature.members["element"].signature, Element.Signature)):
                 raise AttributeError(f"Signature of CSR register {reg_name} must have a "
                                      f"csr.Element.Signature member named 'element' and oriented "
-                                     f"as wiring.Out")
+                                     f"as wiring.In")
 
     def elaborate(self, platform):
         m = Module()
@@ -616,30 +671,18 @@ class Decoder(wiring.Component):
 
     An address decoder for subordinate CSR buses.
 
-    Usage
-    -----
-
-    Although there is no functional difference between adding a set of registers directly to
-    a :class:`Multiplexer` and adding a set of registers to multiple :class:`Multiplexer`s that are
-    aggregated with a :class:`Decoder`, hierarchical CSR buses are useful for organizing
-    a hierarchical design. If many peripherals are directly served by a single
-    :class:`Multiplexer`, a very large amount of ports will connect the peripheral registers with
-    the decoder, and the cost of decoding logic would not be attributed to specific peripherals.
-    With a decoder, only five signals per peripheral will be used, and the logic could be kept
-    together with the peripheral.
-
-    Parameters
-    ----------
-    addr_width : int
+    Arguments
+    ---------
+    addr_width : :class:`int`
         Address width. See :class:`Interface`.
-    data_width : int
+    data_width : :class:`int`
         Data width. See :class:`Interface`.
-    alignment : int, power-of-2 exponent
-        Window alignment. See :class:`..memory.MemoryMap`.
+    alignment : :class:`int`, power-of-2 exponent
+        Window alignment. See :class:`~.memory.MemoryMap`.
 
-    Attributes
-    ----------
-    bus : :class:`Interface`
+    Members
+    -------
+    bus : :py:`In(csr.Signature(addr_width, data_width))`
         CSR bus providing access to subordinate buses.
     """
     def __init__(self, *, addr_width, data_width, alignment=0):
@@ -651,14 +694,30 @@ class Decoder(wiring.Component):
     def align_to(self, alignment):
         """Align the implicit address of the next window.
 
-        See :meth:`MemoryMap.align_to` for details.
+        See :meth:`~.memory.MemoryMap.align_to` for details.
+
+        Returns
+        -------
+        :class:`int`
+            Implicit next address.
         """
         return self.bus.memory_map.align_to(alignment)
 
     def add(self, sub_bus, *, name=None, addr=None):
         """Add a window to a subordinate bus.
 
-        See :meth:`MemoryMap.add_window` for details.
+        See :meth:`~.memory.MemoryMap.add_window` for details.
+
+        Returns
+        -------
+        :class:`tuple` of (:class:`int`, :class:`int`, :class:`int`)
+            A tuple ``(start, end, ratio)`` describing the address range assigned to the window.
+            ``ratio`` is always 1.
+
+        Raises
+        ------
+        :exc:`ValueError`
+            If the subordinate bus data width is not equal to the :class:`Decoder` data width.
         """
         if isinstance(sub_bus, wiring.FlippedInterface):
             sub_bus_unflipped = flipped(sub_bus)

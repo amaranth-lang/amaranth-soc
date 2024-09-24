@@ -17,39 +17,70 @@ __all__ = [
 
 
 class FieldPort(wiring.PureInterface):
+    """CSR register field port.
+
+    An interface between a :class:`Register` and one of its fields.
+
+    Arguments
+    ---------
+    signature : :class:`FieldPort.Signature`
+        Field port signature.
+    path : iterable of :class:`str`
+        Path to the field port. Optional. See :class:`amaranth.lib.wiring.PureInterface`.
+    """
+
     class Access(enum.Enum):
         """Field access mode."""
+
+        #: Read-only mode.
         R  = "r"
+        #: Write-only mode.
         W  = "w"
+        #: Read/write mode.
         RW = "rw"
+        #: Not connected.
         NC = "nc"
 
         def readable(self):
+            """Readable access mode.
+
+            Returns
+            -------
+            :class:`bool`
+                ``True`` if equal to :attr:`R` or :attr:`RW`.
+            """
             return self == self.R or self == self.RW
 
         def writable(self):
+            """Writable access mode.
+
+            Returns
+            -------
+            :class:`bool`
+                ``True`` if equal to :attr:`W` or :attr:`RW`.
+            """
             return self == self.W or self == self.RW
 
     class Signature(wiring.Signature):
         """CSR register field port signature.
 
-        Parameters
-        ----------
+        Arguments
+        ---------
         shape : :ref:`shape-like object <lang-shapelike>`
             Shape of the field.
         access : :class:`FieldPort.Access`
             Field access mode.
 
-        Interface attributes
-        --------------------
-        r_data : Signal(shape)
+        Members
+        -------
+        r_data : :py:`In(shape)`
             Read data. Must always be valid, and is sampled when ``r_stb`` is asserted.
-        r_stb : Signal()
+        r_stb : :py:`Out(1)`
             Read strobe. Fields with read side effects should perform them when this strobe is
             asserted.
-        w_data : Signal(shape)
+        w_data : :py:`Out(shape)`
             Write data. Valid only when ``w_stb`` is asserted.
-        w_stb : Signal()
+        w_stb : :py:`Out(1)`
             Write strobe. Fields should update their value or perform the write side effect when
             this strobe is asserted.
         """
@@ -76,20 +107,32 @@ class FieldPort(wiring.PureInterface):
 
         @property
         def shape(self):
+            """Field shape.
+
+            Returns
+            -------
+            :class:`amaranth.hdl.Shape`
+            """
             return self._shape
 
         @property
         def access(self):
+            """Field access mode.
+
+            Returns
+            -------
+            :class:`FieldPort.Access`
+            """
             return self._access
 
         def create(self, *, path=None, src_loc_at=0):
             """Create a compatible interface.
 
-            See :meth:`wiring.Signature.create` for details.
+            See :meth:`amaranth.lib.wiring.Signature.create` for details.
 
             Returns
             -------
-            A :class:`FieldPort` object using this signature.
+            :class:`FieldPort`
             """
             return FieldPort(self, path=path, src_loc_at=1 + src_loc_at)
 
@@ -105,29 +148,6 @@ class FieldPort(wiring.PureInterface):
         def __repr__(self):
             return f"csr.FieldPort.Signature({self.members!r})"
 
-    """CSR register field port.
-
-    An interface between a CSR register and one of its fields.
-
-    Parameters
-    ----------
-    signature : :class:`FieldPort.Signature`
-        Field port signature.
-    path : iter(:class:`str`)
-        Path to the field port. Optional. See :class:`wiring.PureInterface`.
-
-    Attributes
-    ----------
-    shape : :ref:`shape-like object <lang-shapelike>`
-        Shape of the field. See :class:`FieldPort.Signature`.
-    access : :class:`FieldPort.Access`
-        Field access mode. See :class:`FieldPort.Signature`.
-
-    Raises
-    ------
-    :exc:`TypeError`
-        If ``signature`` is not a :class:`FieldPort.Signature`.
-    """
     def __init__(self, signature, *, path=None, src_loc_at=0):
         if not isinstance(signature, FieldPort.Signature):
             raise TypeError(f"This interface requires a csr.FieldPort.Signature, not "
@@ -136,10 +156,22 @@ class FieldPort(wiring.PureInterface):
 
     @property
     def shape(self):
+        """Field shape.
+
+        Returns
+        -------
+        :class:`amaranth.hdl.Shape`
+        """
         return self.signature.shape
 
     @property
     def access(self):
+        """Field access mode.
+
+        Returns
+        -------
+        :class:`FieldPort.Access`
+        """
         return self.signature.access
 
     def __repr__(self):
@@ -149,19 +181,14 @@ class FieldPort(wiring.PureInterface):
 class Field:
     """Description of a CSR register field.
 
-    Parameters
-    ----------
-    action_cls : :class:`FieldAction` subclass
+    Arguments
+    ---------
+    action_cls : subclass of :class:`FieldAction`
         The type of field action to be instantiated by :meth:`Field.create`.
     *args : :class:`tuple`
         Positional arguments passed to ``action_cls.__init__``.
     **kwargs : :class:`dict`
         Keyword arguments passed to ``action_cls.__init__``.
-
-    Raises
-    ------
-    :exc:`TypeError`
-        If ``action_cls`` is not a subclass of :class:`FieldAction`.
     """
     def __init__(self, action_cls, *args, **kwargs):
         if not issubclass(action_cls, FieldAction):
@@ -184,28 +211,21 @@ class Field:
 class FieldAction(wiring.Component):
     """CSR register field action.
 
-    A :class:`~wiring.Component` mediating access between a CSR bus and a range of bits within a
-    :class:`Register`.
+    A component mediating access between a CSR bus and a range of bits within a :class:`Register`.
 
-    Parameters
-    ----------
+    Arguments
+    ---------
     shape : :ref:`shape-like object <lang-shapelike>`
-        Shape of the field. See :class:`FieldPort.Signature`.
+        Shape of the field.
     access : :class:`FieldPort.Access`
-        Field access mode. See :class:`FieldPort.Signature`.
-    members : iterable of (:class:`str`, :class:`wiring.Member`) key/value pairs
-        Signature members. Optional, defaults to ``()``. A :class:`FieldPort.Signature` member
-        named 'port' and oriented as input is always present in addition to these members.
+        Field access mode.
+    members : iterable of (:class:`str`, :class:`amaranth.lib.wiring.Member`) pairs, optional
+        Additional signature members.
 
-    Interface attributes
-    --------------------
-    port : :class:`FieldPort`
+    Members
+    -------
+    port : :py:`In(csr.reg.FieldPort.Signature(shape, access))`
         Field port.
-
-    Raises
-    ------
-    :exc:`ValueError`
-        If the key 'port' is used in ``members``.
     """
     def __init__(self, shape, access, members=()):
         members = dict(members)
@@ -221,23 +241,14 @@ class FieldAction(wiring.Component):
 class FieldActionMap(Mapping):
     """A mapping of field actions.
 
-    Parameters
-    ----------
+    Arguments
+    ---------
     fields : :class:`dict` of :class:`str` to (:class:`Field` or :class:`dict` or :class:`list`)
         Register fields. Fields are instantiated according to their type:
-          - a :class:`Field` is instantiated as a :class:`FieldAction` (see :meth:`Field.create`);
-          - a :class:`dict` is instantiated as a :class:`FieldActionMap`;
-          - a :class:`list` is instantiated as a :class:`FieldArrayMap`.
 
-    Raises
-    ------
-    :exc:`TypeError`
-        If ``fields`` is not a dict, or is empty.
-    :exc:`TypeError`
-        If ``fields`` has a key that is not a string, or is empty.
-    :exc:`TypeError`
-        If ``fields`` has a value that is neither a :class:`Field` object, a dict or a list of
-        :class:`Field` objects.
+          - a :class:`Field` is instantiated as a :class:`FieldAction`;
+          - a :class:`dict` is instantiated as a :class:`FieldActionMap`;
+          - a :class:`list` is instantiated as a :class:`FieldActionArray`.
     """
     def __init__(self, fields):
         self._fields = {}
@@ -326,7 +337,7 @@ class FieldActionMap(Mapping):
 
         Yields
         ------
-        iter(:class:`str`)
+        iterable of :class:`str`
             Path of the field. It is prefixed by the name of every nested :class:`FieldActionMap`
             or :class:`FieldActionArray`.
         :class:`FieldAction`
@@ -343,21 +354,14 @@ class FieldActionMap(Mapping):
 class FieldActionArray(Sequence):
     """An array of CSR register fields.
 
-    Parameters
-    ----------
+    Arguments
+    ---------
     fields : :class:`list` of (:class:`Field` or :class:`dict` or :class:`list`)
         Register fields. Fields are instantiated according to their type:
-          - a :class:`Field` is instantiated as a :class:`FieldAction` (see :meth:`Field.create`);
-          - a :class:`dict` is instantiated as a :class:`FieldActionMap`;
-          - a :class:`list` is instantiated as a :class:`FieldArrayMap`.
 
-    Raises
-    ------
-    :exc:`TypeError`
-        If ``fields`` is not a list, or is empty.
-    :exc:`TypeError`
-        If ``fields`` has an item that is neither a :class:`Field` object, a dict or a list of
-        :class:`Field` objects.
+          - a :class:`Field` is instantiated as a :class:`FieldAction`;
+          - a :class:`dict` is instantiated as a :class:`FieldActionMap`;
+          - a :class:`list` is instantiated as a :class:`FieldActionArray`.
     """
     def __init__(self, fields):
         self._fields = []
@@ -399,11 +403,11 @@ class FieldActionArray(Sequence):
         return len(self._fields)
 
     def flatten(self):
-        """Iterate recursively over the field array.
+        """Recursively iterate over the field array.
 
         Yields
         ------
-        iter(:class:`str`)
+        iterable of :class:`str`
             Path of the field. It is prefixed by the name of every nested :class:`FieldActionMap`
             or :class:`FieldActionArray`.
         :class:`FieldAction`
@@ -418,46 +422,33 @@ class FieldActionArray(Sequence):
 
 
 class Register(wiring.Component):
-    _doc_template = """
-    A CSR register.
+    """A CSR register.
 
-    Parameters
-    ----------
-    fields : :class:`dict` or :class:`list` or :class:`Field`
-        Collection of register fields. If ``None`` (default), a dict is populated from Python
-        :term:`variable annotations <python:variable annotations>`. ``fields`` is used to create
+    Arguments
+    ---------
+    fields : :class:`dict` or :class:`list` or :class:`Field`, optional
+        Collection of register fields. If omitted, a dict is populated from Python :term:`variable
+        annotations <python:variable annotation>`. ``fields`` is used to create
         a :class:`FieldActionMap`, :class:`FieldActionArray`, or :class:`FieldAction`,
-        depending on its type (dict, list, or Field).
-    {parameters}
+        depending on its type (:class:`dict`, :class:`list`, or :class:`Field`).
+    access : :class:`~.csr.bus.Element.Access`
+        Element access mode.
 
-    Interface attributes
-    --------------------
-    element : :class:`Element`
-        Interface between this register and a CSR bus primitive.
-
-    Attributes
-    ----------
-    field : :class:`FieldActionMap` or :class:`FieldActionArray` or :class:`FieldAction`
-        Collection of field instances.
-    f : :class:`FieldActionMap` or :class:`FieldActionArray` or :class:`FieldAction`
-        Shorthand for :attr:`Register.field`.
+    Members
+    -------
+    element : :py:`In(csr.Element.Signature(shape, access))`
+        Interface between this :class:`Register` and a CSR bus primitive.
 
     Raises
     ------
-    :exc:`TypeError`
-        If ``fields`` is neither ``None``, a :class:`dict`, a :class:`list`, or a :class:`Field`.
     :exc:`ValueError`
-        If ``fields`` is not ``None`` and at least one variable annotation is a :class:`Field`.
+        If ``fields`` is not ``None`` and at least one :term:`variable annotation <python:variable
+        annotation>` is a :class:`Field`.
     :exc:`ValueError`
         If ``element.access`` is not readable and at least one field is readable.
     :exc:`ValueError`
         If ``element.access`` is not writable and at least one field is writable.
     """
-
-    __doc__ = _doc_template.format(parameters="""
-    access : :class:`Element.Access`
-        Element access mode.
-    """)
 
     def __init_subclass__(cls, *, access=None, **kwargs):
         if access is not None:
@@ -468,7 +459,6 @@ class Register(wiring.Component):
                 cls._access = Element.Access(access)
             except ValueError as e:
                 raise ValueError(f"{access!r} is not a valid Element.Access") from e
-            cls.__doc__ = cls._doc_template.format(parameters="")
         super().__init_subclass__(**kwargs)
 
     def __init__(self, fields=None, access=None):
@@ -526,14 +516,26 @@ class Register(wiring.Component):
                 raise ValueError(f"Field {'__'.join(field_path)} is writable, but element access "
                                  f"mode is {access}")
 
-        super().__init__({"element": Out(Element.Signature(width, access))})
+        super().__init__({"element": In(Element.Signature(width, access))})
 
     @property
     def field(self):
+        """Collection of field instances.
+
+        Returns
+        -------
+        :class:`FieldActionMap` or :class:`FieldActionArray` or :class:`FieldAction`
+        """
         return self._field
 
     @property
     def f(self):
+        """Shorthand for :attr:`Register.field`.
+
+        Returns
+        -------
+        :class:`FieldActionMap` or :class:`FieldActionArray` or :class:`FieldAction`
+        """
         return self._field
 
     def __iter__(self):
@@ -541,7 +543,7 @@ class Register(wiring.Component):
 
         Yields
         ------
-        iter(:class:`str`)
+        iterable of :class:`str`
             Path of the field. It is prefixed by the name of every nested :class:`FieldActionMap`
             or :class:`FieldActionArray`.
         :class:`FieldAction`
@@ -585,28 +587,22 @@ class Register(wiring.Component):
 class Builder:
     """CSR builder.
 
-    A CSR builder can organize a group of registers within an address range and convert it to a
-    :class:`MemoryMap` for consumption by other SoC primitives.
+    A CSR builder collects a group of :class:`Register`\\ s within an address range with the goal
+    of producing a :class:`~.memory.MemoryMap` of the resulting layout.
 
-    Parameters
-    ----------
+    Arguments
+    ---------
     addr_width : :class:`int`
         Address width.
     data_width : :class:`int`
         Data width.
-    granularity : :class:`int`
-        Granularity. Optional, defaults to 8 bits.
+    granularity : :class:`int`, optional
+        Granularity. Defaults to 8 bits.
 
     Raises
     ------
-    :exc:`TypeError`
-        If ``addr_width`` is not a positive integer.
-    :exc:`TypeError`
-        If ``data_width`` is not a positive integer.
-    :exc:`TypeError`
-        If ``granularity`` is not a positive integer.
     :exc:`ValueError`
-        If ``granularity`` is not a divisor of ``data_width``
+        If ``data_width`` is not a multiple of ``granularity``.
     """
     def __init__(self, *, addr_width, data_width, granularity=8):
         if not isinstance(addr_width, int) or addr_width <= 0:
@@ -630,25 +626,43 @@ class Builder:
 
     @property
     def addr_width(self):
+        """Address width.
+
+        Returns
+        -------
+        :class:`int`
+        """
         return self._addr_width
 
     @property
     def data_width(self):
+        """Data width.
+
+        Returns
+        -------
+        :class:`int`
+        """
         return self._data_width
 
     @property
     def granularity(self):
+        """Granularity.
+
+        Returns
+        -------
+        :class:`int`
+        """
         return self._granularity
 
     def freeze(self):
         """Freeze the builder.
 
-        Once the builder is frozen, CSR registers cannot be added anymore.
+        Once the builder is frozen, :class:`Register`\\ s cannot be added anymore.
         """
         self._frozen = True
 
     def add(self, name, reg, *, offset=None):
-        """Add a CSR register.
+        """Add a register.
 
         Arguments
         ---------
@@ -669,14 +683,8 @@ class Builder:
         ------
         :exc:`ValueError`
             If the builder is frozen.
-        :exc:`TypeError`
-            If ``name`` is not a string, or is empty.
-        :exc:`TypeError`
-            If ``reg` is not an instance of :class:`Register`.
         :exc:`ValueError`
             If ``reg`` is already added to the builder.
-        :exc:`TypeError`
-            If ``offset`` is not an integer, or is negative.
         :exc:`ValueError`
             If ``offset`` is not a multiple of ``self.data_width // self.granularity``.
         """
@@ -715,11 +723,6 @@ class Builder:
         ---------
         name : :class:`str`
             Cluster name.
-
-        Raises
-        ------
-        :exc:`TypeError`
-            If ``name`` is not a string, or is empty.
         """
         if not (isinstance(name, str) and name):
             raise TypeError(f"Cluster name must be a non-empty string, not {name!r}")
@@ -737,11 +740,6 @@ class Builder:
         ---------
         index : :class:`int`
             Array index.
-
-        Raises
-        ------
-        :exc:`TypeError`
-            If ``index`` is not an integer, or is negative.
         """
         if not (isinstance(index, int) and index >= 0):
             raise TypeError(f"Array index must be a non-negative integer, not {index!r}")
@@ -752,6 +750,18 @@ class Builder:
             assert self._scope_stack.pop() == index
 
     def as_memory_map(self):
+        """Build a memory map.
+
+        If a register was added without an explicit ``offset``, the :ref:`implicit next address
+        <memory-implicit-next-address>` of the memory map is used. Otherwise, the register address
+        is ``offset * granularity // data_width``.
+
+        Registers are added to the memory map in the same order as they were added to the builder.
+
+        Returns
+        -------
+        :class:`~.memory.MemoryMap`.
+        """
         self.freeze()
         memory_map = MemoryMap(addr_width=self.addr_width, data_width=self.data_width)
         for reg, reg_name, reg_offset in self._registers.values():
@@ -769,28 +779,25 @@ class Builder:
 class Bridge(wiring.Component):
     """CSR bridge.
 
-    Parameters
-    ----------
-    memory_map : :class:`MemoryMap`
-        Memory map of CSR registers.
+    Arguments
+    ---------
+    memory_map : :class:`~.memory.MemoryMap`
+        Memory map of :class:`Register`\\ s.
 
-    Interface attributes
-    --------------------
-    bus : :class:`Interface`
+    Members
+    -------
+    bus : :py:`In(csr.Signature(memory_map.addr_width, memory_map.data_width))`
         CSR bus providing access to the contents of ``memory_map``.
 
     Raises
     ------
-    :exc:`TypeError`
-        If ``memory_map`` is not a :class:`MemoryMap` object.
     :exc:`ValueError`
         If ``memory_map`` has windows.
-    :exc:`TypeError`
-        If ``memory_map`` has resources that are not :class:`Register` objects.
     """
     def __init__(self, memory_map):
         if not isinstance(memory_map, MemoryMap):
-            raise TypeError(f"CSR bridge memory map must be an instance of MemoryMap, not {memory_map!r}")
+            raise TypeError(f"CSR bridge memory map must be an instance of MemoryMap, not "
+                            f"{memory_map!r}")
         if list(memory_map.windows()):
             raise ValueError("CSR bridge memory map cannot have windows")
         for reg, reg_name, (reg_start, reg_end) in memory_map.resources():

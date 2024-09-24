@@ -8,21 +8,21 @@ __all__ = ["R", "W", "RW", "RW1C", "RW1S", "ResRAW0", "ResRAWL", "ResR0WA", "Res
 
 
 class R(FieldAction):
-    """A read-only field action.
+    """A read-only :class:`~.csr.reg.FieldAction`.
 
-    Parameters
-    ----------
+    Arguments
+    ---------
     shape : :ref:`shape-like object <lang-shapelike>`
         Shape of the field.
 
-    Interface attributes
-    --------------------
-    port : :class:`FieldPort`
+    Members
+    -------
+    port : :py:`In(csr.reg.FieldPort.Signature(shape, "r"))`
         Field port.
-    r_data : Signal(shape)
-        Read data. Drives ``port.r_data``. See :class:`FieldPort`.
-    r_stb : Signal()
-        Read strobe. Driven by ``port.r_stb``. See :class:`FieldPort`.
+    r_data : :py:`In(shape)`
+        Read data. Drives ``port.r_data``.
+    r_stb : :py:`Out(1)`
+        Read strobe. Driven by ``port.r_stb``.
     """
     def __init__(self, shape):
         super().__init__(shape, access="r", members={
@@ -40,21 +40,21 @@ class R(FieldAction):
 
 
 class W(FieldAction):
-    """A write-only field action.
+    """A write-only :class:`~.csr.reg.FieldAction`.
 
-    Parameters
-    ----------
+    Arguments
+    ---------
     shape : :ref:`shape-like object <lang-shapelike>`
         Shape of the field.
 
-    Interface attributes
-    --------------------
-    port : :class:`FieldPort`
+    Members
+    -------
+    port : :py:`In(csr.reg.FieldPort.Signature(shape, "w"))`
         Field port.
-    w_data : Signal(shape)
-        Write data. Driven by ``port.w_data``. See :class:`FieldPort`.
-    w_stb : Signal()
-        Write strobe. Driven by ``port.w_stb``. See :class:`FieldPort`.
+    w_data : :py:`Out(shape)`
+        Write data. Driven by ``port.w_data``.
+    w_stb : :py:`Out(1)`
+        Write strobe. Driven by ``port.w_stb``.
     """
     def __init__(self, shape):
         super().__init__(shape, access="w", members={
@@ -72,23 +72,23 @@ class W(FieldAction):
 
 
 class RW(FieldAction):
-    """A read/write field action, with built-in storage.
+    """A read/write :class:`~.csr.reg.FieldAction`, with built-in storage.
 
     Storage is updated with the value of ``port.w_data`` one clock cycle after ``port.w_stb`` is
     asserted.
 
-    Parameters
-    ----------
+    Arguments
+    ---------
     shape : :ref:`shape-like object <lang-shapelike>`
         Shape of the field.
     init : :class:`int`
         Storage initial value.
 
-    Interface attributes
-    --------------------
-    port : :class:`FieldPort`
+    Members
+    -------
+    port : :py:`In(csr.reg.FieldPort.Signature(shape, "rw"))`
         Field port.
-    data : Signal(shape)
+    data : :py:`Out(shape)`
         Storage output.
     """
     def __init__(self, shape, *, init=0):
@@ -100,6 +100,12 @@ class RW(FieldAction):
 
     @property
     def init(self):
+        """Storage initial value.
+
+        Returns
+        -------
+        :class:`int`
+        """
         return self._init
 
     def elaborate(self, platform):
@@ -117,28 +123,29 @@ class RW(FieldAction):
 
 
 class RW1C(FieldAction):
-    """A read/write-one-to-clear field action, with built-in storage.
+    """A read/write-one-to-clear :class:`~.csr.reg.FieldAction`, with built-in storage.
 
     Storage bits are:
+
       * cleared by high bits in ``port.w_data``, one clock cycle after ``port.w_stb`` is asserted;
       * set by high bits in ``set``, one clock cycle after they are asserted.
 
     If a storage bit is set and cleared on the same clock cycle, setting it has precedence.
 
-    Parameters
-    ----------
+    Arguments
+    ---------
     shape : :ref:`shape-like object <lang-shapelike>`
         Shape of the field.
     init : :class:`int`
         Storage initial value.
 
-    Interface attributes
-    --------------------
-    port : :class:`FieldPort`
+    Members
+    -------
+    port : :py:`In(csr.reg.FieldPort.Signature(shape, "rw"))`
         Field port.
-    data : Signal(shape)
+    data : :py:`Out(shape)`
         Storage output.
-    set : Signal(shape)
+    set : :py:`In(shape)`
         Mask to set storage bits.
     """
     def __init__(self, shape, *, init=0):
@@ -151,6 +158,12 @@ class RW1C(FieldAction):
 
     @property
     def init(self):
+        """Storage initial value.
+
+        Returns
+        -------
+        :class:`int`
+        """
         return self._init
 
     def elaborate(self, platform):
@@ -171,40 +184,47 @@ class RW1C(FieldAction):
 
 
 class RW1S(FieldAction):
-    """A read/write-one-to-set field action, with built-in storage.
+    """A read/write-one-to-set :class:`~.csr.reg.FieldAction`, with built-in storage.
 
     Storage bits are:
+
       * set by high bits in ``port.w_data``, one clock cycle after ``port.w_stb`` is asserted;
       * cleared by high bits in ``clear``, one clock cycle after they are asserted.
 
     If a storage bit is set and cleared on the same clock cycle, setting it has precedence.
 
-    Parameters
-    ----------
+    Arguments
+    ---------
     shape : :ref:`shape-like object <lang-shapelike>`
         Shape of the field.
     init : :class:`int`
         Storage initial value.
 
-    Interface attributes
-    --------------------
-    port : :class:`FieldPort`
+    Members
+    -------
+    port : :py:`In(csr.reg.FieldPort.Signature(shape, "rw"))`
         Field port.
-    data : Signal(shape)
+    data : :py:`Out(shape)`
         Storage output.
-    clear : Signal(shape)
+    clear : :py:`In(shape)`
         Mask to clear storage bits.
     """
     def __init__(self, shape, *, init=0):
         super().__init__(shape, access="rw", members={
-            "clear": In(shape),
             "data":  Out(shape),
+            "clear": In(shape),
         })
         self._storage = Signal(shape, init=init)
         self._init    = init
 
     @property
     def init(self):
+        """Storage initial value.
+
+        Returns
+        -------
+        :class:`int`
+        """
         return self._init
 
     def elaborate(self, platform):
@@ -228,14 +248,14 @@ class _Reserved(FieldAction):
     _doc_template = """
     {description}
 
-    Parameters
-    ----------
+    Arguments
+    ---------
     shape : :ref:`shape-like object <lang-shapelike>`
         Shape of the field.
 
-    Interface attributes
-    --------------------
-    port : :class:`FieldPort`
+    Members
+    -------
+    port : :py:`In(csr.reg.FieldPort.Signature(shape, "nc"))`
         Field port.
     """
     def __init__(self, shape):
@@ -247,23 +267,23 @@ class _Reserved(FieldAction):
 
 class ResRAW0(_Reserved):
     __doc__ = _Reserved._doc_template.format(description="""
-    A reserved read-any/write-zero field action.
+    A reserved read-any/write-zero :class:`~.csr.reg.FieldAction`.
     """)
 
 
 class ResRAWL(_Reserved):
     __doc__ = _Reserved._doc_template.format(description="""
-    A reserved read-any/write-last field action.
+    A reserved read-any/write-last :class:`~.csr.reg.FieldAction`.
     """)
 
 
 class ResR0WA(_Reserved):
     __doc__ = _Reserved._doc_template.format(description="""
-    A reserved read-zero/write-any field action.
+    A reserved read-zero/write-any :class:`~.csr.reg.FieldAction`.
     """)
 
 
 class ResR0W0(_Reserved):
     __doc__ = _Reserved._doc_template.format(description="""
-    A reserved read-zero/write-zero field action.
+    A reserved read-zero/write-zero :class:`~.csr.reg.FieldAction`.
     """)
