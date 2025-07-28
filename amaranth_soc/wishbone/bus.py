@@ -1,6 +1,6 @@
 from amaranth import *
 from amaranth.lib import enum, wiring
-from amaranth.lib.wiring import In, Out, flipped
+from amaranth.lib.wiring import In, Out, connect, flipped
 from amaranth.utils import exact_log2
 
 from ..memory import MemoryMap
@@ -84,10 +84,6 @@ class Signature(wiring.Signature):
         Optional. Corresponds to Wishbone signal ``STALL_I`` (initiator) or ``STALL_O`` (target).
     lock : Signal()
         Optional. Corresponds to Wishbone signal ``LOCK_O`` (initiator) or ``LOCK_I`` (target).
-        Amaranth-SoC Wishbone support assumes that initiators that don't want bus arbitration to
-        happen in between two transactions need to use ``lock`` feature to guarantee this. An
-        initiator without the ``lock`` feature may be arbitrated in between two transactions even
-        if ``cyc`` is kept high.
     cti : Signal()
         Optional. Corresponds to Wishbone signal ``CTI_O`` (initiator) or ``CTI_I`` (target).
     bte : Signal()
@@ -257,6 +253,75 @@ class Interface(wiring.PureInterface):
         return f"wishbone.Interface({self.signature!r})"
 
 
+class _FeatureShim(wiring.Component):
+    """A connector for Wishbone bus interfaces with mismatching features."""
+    def __init__(self, addr_width, data_width, granularity=None, intr_features=frozenset(),
+                 sub_features=frozenset()):
+        super().__init__({
+            "intr_bus": In(Signature(addr_width=addr_width, data_width=data_width,
+                                     granularity=granularity, features=intr_features)),
+            "sub_bus": Out(Signature(addr_width=addr_width, data_width=data_width,
+                                     granularity=granularity, features=sub_features))})
+
+    def elaborate(self, platform):
+        m = Module()
+
+        m.d.comb += [
+            self.sub_bus.cyc.eq(self.intr_bus.cyc),
+            self.sub_bus.stb.eq(self.intr_bus.stb),
+            self.sub_bus.adr.eq(self.intr_bus.adr),
+            self.sub_bus.sel.eq(self.intr_bus.sel),
+            self.sub_bus.we.eq(self.intr_bus.we),
+            self.sub_bus.dat_w.eq(self.intr_bus.dat_w),
+            self.intr_bus.dat_r.eq(self.sub_bus.dat_r)
+        ]
+        if hasattr(self.sub_bus, "lock"):
+            m.d.comb += self.sub_bus.lock.eq(getattr(self.intr_bus, "lock", self.intr_bus.cyc))
+        if hasattr(self.sub_bus, "cti"):
+            m.d.comb += self.sub_bus.cti.eq(getattr(self.intr_bus, "cti", CycleType.CLASSIC))
+        if hasattr(self.sub_bus, "bte"):
+            m.d.comb += self.sub_bus.bte.eq(getattr(self.intr_bus, "bte", BurstTypeExt.LINEAR))
+        if hasattr(self.intr_bus, "err"):
+            m.d.comb += self.intr_bus.err.eq(getattr(self.sub_bus, "err", 0))
+        if hasattr(self.intr_bus, "rty"):
+            m.d.comb += self.intr_bus.rty.eq(getattr(self.sub_bus, "rty", 0))
+
+        # If the initiator doesn't have ERR or RTY, connect them to ACK.
+        intr_ack_fanin = self.sub_bus.ack
+        if hasattr(self.sub_bus, "err") and not hasattr(self.intr_bus, "err"):
+            intr_ack_fanin |= self.sub_bus.err
+        if hasattr(self.sub_bus, "rty") and not hasattr(self.intr_bus, "rty"):
+            intr_ack_fanin |= self.sub_bus.rty
+        m.d.comb += self.intr_bus.ack.eq(intr_ack_fanin)
+
+        sub_ack_err_rty = self.sub_bus.ack \
+                        | getattr(self.sub_bus, "err", 0) \
+                        | getattr(self.sub_bus, "rty", 0)
+
+        if hasattr(self.intr_bus, "stall") and hasattr(self.sub_bus, "stall"):
+            # Pipelined initiator to pipelined subordinate.
+            m.d.comb += self.intr_bus.stall.eq(self.sub_bus.stall)
+        elif hasattr(self.intr_bus, "stall"):
+            # Pipelined initiator to standard subordinate.
+            m.d.comb += self.intr_bus.stall.eq(self.intr_bus.cyc & ~sub_ack_err_rty)
+        elif hasattr(self.sub_bus, "stall"):
+            # Standard initiator to pipelined subordinate.
+            # In pipelined mode, a new transfer is initiated every clock cycle where STB is high
+            # and STALL is low. To accomodate a standard mode initiator, STB is limited to a one-
+            # clock pulse until the subordinate asserts ACK, ERR or RTY.
+            with m.FSM():
+                with m.State("IDLE"):
+                    m.d.comb += self.sub_bus.stb.eq(self.intr_bus.stb)
+                    with m.If(self.intr_bus.cyc & self.intr_bus.stb & ~self.sub_bus.stall):
+                        m.next = "BUSY"
+                with m.State("BUSY"):
+                    m.d.comb += self.sub_bus.stb.eq(0)
+                    with m.If(~self.intr_bus.cyc | sub_ack_err_rty):
+                        m.next = "IDLE"
+
+        return m
+
+
 class Decoder(wiring.Component):
     """Wishbone bus decoder.
 
@@ -330,10 +395,6 @@ class Decoder(wiring.Component):
                 raise ValueError(f"Subordinate bus has data width {sub_bus.data_width}, which is "
                                  f"not the same as its granularity {sub_bus.granularity} "
                                  f"(required for sparse address translation)")
-        for opt_output in {"err", "rty", "stall"}:
-            if hasattr(sub_bus, opt_output) and Feature(opt_output) not in self.bus.features:
-                raise ValueError(f"Subordinate bus has optional output {opt_output!r}, but the "
-                                 f"decoder does not have a corresponding input")
 
         self._subs[sub_bus.memory_map] = sub_bus
         return self.bus.memory_map.add_window(sub_bus.memory_map, name=name, addr=addr,
@@ -342,50 +403,41 @@ class Decoder(wiring.Component):
     def elaborate(self, platform):
         m = Module()
 
-        ack_fanin   = 0
-        err_fanin   = 0
-        rty_fanin   = 0
-        stall_fanin = 0
-
         with m.Switch(self.bus.adr):
-            for sub_map, sub_name, (sub_pat, sub_ratio) in self.bus.memory_map.window_patterns():
+            for sub_map, sub_name, (sub_pattern, ratio) in self.bus.memory_map.window_patterns():
                 sub_bus = self._subs[sub_map]
+                m.submodules[f"shim_{sub_pattern.replace('-', 'x')}"] = shim = \
+                    _FeatureShim(sub_bus.addr_width, sub_bus.data_width, sub_bus.granularity,
+                                 intr_features=self.bus.features, sub_features=sub_bus.features)
+                connect(m, shim.sub_bus, sub_bus)
 
                 m.d.comb += [
-                    sub_bus.adr.eq(self.bus.adr << exact_log2(sub_ratio)),
-                    sub_bus.dat_w.eq(self.bus.dat_w),
-                    sub_bus.sel.eq(Cat(sel.replicate(sub_ratio) for sel in self.bus.sel)),
-                    sub_bus.we.eq(self.bus.we),
-                    sub_bus.stb.eq(self.bus.stb),
+                    shim.intr_bus.adr.eq(self.bus.adr << exact_log2(ratio)),
+                    shim.intr_bus.dat_w.eq(self.bus.dat_w),
+                    shim.intr_bus.sel.eq(Cat(sel.replicate(ratio) for sel in self.bus.sel)),
+                    shim.intr_bus.we.eq(self.bus.we),
+                    shim.intr_bus.stb.eq(self.bus.stb)
                 ]
-                if hasattr(sub_bus, "lock"):
-                    m.d.comb += sub_bus.lock.eq(getattr(self.bus, "lock", 0))
-                if hasattr(sub_bus, "cti"):
-                    m.d.comb += sub_bus.cti.eq(getattr(self.bus, "cti", CycleType.CLASSIC))
-                if hasattr(sub_bus, "bte"):
-                    m.d.comb += sub_bus.bte.eq(getattr(self.bus, "bte", BurstTypeExt.LINEAR))
+                if hasattr(self.bus, "lock"):
+                    m.d.comb += shim.intr_bus.lock.eq(self.bus.lock)
+                if hasattr(self.bus, "cti"):
+                    m.d.comb += shim.intr_bus.cti.eq(self.bus.cti)
+                if hasattr(self.bus, "bte"):
+                    m.d.comb += shim.intr_bus.bte.eq(self.bus.bte)
 
                 granularity_bits = exact_log2(self.bus.data_width // self.bus.granularity)
-                with m.Case(sub_pat[:-granularity_bits if granularity_bits > 0 else None]):
+                with m.Case(sub_pattern[:-granularity_bits if granularity_bits > 0 else None]):
                     m.d.comb += [
-                        sub_bus.cyc.eq(self.bus.cyc),
-                        self.bus.dat_r.eq(sub_bus.dat_r),
+                        shim.intr_bus.cyc.eq(self.bus.cyc),
+                        self.bus.dat_r.eq(shim.intr_bus.dat_r),
+                        self.bus.ack.eq(shim.intr_bus.ack)
                     ]
-                    ack_fanin |= sub_bus.ack
-                    if hasattr(sub_bus, "err"):
-                        err_fanin |= sub_bus.err
-                    if hasattr(sub_bus, "rty"):
-                        rty_fanin |= sub_bus.rty
-                    if hasattr(sub_bus, "stall"):
-                        stall_fanin |= sub_bus.stall
-
-        m.d.comb += self.bus.ack.eq(ack_fanin)
-        if hasattr(self.bus, "err"):
-            m.d.comb += self.bus.err.eq(err_fanin)
-        if hasattr(self.bus, "rty"):
-            m.d.comb += self.bus.rty.eq(rty_fanin)
-        if hasattr(self.bus, "stall"):
-            m.d.comb += self.bus.stall.eq(stall_fanin)
+                    if hasattr(self.bus, "err"):
+                        m.d.comb += self.bus.err.eq(shim.intr_bus.err)
+                    if hasattr(self.bus, "rty"):
+                        m.d.comb += self.bus.rty.eq(shim.intr_bus.rty)
+                    if hasattr(self.bus, "stall"):
+                        m.d.comb += self.bus.stall.eq(shim.intr_bus.stall)
 
         return m
 
@@ -435,10 +487,6 @@ class Arbiter(wiring.Component):
         if intr_bus.data_width != self.bus.data_width:
             raise ValueError(f"Initiator bus has data width {intr_bus.data_width}, which is not "
                              f"the same as arbiter data width {self.bus.data_width}")
-        for opt_output in {"err", "rty"}:
-            if hasattr(self.bus, opt_output) and not hasattr(intr_bus, opt_output):
-                raise ValueError(f"Arbiter has optional output {opt_output!r}, but the initiator "
-                                 f"bus does not have a corresponding input")
         self._intrs.append(intr_bus)
 
     def elaborate(self, platform):
@@ -448,15 +496,7 @@ class Arbiter(wiring.Component):
         grant    = Signal(range(len(self._intrs)))
         m.d.comb += requests.eq(Cat(intr_bus.cyc for intr_bus in self._intrs))
 
-        bus_busy = self.bus.cyc
-        if hasattr(self.bus, "lock"):
-            # If LOCK is not asserted, we also wait for STB to be deasserted before granting bus
-            # ownership to the next initiator. If we didn't, the next bus owner could receive
-            # an ACK (or ERR, RTY) from the previous transaction when targeting the same
-            # peripheral.
-            bus_busy &= self.bus.lock | self.bus.stb
-
-        with m.If(~bus_busy):
+        with m.If(~self.bus.cyc):
             with m.Switch(grant):
                 for i in range(len(requests)):
                     with m.Case(i):
@@ -469,34 +509,37 @@ class Arbiter(wiring.Component):
 
         with m.Switch(grant):
             for i, intr_bus in enumerate(self._intrs):
-                m.d.comb += intr_bus.dat_r.eq(self.bus.dat_r)
-                if hasattr(intr_bus, "stall"):
-                    intr_bus_stall = Signal(init=1)
-                    m.d.comb += intr_bus.stall.eq(intr_bus_stall)
+                m.submodules[f"shim_{i}"] = shim = \
+                    _FeatureShim(intr_bus.addr_width, intr_bus.data_width, intr_bus.granularity,
+                                 intr_features=intr_bus.features, sub_features=self.bus.features)
+                connect(m, intr_bus, shim.intr_bus)
+
+                m.d.comb += shim.sub_bus.dat_r.eq(self.bus.dat_r)
+                if hasattr(self.bus, "stall"):
+                    m.d.comb += shim.sub_bus.stall.eq(1)
 
                 with m.Case(i):
                     ratio = intr_bus.granularity // self.bus.granularity
                     m.d.comb += [
-                        self.bus.adr.eq(intr_bus.adr),
-                        self.bus.dat_w.eq(intr_bus.dat_w),
-                        self.bus.sel.eq(Cat(sel.replicate(ratio) for sel in intr_bus.sel)),
-                        self.bus.we.eq(intr_bus.we),
-                        self.bus.stb.eq(intr_bus.stb),
+                        self.bus.adr.eq(shim.sub_bus.adr),
+                        self.bus.dat_w.eq(shim.sub_bus.dat_w),
+                        self.bus.sel.eq(Cat(sel.replicate(ratio) for sel in shim.sub_bus.sel)),
+                        self.bus.we.eq(shim.sub_bus.we),
+                        self.bus.cyc.eq(shim.sub_bus.cyc),
+                        self.bus.stb.eq(shim.sub_bus.stb),
+                        shim.sub_bus.ack.eq(self.bus.ack)
                     ]
-                    m.d.comb += self.bus.cyc.eq(intr_bus.cyc)
                     if hasattr(self.bus, "lock"):
-                        m.d.comb += self.bus.lock.eq(getattr(intr_bus, "lock", 0))
+                        m.d.comb += self.bus.lock.eq(shim.sub_bus.lock)
                     if hasattr(self.bus, "cti"):
-                        m.d.comb += self.bus.cti.eq(getattr(intr_bus, "cti", CycleType.CLASSIC))
+                        m.d.comb += self.bus.cti.eq(shim.sub_bus.cti)
                     if hasattr(self.bus, "bte"):
-                        m.d.comb += self.bus.bte.eq(getattr(intr_bus, "bte", BurstTypeExt.LINEAR))
-
-                    m.d.comb += intr_bus.ack.eq(self.bus.ack)
-                    if hasattr(intr_bus, "err"):
-                        m.d.comb += intr_bus.err.eq(getattr(self.bus, "err", 0))
-                    if hasattr(intr_bus, "rty"):
-                        m.d.comb += intr_bus.rty.eq(getattr(self.bus, "rty", 0))
-                    if hasattr(intr_bus, "stall"):
-                        m.d.comb += intr_bus_stall.eq(getattr(self.bus, "stall", ~self.bus.ack))
+                        m.d.comb += self.bus.bte.eq(shim.sub_bus.bte)
+                    if hasattr(self.bus, "err"):
+                        m.d.comb += shim.sub_bus.err.eq(self.bus.err)
+                    if hasattr(self.bus, "rty"):
+                        m.d.comb += shim.sub_bus.rty.eq(self.bus.rty)
+                    if hasattr(self.bus, "stall"):
+                        m.d.comb += shim.sub_bus.stall.eq(self.bus.stall)
 
         return m

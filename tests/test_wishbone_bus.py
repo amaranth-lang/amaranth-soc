@@ -2,10 +2,13 @@
 
 import unittest
 from amaranth import *
-from amaranth.lib.wiring import *
+from amaranth.lib import wiring
+from amaranth.lib.wiring import In, Out, connect, flipped
 from amaranth.sim import *
 
 from amaranth_soc import wishbone
+from amaranth_soc.wishbone import CycleType, BurstTypeExt, Feature
+from amaranth_soc.wishbone.bus import _FeatureShim
 from amaranth_soc.memory import MemoryMap
 
 
@@ -15,7 +18,7 @@ class SignatureTestCase(unittest.TestCase):
         self.assertEqual(sig.addr_width, 32)
         self.assertEqual(sig.data_width,  8)
         self.assertEqual(sig.granularity, 8)
-        self.assertEqual(sig.members, Signature({
+        self.assertEqual(sig.members, wiring.Signature({
             "adr":   Out(32),
             "dat_w": Out(8),
             "dat_r": In(8),
@@ -31,7 +34,7 @@ class SignatureTestCase(unittest.TestCase):
         self.assertEqual(sig.addr_width, 30)
         self.assertEqual(sig.data_width, 32)
         self.assertEqual(sig.granularity, 8)
-        self.assertEqual(sig.members, Signature({
+        self.assertEqual(sig.members, wiring.Signature({
             "adr":   Out(30),
             "dat_w": Out(32),
             "dat_r": In(32),
@@ -53,7 +56,7 @@ class SignatureTestCase(unittest.TestCase):
             wishbone.Feature.CTI,
             wishbone.Feature.BTE,
         })
-        self.assertEqual(sig.members, Signature({
+        self.assertEqual(sig.members, wiring.Signature({
             "adr":   Out(32),
             "dat_w": Out(32),
             "dat_r": In(32),
@@ -168,6 +171,291 @@ class InterfaceTestCase(unittest.TestCase):
             iface.memory_map = MemoryMap(addr_width=30, data_width=8)
 
 
+class FeatureShimSimulationTestCase(unittest.TestCase):
+    def test_no_features(self):
+        dut = _FeatureShim(addr_width=30, data_width=32, granularity=8)
+
+        self.assertEqual(dut.intr_bus.addr_width, 30)
+        self.assertEqual(dut.intr_bus.data_width, 32)
+        self.assertEqual(dut.intr_bus.granularity, 8)
+        self.assertEqual(dut.intr_bus.features, frozenset())
+        self.assertEqual(dut.sub_bus.addr_width, 30)
+        self.assertEqual(dut.sub_bus.data_width, 32)
+        self.assertEqual(dut.sub_bus.granularity, 8)
+        self.assertEqual(dut.sub_bus.features, frozenset())
+
+        async def testbench(ctx):
+            self.assertEqual(ctx.get(dut.sub_bus.adr), 0)
+            self.assertEqual(ctx.get(dut.sub_bus.sel), 0)
+            self.assertEqual(ctx.get(dut.sub_bus.we), 0)
+            self.assertEqual(ctx.get(dut.sub_bus.dat_w), 0)
+            self.assertEqual(ctx.get(dut.sub_bus.cyc), 0)
+            self.assertEqual(ctx.get(dut.sub_bus.stb), 0)
+            self.assertEqual(ctx.get(dut.intr_bus.ack), 0)
+            self.assertEqual(ctx.get(dut.intr_bus.dat_r), 0)
+
+            ctx.set(dut.intr_bus.adr, 0x3fffffff)
+            ctx.set(dut.intr_bus.sel, 0xf)
+            ctx.set(dut.intr_bus.we, 1)
+            ctx.set(dut.intr_bus.dat_w, 0x12345678)
+            ctx.set(dut.intr_bus.cyc, 1)
+            ctx.set(dut.intr_bus.stb, 1)
+            ctx.set(dut.sub_bus.ack, 1)
+            ctx.set(dut.sub_bus.dat_r, 0xaabbccdd)
+
+            self.assertEqual(ctx.get(dut.sub_bus.adr), 0x3fffffff)
+            self.assertEqual(ctx.get(dut.sub_bus.sel), 0xf)
+            self.assertEqual(ctx.get(dut.sub_bus.we), 1)
+            self.assertEqual(ctx.get(dut.sub_bus.dat_w), 0x12345678)
+            self.assertEqual(ctx.get(dut.sub_bus.cyc), 1)
+            self.assertEqual(ctx.get(dut.sub_bus.stb), 1)
+            self.assertEqual(ctx.get(dut.intr_bus.ack), 1)
+            self.assertEqual(ctx.get(dut.intr_bus.dat_r), 0xaabbccdd)
+
+        sim = Simulator(dut)
+        sim.add_testbench(testbench)
+        with sim.write_vcd(vcd_file="test.vcd"):
+            sim.run()
+
+    def test_err(self):
+        m = Module()
+        m.submodules.dut_1 = dut_1 = _FeatureShim(
+            addr_width=30, data_width=32, intr_features={"err"}, sub_features={"err"})
+        m.submodules.dut_2 = dut_2 = _FeatureShim(
+            addr_width=30, data_width=32, sub_features={"err"})
+
+        self.assertEqual(dut_1.intr_bus.features, {Feature.ERR})
+        self.assertEqual(dut_1.sub_bus.features, {Feature.ERR})
+        self.assertEqual(dut_2.intr_bus.features, frozenset())
+        self.assertEqual(dut_2.sub_bus.features, {Feature.ERR})
+
+        async def testbench(ctx):
+            self.assertEqual(ctx.get(dut_1.intr_bus.ack), 0)
+            self.assertEqual(ctx.get(dut_1.intr_bus.err), 0)
+            ctx.set(dut_1.sub_bus.err, 1)
+            self.assertEqual(ctx.get(dut_1.intr_bus.ack), 0)
+            self.assertEqual(ctx.get(dut_1.intr_bus.err), 1)
+            ctx.set(dut_1.sub_bus.ack, 1)
+            ctx.set(dut_1.sub_bus.err, 0)
+            self.assertEqual(ctx.get(dut_1.intr_bus.ack), 1)
+            self.assertEqual(ctx.get(dut_1.intr_bus.err), 0)
+
+            self.assertEqual(ctx.get(dut_2.intr_bus.ack), 0)
+            ctx.set(dut_2.sub_bus.err, 1)
+            self.assertEqual(ctx.get(dut_2.intr_bus.ack), 1)
+            ctx.set(dut_2.sub_bus.err, 0)
+            self.assertEqual(ctx.get(dut_2.intr_bus.ack), 0)
+
+        sim = Simulator(m)
+        sim.add_testbench(testbench)
+        with sim.write_vcd(vcd_file="test.vcd"):
+            sim.run()
+
+    def test_rty(self):
+        m = Module()
+        m.submodules.dut_1 = dut_1 = _FeatureShim(
+            addr_width=30, data_width=32, intr_features={"rty"}, sub_features={"rty"})
+        m.submodules.dut_2 = dut_2 = _FeatureShim(
+            addr_width=30, data_width=32, sub_features={"rty"})
+
+        self.assertEqual(dut_1.intr_bus.features, {Feature.RTY})
+        self.assertEqual(dut_1.sub_bus.features, {Feature.RTY})
+        self.assertEqual(dut_2.intr_bus.features, frozenset())
+        self.assertEqual(dut_2.sub_bus.features, {Feature.RTY})
+
+        async def testbench(ctx):
+            self.assertEqual(ctx.get(dut_1.intr_bus.ack), 0)
+            self.assertEqual(ctx.get(dut_1.intr_bus.rty), 0)
+            ctx.set(dut_1.sub_bus.rty, 1)
+            self.assertEqual(ctx.get(dut_1.intr_bus.ack), 0)
+            self.assertEqual(ctx.get(dut_1.intr_bus.rty), 1)
+            ctx.set(dut_1.sub_bus.ack, 1)
+            ctx.set(dut_1.sub_bus.rty, 0)
+            self.assertEqual(ctx.get(dut_1.intr_bus.ack), 1)
+            self.assertEqual(ctx.get(dut_1.intr_bus.rty), 0)
+
+            self.assertEqual(ctx.get(dut_2.intr_bus.ack), 0)
+            ctx.set(dut_2.sub_bus.rty, 1)
+            self.assertEqual(ctx.get(dut_2.intr_bus.ack), 1)
+            ctx.set(dut_2.sub_bus.rty, 0)
+            self.assertEqual(ctx.get(dut_2.intr_bus.ack), 0)
+
+        sim = Simulator(m)
+        sim.add_testbench(testbench)
+        with sim.write_vcd(vcd_file="test.vcd"):
+            sim.run()
+
+    def test_stall(self):
+        m = Module()
+        m.submodules.dut_1 = dut_1 = _FeatureShim(
+            addr_width=30, data_width=32, intr_features={"stall"}, sub_features={"stall"})
+        m.submodules.dut_2 = dut_2 = _FeatureShim(
+            addr_width=30, data_width=32, intr_features={"stall", "err", "rty"},
+            sub_features={"err", "rty"})
+        m.submodules.dut_3 = dut_3 = _FeatureShim(
+            addr_width=30, data_width=32, intr_features={"err", "rty"},
+            sub_features={"stall", "err", "rty"})
+
+        self.assertEqual(dut_1.intr_bus.features, {Feature.STALL})
+        self.assertEqual(dut_1.sub_bus.features, {Feature.STALL})
+        self.assertEqual(dut_2.intr_bus.features, {Feature.STALL, Feature.ERR, Feature.RTY})
+        self.assertEqual(dut_2.sub_bus.features, {Feature.ERR, Feature.RTY})
+        self.assertEqual(dut_3.intr_bus.features, {Feature.ERR, Feature.RTY})
+        self.assertEqual(dut_3.sub_bus.features, {Feature.STALL, Feature.ERR, Feature.RTY})
+
+        async def testbench(ctx):
+            # Pipelined initiator to pipelined subordinate
+
+            self.assertEqual(ctx.get(dut_1.intr_bus.stall), 0)
+            ctx.set(dut_1.sub_bus.stall, 1)
+            self.assertEqual(ctx.get(dut_1.intr_bus.stall), 1)
+            ctx.set(dut_1.sub_bus.stall, 0)
+            self.assertEqual(ctx.get(dut_1.intr_bus.stall), 0)
+
+            # Pipelined initiator to standard subordinate
+
+            self.assertEqual(ctx.get(dut_2.intr_bus.stall), 0)
+            ctx.set(dut_2.intr_bus.cyc, 1)
+            ctx.set(dut_2.sub_bus.ack, 0)
+            ctx.set(dut_2.sub_bus.err, 0)
+            ctx.set(dut_2.sub_bus.rty, 0)
+            self.assertEqual(ctx.get(dut_2.intr_bus.stall), 1)
+            ctx.set(dut_2.sub_bus.ack, 1)
+            self.assertEqual(ctx.get(dut_2.intr_bus.stall), 0)
+            ctx.set(dut_2.sub_bus.ack, 0)
+            ctx.set(dut_2.sub_bus.err, 1)
+            self.assertEqual(ctx.get(dut_2.intr_bus.stall), 0)
+            ctx.set(dut_2.sub_bus.err, 0)
+            ctx.set(dut_2.sub_bus.rty, 1)
+            self.assertEqual(ctx.get(dut_2.intr_bus.stall), 0)
+            ctx.set(dut_2.sub_bus.rty, 0)
+            self.assertEqual(ctx.get(dut_2.intr_bus.stall), 1)
+
+            # Standard initiator to pipelined subordinate
+
+            ctx.set(dut_3.intr_bus.cyc, 1)
+            ctx.set(dut_3.intr_bus.stb, 1)
+            ctx.set(dut_3.sub_bus.stall, 1)
+            self.assertEqual(ctx.get(dut_3.sub_bus.cyc), 1)
+            self.assertEqual(ctx.get(dut_3.sub_bus.stb), 1)
+            await ctx.tick()
+            self.assertEqual(ctx.get(dut_3.sub_bus.cyc), 1)
+            self.assertEqual(ctx.get(dut_3.sub_bus.stb), 1)
+            ctx.set(dut_3.intr_bus.cyc, 0)
+            ctx.set(dut_3.intr_bus.stb, 0)
+            ctx.set(dut_3.sub_bus.stall, 0)
+            await ctx.tick()
+
+            for port in ("ack", "err", "rty"):
+                ctx.set(dut_3.intr_bus.cyc, 1)
+                ctx.set(dut_3.intr_bus.stb, 1)
+                self.assertEqual(ctx.get(dut_3.sub_bus.cyc), 1)
+                self.assertEqual(ctx.get(dut_3.sub_bus.stb), 1)
+                self.assertEqual(ctx.get(getattr(dut_3.intr_bus, port)), 0)
+                await ctx.tick()
+                self.assertEqual(ctx.get(dut_3.sub_bus.cyc), 1)
+                self.assertEqual(ctx.get(dut_3.sub_bus.stb), 0)
+                ctx.set(getattr(dut_3.sub_bus, port), 1)
+                self.assertEqual(ctx.get(getattr(dut_3.intr_bus, port)), 1)
+                await ctx.tick()
+                ctx.set(dut_3.intr_bus.cyc, 0)
+                ctx.set(dut_3.intr_bus.stb, 0)
+                ctx.set(getattr(dut_3.sub_bus, port), 0)
+                await ctx.tick()
+
+        sim = Simulator(m)
+        sim.add_clock(1e-6)
+        sim.add_testbench(testbench)
+        with sim.write_vcd(vcd_file="test.vcd"):
+            sim.run()
+
+    def test_lock(self):
+        m = Module()
+        m.submodules.dut_1 = dut_1 = _FeatureShim(
+            addr_width=30, data_width=32, intr_features={"lock"}, sub_features={"lock"})
+        m.submodules.dut_2 = dut_2 = _FeatureShim(
+            addr_width=30, data_width=32, sub_features={"lock"})
+
+        self.assertEqual(dut_1.intr_bus.features, {Feature.LOCK})
+        self.assertEqual(dut_1.sub_bus.features, {Feature.LOCK})
+        self.assertEqual(dut_2.intr_bus.features, frozenset())
+        self.assertEqual(dut_2.sub_bus.features, {Feature.LOCK})
+
+        async def testbench(ctx):
+            ctx.set(dut_1.intr_bus.lock, 0)
+            self.assertEqual(ctx.get(dut_1.sub_bus.lock), 0)
+            ctx.set(dut_1.intr_bus.lock, 1)
+            self.assertEqual(ctx.get(dut_1.sub_bus.lock), 1)
+
+            ctx.set(dut_2.intr_bus.cyc, 0)
+            self.assertEqual(ctx.get(dut_2.sub_bus.lock), 0)
+            ctx.set(dut_2.intr_bus.cyc, 1)
+            self.assertEqual(ctx.get(dut_2.sub_bus.lock), 1)
+
+        sim = Simulator(m)
+        sim.add_testbench(testbench)
+        with sim.write_vcd(vcd_file="test.vcd"):
+            sim.run()
+
+    def test_cti(self):
+        m = Module()
+        m.submodules.dut_1 = dut_1 = _FeatureShim(
+            addr_width=30, data_width=32, intr_features={"cti"}, sub_features={"cti"})
+        m.submodules.dut_2 = dut_2 = _FeatureShim(
+            addr_width=30, data_width=32, sub_features={"cti"})
+
+        self.assertEqual(dut_1.intr_bus.features, {Feature.CTI})
+        self.assertEqual(dut_1.sub_bus.features, {Feature.CTI})
+        self.assertEqual(dut_2.intr_bus.features, frozenset())
+        self.assertEqual(dut_2.sub_bus.features, {Feature.CTI})
+
+        async def testbench(ctx):
+            ctx.set(dut_1.intr_bus.cti, CycleType.CLASSIC)
+            self.assertEqual(ctx.get(dut_1.sub_bus.cti), 0b000)
+            ctx.set(dut_1.intr_bus.cti, CycleType.CONST_BURST)
+            self.assertEqual(ctx.get(dut_1.sub_bus.cti), 0b001)
+            ctx.set(dut_1.intr_bus.cti, CycleType.INCR_BURST)
+            self.assertEqual(ctx.get(dut_1.sub_bus.cti), 0b010)
+            ctx.set(dut_1.intr_bus.cti, CycleType.END_OF_BURST)
+            self.assertEqual(ctx.get(dut_1.sub_bus.cti), 0b111)
+
+            self.assertEqual(ctx.get(dut_2.sub_bus.cti), 0b000)
+
+        sim = Simulator(m)
+        sim.add_testbench(testbench)
+        with sim.write_vcd(vcd_file="test.vcd"):
+            sim.run()
+
+    def test_bte(self):
+        m = Module()
+        m.submodules.dut_1 = dut_1 = _FeatureShim(
+            addr_width=30, data_width=32, intr_features={"bte"}, sub_features={"bte"})
+        m.submodules.dut_2 = dut_2 = _FeatureShim(
+            addr_width=30, data_width=32, sub_features={"bte"})
+
+        self.assertEqual(dut_1.intr_bus.features, {Feature.BTE})
+        self.assertEqual(dut_1.sub_bus.features, {Feature.BTE})
+        self.assertEqual(dut_2.intr_bus.features, frozenset())
+        self.assertEqual(dut_2.sub_bus.features, {Feature.BTE})
+
+        async def testbench(ctx):
+            ctx.set(dut_1.intr_bus.bte, BurstTypeExt.LINEAR)
+            self.assertEqual(ctx.get(dut_1.sub_bus.bte), 0b00)
+            ctx.set(dut_1.intr_bus.bte, BurstTypeExt.WRAP_4)
+            self.assertEqual(ctx.get(dut_1.sub_bus.bte), 0b01)
+            ctx.set(dut_1.intr_bus.bte, BurstTypeExt.WRAP_8)
+            self.assertEqual(ctx.get(dut_1.sub_bus.bte), 0b10)
+            ctx.set(dut_1.intr_bus.bte, BurstTypeExt.WRAP_16)
+            self.assertEqual(ctx.get(dut_1.sub_bus.bte), 0b11)
+
+            self.assertEqual(ctx.get(dut_2.sub_bus.bte), 0b00)
+
+        sim = Simulator(m)
+        sim.add_testbench(testbench)
+        with sim.write_vcd(vcd_file="test.vcd"):
+            sim.run()
+
+
 class DecoderTestCase(unittest.TestCase):
     def setUp(self):
         self.dut = wishbone.Decoder(addr_width=31, data_width=32, granularity=16)
@@ -208,20 +496,13 @@ class DecoderTestCase(unittest.TestCase):
                 r"granularity 16 \(required for sparse address translation\)"):
             self.dut.add(sub, sparse=True)
 
-    def test_add_wrong_optional_output(self):
-        sub = wishbone.Interface(addr_width=15, data_width=32, granularity=16, features={"err"})
-        with self.assertRaisesRegex(ValueError,
-                r"Subordinate bus has optional output 'err', but the decoder does "
-                r"not have a corresponding input"):
-            self.dut.add(sub)
-
     def test_add_wrong_out_of_bounds(self):
         sub = wishbone.Interface(addr_width=31, data_width=32, granularity=16)
         sub.memory_map = MemoryMap(addr_width=32, data_width=16)
         with self.assertRaisesRegex(ValueError,
             r"Address range 0x1\.\.0x100000001 out of bounds for memory map spanning "
             r"range 0x0\.\.0x100000000 \(32 address bits\)"):
-            self.dut.add(sub, addr=1)
+            self.dut.add(flipped(sub), addr=1)
 
 
 class DecoderSimulationTestCase(unittest.TestCase):
@@ -230,11 +511,11 @@ class DecoderSimulationTestCase(unittest.TestCase):
                                features={"err", "rty", "stall", "lock", "cti", "bte"})
         sub_1 = wishbone.Interface(addr_width=14, data_width=32, granularity=8)
         sub_1.memory_map = MemoryMap(addr_width=16, data_width=8)
-        dut.add(sub_1, addr=0x10000)
+        dut.add(flipped(sub_1), addr=0x10000)
         sub_2 = wishbone.Interface(addr_width=14, data_width=32, granularity=8,
                                    features={"err", "rty", "stall", "lock", "cti", "bte"})
         sub_2.memory_map = MemoryMap(addr_width=16, data_width=8)
-        dut.add(sub_2)
+        dut.add(flipped(sub_2))
 
         async def testbench(ctx):
             ctx.set(dut.bus.adr, 0x10400 >> 2)
@@ -285,9 +566,9 @@ class DecoderSimulationTestCase(unittest.TestCase):
             sim.run()
 
     def test_addr_translate(self):
-        class AddressLoopback(Elaboratable):
+        class AddressLoopback(wiring.Component):
             def __init__(self, **kwargs):
-                self.bus = wishbone.Interface(**kwargs)
+                super().__init__({"bus": In(wishbone.Signature(**kwargs))})
 
             def elaborate(self, platform):
                 m = Module()
@@ -389,7 +670,7 @@ class DecoderSimulationTestCase(unittest.TestCase):
         dut = wishbone.Decoder(addr_width=3, data_width=32)
         sub = wishbone.Interface(addr_width=2, data_width=32)
         sub.memory_map = MemoryMap(addr_width=2, data_width=32)
-        dut.add(sub)
+        dut.add(flipped(sub))
 
         async def testbench(ctx):
             ctx.set(dut.bus.cyc, 1)
@@ -438,13 +719,6 @@ class ArbiterTestCase(unittest.TestCase):
                 r"data width 32"):
             self.dut.add(intr)
 
-    def test_add_wrong_optional_output(self):
-        intr = wishbone.Interface(addr_width=31, data_width=32, granularity=16, path=("intr",))
-        with self.assertRaisesRegex(ValueError,
-                r"Arbiter has optional output 'err', but the initiator bus does "
-                r"not have a corresponding input"):
-            self.dut.add(intr)
-
 
 class ArbiterSimulationTestCase(unittest.TestCase):
     def test_simple(self):
@@ -477,7 +751,7 @@ class ArbiterSimulationTestCase(unittest.TestCase):
             self.assertEqual(ctx.get(dut.bus.sel), 0b1111)
             self.assertEqual(ctx.get(dut.bus.we), 1)
             self.assertEqual(ctx.get(dut.bus.dat_w), 0x12345678)
-            self.assertEqual(ctx.get(dut.bus.lock), 0)
+            self.assertEqual(ctx.get(dut.bus.lock), 1)
             self.assertEqual(ctx.get(dut.bus.cti), wishbone.CycleType.CLASSIC.value)
             self.assertEqual(ctx.get(dut.bus.bte), wishbone.BurstTypeExt.LINEAR.value)
             self.assertEqual(ctx.get(intr_1.dat_r), 0xabcdef01)
@@ -512,53 +786,6 @@ class ArbiterSimulationTestCase(unittest.TestCase):
             self.assertEqual(ctx.get(intr_2.err), 1)
             self.assertEqual(ctx.get(intr_2.rty), 1)
             self.assertEqual(ctx.get(intr_2.stall), 0)
-
-        sim = Simulator(dut)
-        sim.add_clock(1e-6)
-        sim.add_testbench(testbench)
-        with sim.write_vcd(vcd_file="test.vcd"):
-            sim.run()
-
-    def test_lock(self):
-        dut = wishbone.Arbiter(addr_width=30, data_width=32, features={"lock"})
-        sig = wishbone.Signature(addr_width=30, data_width=32, features={"lock"})
-        intr_1 = sig.create(path=("intr_1",))
-        dut.add(intr_1)
-        intr_2 = sig.create(path=("intr_2",))
-        dut.add(intr_2)
-
-        async def testbench(ctx):
-            ctx.set(intr_1.cyc, 1)
-            ctx.set(intr_1.lock, 1)
-            ctx.set(intr_2.cyc, 1)
-            ctx.set(dut.bus.ack, 1)
-            self.assertEqual(ctx.get(intr_1.ack), 1)
-            self.assertEqual(ctx.get(intr_2.ack), 0)
-
-            await ctx.tick()
-            self.assertEqual(ctx.get(intr_1.ack), 1)
-            self.assertEqual(ctx.get(intr_2.ack), 0)
-
-            ctx.set(intr_1.lock, 0)
-            await ctx.tick()
-            self.assertEqual(ctx.get(intr_1.ack), 0)
-            self.assertEqual(ctx.get(intr_2.ack), 1)
-
-            ctx.set(intr_2.cyc, 0)
-            await ctx.tick()
-            self.assertEqual(ctx.get(intr_1.ack), 1)
-            self.assertEqual(ctx.get(intr_2.ack), 0)
-
-            ctx.set(intr_1.stb, 1)
-            await ctx.tick()
-            self.assertEqual(ctx.get(intr_1.ack), 1)
-            self.assertEqual(ctx.get(intr_2.ack), 0)
-
-            ctx.set(intr_1.stb, 0)
-            ctx.set(intr_2.cyc, 1)
-            await ctx.tick()
-            self.assertEqual(ctx.get(intr_1.ack), 0)
-            self.assertEqual(ctx.get(intr_2.ack), 1)
 
         sim = Simulator(dut)
         sim.add_clock(1e-6)
