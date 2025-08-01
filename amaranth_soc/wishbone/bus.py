@@ -1,6 +1,6 @@
 from amaranth import *
 from amaranth.lib import enum, wiring, meta
-from amaranth.lib.wiring import In, Out, flipped
+from amaranth.lib.wiring import In, Out, flipped, FlippedInterface
 from amaranth.utils import exact_log2
 
 from ..memory import MemoryMap
@@ -190,6 +190,8 @@ class Signature(wiring.Signature):
         :exc:`ValueError`
             If ``interface.signature`` is not equal to ``self``.
         """
+        if isinstance(interface, FlippedInterface):
+            interface = flipped(interface)
         if not isinstance(interface, Interface):
             raise TypeError(f"Interface must be a wishbone.Interface object, not {interface!r}")
         if interface.signature != self:

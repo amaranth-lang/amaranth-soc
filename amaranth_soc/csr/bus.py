@@ -1,7 +1,7 @@
 from collections import defaultdict
 from amaranth import *
 from amaranth.lib import enum, wiring, meta
-from amaranth.lib.wiring import In, Out, flipped
+from amaranth.lib.wiring import In, Out, flipped, FlippedInterface
 from amaranth.utils import ceil_log2
 
 from ..memory import MemoryMap
@@ -109,6 +109,9 @@ class Element(wiring.PureInterface):
             :exc:`ValueError`
                 If ``element.signature`` is not equal to ``self``.
             """
+
+            if isinstance(element, FlippedInterface):
+                element = flipped(element)
             if not isinstance(element, Element):
                 raise TypeError(f"Element must be a csr.Element object, not {element!r}")
             if element.signature != self:
