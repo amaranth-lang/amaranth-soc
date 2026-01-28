@@ -1,5 +1,10 @@
 from collections.abc import Mapping, Sequence
 from contextlib import contextmanager
+try:
+    import annotationlib # py3.14+
+except ImportError:
+    annotationlib = None # py3.13-
+
 from amaranth import *
 from amaranth.hdl import ShapeLike
 from amaranth.lib import enum, wiring
@@ -459,25 +464,29 @@ class Register(wiring.Component):
         super().__init_subclass__(**kwargs)
 
     def __init__(self, fields=None, access=None):
-        if hasattr(self, "__annotations__"):
-            def filter_fields(src):
-                if isinstance(src, Field):
-                    return src
-                if isinstance(src, (dict, list)):
-                    items = enumerate(src) if isinstance(src, list) else src.items()
-                    dst   = dict()
-                    for key, value in items:
-                        if new_value := filter_fields(value):
-                            dst[key] = new_value
-                    return list(dst.values()) if isinstance(src, list) else dst
+        if annotationlib is not None:
+            annotations = annotationlib.get_annotations(type(self))
+        else:
+            annotations = type(self).__dict__.get("__annotations__", {})
 
-            annot_fields = filter_fields(self.__annotations__)
+        def filter_fields(src):
+            if isinstance(src, Field):
+                return src
+            if isinstance(src, (dict, list)):
+                items = enumerate(src) if isinstance(src, list) else src.items()
+                dst   = dict()
+                for key, value in items:
+                    if new_value := filter_fields(value):
+                        dst[key] = new_value
+                return list(dst.values()) if isinstance(src, list) else dst
 
-            if fields is None:
-                fields = annot_fields
-            elif annot_fields:
-                raise ValueError(f"Field collection {fields} cannot be provided in addition to "
-                                 f"field annotations: {', '.join(annot_fields)}")
+        annot_fields = filter_fields(annotations)
+
+        if fields is None:
+            fields = annot_fields
+        elif annot_fields:
+            raise ValueError(f"Field collection {fields} cannot be provided in addition to "
+                             f"field annotations: {', '.join(annot_fields)}")
 
         if access is not None:
             access = Element.Access(access)
