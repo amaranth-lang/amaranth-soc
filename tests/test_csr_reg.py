@@ -951,6 +951,28 @@ class BridgeTestCase(unittest.TestCase):
                 r"CSR register must be an instance of csr\.Register, not _Reg\(\)"):
             Bridge(memory_map)
 
+    def test_resource_names(self):
+        regs = Builder(addr_width=16, data_width=8)
+
+        regs.add("reg0", self._RWRegister(8))
+        regs.add("reg1", self._RWRegister(8))
+
+        with regs.Cluster("cluster"):
+            regs.add("reg0", self._RWRegister(8))
+            regs.add("reg1", self._RWRegister(8))
+
+            for i in range(4):
+                with regs.Index(i):
+                    regs.add("reg", self._RWRegister(8))
+
+        dut = Bridge(regs.as_memory_map())
+        sim = Simulator(dut)
+        sim.add_clock(1e-6)
+
+        with sim.write_vcd(vcd_file="test.vcd"):
+            sim.run()
+
+
     def test_sim(self):
         regs = Builder(addr_width=16, data_width=8)
 
