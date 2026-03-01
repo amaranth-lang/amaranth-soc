@@ -16,6 +16,7 @@ extensions = [
     "sphinx.ext.autodoc",
     "sphinx.ext.napoleon",
     "sphinx_rtd_theme",
+    "sphinxcontrib.yowasp_wavedrom",
 ]
 
 with open(".gitignore") as f:
@@ -23,7 +24,10 @@ with open(".gitignore") as f:
 
 root_doc = "cover"
 
-intersphinx_mapping = {"python": ("https://docs.python.org/3", None)}
+intersphinx_mapping = {
+    "python": ("https://docs.python.org/3", None),
+    "amaranth": ("https://amaranth-lang.org/docs/amaranth/latest", None),
+}
 
 todo_include_todos = True
 
@@ -38,6 +42,11 @@ napoleon_numpy_docstring = True
 napoleon_use_ivar = True
 napoleon_include_init_with_doc = True
 napoleon_include_special_with_doc = True
+napoleon_custom_sections = [
+    ("Arguments", "params_style"), # by default displays as "Parameters"
+    ("Attributes", "params_style"), # by default displays as "Variables", which is confusing
+    ("Members", "params_style"), # `amaranth.lib.wiring` signature members
+]
 
 html_theme = "sphinx_rtd_theme"
 html_static_path = ["_static"]
@@ -45,6 +54,6 @@ html_css_files = ["custom.css"]
 html_logo = "_static/logo.png"
 
 rst_prolog = """
-.. role:: pc(code)
+.. role:: py(code)
    :language: python
 """

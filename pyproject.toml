@@ -37,6 +37,7 @@ test = [
 ]
 docs = [
   "sphinx~=7.1",
+  "sphinxcontrib-yowasp-wavedrom~=1.0",
   "sphinx-rtd-theme~=1.2",
   "sphinx-autobuild",
 ]

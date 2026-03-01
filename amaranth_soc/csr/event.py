@@ -28,27 +28,27 @@ class EventMonitor(wiring.Component):
     CSR registers
     -------------
     enable : ``event_map.size``, read/write
-        Enabled events. See :meth:`..event.EventMap.sources` for layout.
+        Enabled events. See :meth:`.event.EventMap.sources` for layout.
     pending : ``event_map.size``, read/clear
-        Pending events. See :meth:`..event.EventMap.sources` for layout.
+        Pending events. See :meth:`.event.EventMap.sources` for layout.
 
     Parameters
     ----------
-    event_map : :class:`..event.EventMap`
+    event_map : :class:`.event.EventMap`
         A collection of event sources.
-    trigger : :class:`..event.Source.Trigger`
-        Trigger mode. See :class:`..event.Source`.
+    trigger : :class:`.event.Source.Trigger`
+        Trigger mode. See :class:`.event.Source`.
     data_width : int
-        CSR bus data width. See :class:`..csr.Interface`.
+        CSR bus data width. See :class:`.csr.bus.Interface`.
     alignment : int, power-of-2 exponent
-        CSR address alignment. See :class:`..memory.MemoryMap`.
+        CSR address alignment. See :class:`~.memory.MemoryMap`.
 
     Attributes
     ----------
-    src : :class:`..event.Source`
+    src : :class:`.event.Source`
         Event source. Its input line is asserted by the monitor when a subordinate event is enabled
         and pending.
-    bus : :class:`..csr.Interface`
+    bus : :class:`.csr.bus.Interface`
         CSR bus interface.
     """
     def __init__(self, event_map, *, trigger="level", data_width, alignment=0, name=None):

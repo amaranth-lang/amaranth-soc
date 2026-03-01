@@ -42,55 +42,57 @@ class Signature(wiring.Signature):
     of the Wishbone signals. The ``RST_I`` and ``CLK_I`` signals are provided as a part of
     the clock domain that drives the interface.
 
-    Parameters
-    ----------
-    addr_width : int
-        Width of the address signal.
-    data_width : ``8``, ``16``, ``32`` or ``64``
-        Width of the data signals ("port size" in Wishbone terminology).
-    granularity : ``8``, ``16``, ``32``, ``64`` or ``None``
-        Granularity of select signals ("port granularity" in Wishbone terminology).
-        Optional. If ``None`` (by default), the granularity is equal to ``data_width``.
-    features : iter(:class:`Feature`)
-        Selects additional signals that will be a part of this interface.
-        Optional.
-
-    Interface attributes
-    --------------------
     The correspondence between the Amaranth-SoC signals and the Wishbone signals changes depending
     on whether the interface acts as an initiator or a target.
 
-    adr : Signal(addr_width)
+    Arguments
+    ---------
+    addr_width : :class:`int`
+        Width of the address signal.
+    data_width : :class:`int`
+        Width of the data signals ("port size" in Wishbone terminology).
+        One of 8, 16, 32, 64.
+    granularity : :class:`int`
+        Granularity of select signals ("port granularity" in Wishbone terminology).
+        One of 8, 16, 32, 64.
+        Optional. If ``None`` (by default), the granularity is equal to ``data_width``.
+    features : iterable of :class:`Feature`
+        Selects additional signals that will be a part of this interface.
+        Optional.
+
+    Members
+    -------
+    adr : :py:`unsigned(addr_width)`
         Corresponds to Wishbone signal ``ADR_O`` (initiator) or ``ADR_I`` (target).
-    dat_w : Signal(data_width)
+    dat_w : :py:`unsigned(data_width)`
         Corresponds to Wishbone signal ``DAT_O`` (initiator) or ``DAT_I`` (target).
-    dat_r : Signal(data_width)
+    dat_r : :py:`unsigned(data_width)`
         Corresponds to Wishbone signal ``DAT_I`` (initiator) or ``DAT_O`` (target).
-    sel : Signal(data_width // granularity)
+    sel : :py:`unsigned(data_width // granularity)`
         Corresponds to Wishbone signal ``SEL_O`` (initiator) or ``SEL_I`` (target).
-    cyc : Signal()
+    cyc : :py:`unsigned(1)`
         Corresponds to Wishbone signal ``CYC_O`` (initiator) or ``CYC_I`` (target).
-    stb : Signal()
+    stb : :py:`unsigned(1)`
         Corresponds to Wishbone signal ``STB_O`` (initiator) or ``STB_I`` (target).
-    we : Signal()
+    we : :py:`unsigned(1)`
         Corresponds to Wishbone signal ``WE_O``  (initiator) or ``WE_I``  (target).
-    ack : Signal()
+    ack : :py:`unsigned(1)`
         Corresponds to Wishbone signal ``ACK_I`` (initiator) or ``ACK_O`` (target).
-    err : Signal()
+    err : :py:`unsigned(1)`
         Optional. Corresponds to Wishbone signal ``ERR_I`` (initiator) or ``ERR_O`` (target).
-    rty : Signal()
+    rty : :py:`unsigned(1)`
         Optional. Corresponds to Wishbone signal ``RTY_I`` (initiator) or ``RTY_O`` (target).
-    stall : Signal()
+    stall : :py:`unsigned(1)`
         Optional. Corresponds to Wishbone signal ``STALL_I`` (initiator) or ``STALL_O`` (target).
-    lock : Signal()
+    lock : :py:`unsigned(1)`
         Optional. Corresponds to Wishbone signal ``LOCK_O`` (initiator) or ``LOCK_I`` (target).
         Amaranth-SoC Wishbone support assumes that initiators that don't want bus arbitration to
         happen in between two transactions need to use ``lock`` feature to guarantee this. An
         initiator without the ``lock`` feature may be arbitrated in between two transactions even
         if ``cyc`` is kept high.
-    cti : Signal()
+    cti : :py:`unsigned(1)`
         Optional. Corresponds to Wishbone signal ``CTI_O`` (initiator) or ``CTI_I`` (target).
-    bte : Signal()
+    bte : :py:`unsigned(1)`
         Optional. Corresponds to Wishbone signal ``BTE_O`` (initiator) or ``BTE_I`` (target).
     """
     def __init__(self, *, addr_width, data_width, granularity=None, features=frozenset()):
@@ -140,28 +142,52 @@ class Signature(wiring.Signature):
 
     @property
     def addr_width(self):
+        """Width of the address signal.
+
+        Returns
+        -------
+        :class:`int`
+        """
         return self._addr_width
 
     @property
     def data_width(self):
+        """Width of the data signals ("port size" in Wishbone terminology).
+
+        Returns
+        -------
+        One of 8, 16, 32, 64.
+        """
         return self._data_width
 
     @property
     def granularity(self):
+        """Granularity of select signals ("port granularity" in Wishbone terminology).
+
+        Returns
+        -------
+        One of 8, 16, 32, 64.
+        """
         return self._granularity
 
     @property
     def features(self):
+        """Additional signals that will be a part of this interface.
+
+        Returns
+        -------
+        :class:`frozenset` of :class:`Feature`
+        """
         return self._features
 
     def create(self, *, path=None, src_loc_at=0):
         """Create a compatible interface.
 
-        See :meth:`wiring.Signature.create` for details.
+        See :meth:`amaranth.lib.wiring.Signature.create` for details.
 
         Returns
         -------
-        An :class:`Interface` object using this signature.
+        :class:`Interface`
         """
         return Interface(addr_width=self.addr_width, data_width=self.data_width,
                          granularity=self.granularity, features=self.features,
@@ -186,27 +212,24 @@ class Signature(wiring.Signature):
 class Interface(wiring.PureInterface):
     """Wishbone bus interface.
 
-    Note that the data width of the underlying memory map of the interface is equal to port
-    granularity, not port size. If port granularity is less than port size, then the address width
-    of the underlying memory map is extended to reflect that.
+    .. note::
 
-    Parameters
-    ----------
+        The data width of the underlying :class:`.MemoryMap` of the interface is equal to port
+        granularity, not port size. If port granularity is less than port size, then the address
+        width of the underlying memory map is extended to reflect that.
+
+    Arguments
+    ---------
     addr_width : :class:`int`
         Width of the address signal. See :class:`Signature`.
     data_width : :class:`int`
         Width of the data signals. See :class:`Signature`.
     granularity : :class:`int`
         Granularity of select signals. Optional. See :class:`Signature`.
-    features : iter(:class:`Feature`)
+    features : iterable of :class:`Feature`
         Describes additional signals of this interface. Optional. See :class:`Signature`.
     path : iter(:class:`str`)
-        Path to this Wishbone interface. Optional. See :class:`wiring.PureInterface`.
-
-    Attributes
-    ----------
-    memory_map: :class:`MemoryMap`
-        Memory map of the bus. Optional.
+        Path to this Wishbone interface. Optional. See :class:`amaranth.lib.wiring.PureInterface`.
     """
     def __init__(self, *, addr_width, data_width, granularity=None, features=frozenset(),
                  path=None, src_loc_at=0):
@@ -217,22 +240,54 @@ class Interface(wiring.PureInterface):
 
     @property
     def addr_width(self):
+        """Width of the address signal.
+
+        Returns
+        -------
+        :class:`int`
+        """
         return self.signature.addr_width
 
     @property
     def data_width(self):
+        """Width of the data signals ("port size" in Wishbone terminology).
+
+        Returns
+        -------
+        One of 8, 16, 32, 64.
+        """
         return self.signature.data_width
 
     @property
     def granularity(self):
+        """Granularity of select signals ("port granularity" in Wishbone terminology).
+
+        Returns
+        -------
+        One of 8, 16, 32, 64.
+        """
         return self.signature.granularity
 
     @property
     def features(self):
+        """Additional signals that are part of this interface.
+
+        Returns
+        -------
+        :class:`frozenset` of :class:`Feature`
+        """
         return self.signature.features
 
     @property
     def memory_map(self):
+        """Memory map of the bus.
+
+        .. todo:: setter
+
+        Returns
+        -------
+        :class:`~.memory.MemoryMap` or ``None``
+        """
         if self._memory_map is None:
             raise AttributeError(f"{self!r} does not have a memory map")
         return self._memory_map
@@ -262,22 +317,22 @@ class Decoder(wiring.Component):
 
     An address decoder for subordinate Wishbone buses.
 
-    Parameters
-    ----------
+    Arguments
+    ---------
     addr_width : :class:`int`
         Address width. See :class:`Signature`.
     data_width : :class:`int`
         Data width. See :class:`Signature`.
     granularity : :class:`int`
         Granularity. See :class:`Signature`
-    features : iter(:class:`Feature`)
+    features : iterable of :class:`Feature`
         Optional signal set. See :class:`Signature`.
-    alignment : int, power-of-2 exponent
-        Window alignment. Optional. See :class:`..memory.MemoryMap`.
+    alignment : :class:`int`, power-of-2 exponent
+        Window alignment. Optional. See :class:`~.memory.MemoryMap`.
 
-    Attributes
-    ----------
-    bus : :class:`Interface`
+    Members
+    -------
+    bus : :py:`In(wishbone.Signature(addr_width, data_width, granularity, features))`
         Wishbone bus providing access to subordinate buses.
     """
     def __init__(self, *, addr_width, data_width, granularity=None, features=frozenset(),
@@ -294,21 +349,55 @@ class Decoder(wiring.Component):
     def align_to(self, alignment):
         """Align the implicit address of the next window.
 
-        See :meth:`MemoryMap.align_to` for details.
+        See :meth:`~.memory.MemoryMap.align_to` for details.
+
+        Returns
+        -------
+        :class:`int`
+            Implicit next address.
         """
         return self.bus.memory_map.align_to(alignment)
 
     def add(self, sub_bus, *, name=None, addr=None, sparse=False):
         """Add a window to a subordinate bus.
 
-        The decoder can perform either sparse or dense address translation. If dense address
-        translation is used (the default), the subordinate bus must have the same data width as
-        the decoder; the window will be contiguous. If sparse address translation is used,
-        the subordinate bus may have data width less than the data width of the decoder;
-        the window may be discontiguous. In either case, the granularity of the subordinate bus
-        must be equal to or less than the granularity of the decoder.
+        See :meth:`~.memory.MemoryMap.add_window` for details.
 
-        See :meth:`MemoryMap.add_resource` for details.
+        .. note::
+
+            The :class:`Decoder` can perform either *sparse* or *dense* address translation:
+
+              - If dense address translation is used (the default), the subordinate bus must have
+                the same data width as the :class:`Decoder`; the window will be contiguous.
+              - If sparse address translation is used, the subordinate bus may have data width less
+                than the data width of the :class:`Decoder`; the window may be discontiguous.
+
+            In either case, the granularity of the subordinate bus must be equal to or less than
+            the granularity of the :class:`Decoder`.
+
+        .. todo:: include exceptions raised in :meth:`~.memory.MemoryMap.add_window`
+
+        Returns
+        -------
+        :class:`tuple` of (:class:`int`, :class:`int`, :class:`int`)
+            A tuple ``(start, end, ratio)`` describing the address range assigned to the window.
+            When bridging buses of unequal data width, ``ratio`` is the amount of contiguous
+            addresses on the narrower bus that are accessed for each transaction on the wider bus.
+            Otherwise, it is always 1.
+
+        Raises
+        ------
+        :exc:`ValueError`
+            If the subordinate bus granularity is greater than the :class:`Decoder` granularity.
+        :exc:`ValueError`
+            If dense address translation is used and the subordinate bus data width is not equal
+            to the :class:`Decoder` data width.
+        :exc:`ValueError`
+            If sparse address translation is used and the subordinate bus data width is not the
+            equal to the subordinate bus granularity.
+        :exc:`ValueError`
+            If the subordinate bus as an optional output signal that is not present in the
+            :class:`Decoder` interface.
         """
         if isinstance(sub_bus, wiring.FlippedInterface):
             sub_bus_unflipped = flipped(sub_bus)
@@ -395,20 +484,20 @@ class Arbiter(wiring.Component):
 
     A round-robin arbiter for initiators accessing a shared Wishbone bus.
 
-    Parameters
-    ----------
-    addr_width : int
+    Arguments
+    ---------
+    addr_width : :class:`int`
         Address width. See :class:`Signature`.
-    data_width : int
+    data_width : :class:`int`
         Data width. See :class:`Signature`.
-    granularity : int
+    granularity : :class:`int`
         Granularity. See :class:`Signature`
-    features : iter(:class:`Feature`)
+    features : iterable of :class:`Feature`
         Optional signal set. See :class:`Signature`.
 
-    Attributes
-    ----------
-    bus : :class:`Interface`
+    Members
+    -------
+    bus : :py:`Out(wishbone.Signature(addr_width, data_width, granularity, features))`
         Shared Wishbone bus.
     """
     def __init__(self, *, addr_width, data_width, granularity=None, features=frozenset()):
@@ -419,9 +508,17 @@ class Arbiter(wiring.Component):
     def add(self, intr_bus):
         """Add an initiator bus to the arbiter.
 
-        The initiator bus must have the same address width and data width as the arbiter. The
-        granularity of the initiator bus must be greater than or equal to the granularity of
-        the arbiter.
+        Raises
+        ------
+        :exc:`ValueError`
+            If the initiator bus address width is not equal to the :class:`Arbiter` address width.
+        :exc:`ValueError`
+            If the initiator bus granularity is lesser than the :class:`Arbiter` granularity.
+        :exc:`ValueError`
+            If the initiator bus data width is not equal to the :class:`Arbiter` data width.
+        :exc:`ValueError`
+            If the :class:`Arbiter` has an optional output signal that is not present in the
+            initiator bus.
         """
         if not isinstance(intr_bus, Interface):
             raise TypeError(f"Initiator bus must be an instance of wishbone.Interface, not "
