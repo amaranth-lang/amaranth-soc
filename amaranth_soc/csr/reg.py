@@ -423,7 +423,7 @@ class Register(wiring.Component):
     ----------
     fields : :class:`dict` or :class:`list` or :class:`Field`
         Collection of register fields. If ``None`` (default), a dict is populated from Python
-        :term:`variable annotations <python:variable annotations>`. ``fields`` is used to create
+        :term:`variable annotations <python:variable annotation>`. ``fields`` is used to create
         a :class:`FieldActionMap`, :class:`FieldActionArray`, or :class:`FieldAction`,
         depending on its type (dict, list, or Field).
     {parameters}
