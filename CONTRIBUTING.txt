@@ -1,0 +1,37 @@
+CONTRIBUTIONS and CODE REVIEWS
+
+We love contributions from the community. Please send pull requests and raise
+issues! All code submissions require review. We use GitHub pull requests for
+this purpose.
+
+See the "Contributing" section of the documentation manual for more details
+about contributing to Amaranth.
+
+
+USE OF LARGE LANGUAGE MODELS / "GENERATIVE AI" TOOLS
+
+Contributions created using large language models or "generative AI" tools are
+not accepted.
+
+The burden of ensuring the appropriateness of a contribution lies on its
+author, with code review being a tool to assist this process, and even partial
+shift of this responsibility to reviewers that occurs when these tools are
+used is both unethical and unsustainable.
+
+
+COPYRIGHTS and LICENSE
+
+Amaranth HDL is licensed under the 2-clause BSD license, which is contained in
+the LICENSE.txt file.
+
+All authors retain copyright ownership of their contributions.
+
+Authors should note that all contributions are licensed under the 2-clause BSD
+license.
+
+
+CONTRIBUTORS
+
+The complete list of contributors is contained within the git repository.
+Tools such as the git log command can be used to see all contributions and
+contributors.
